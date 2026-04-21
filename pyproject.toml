@@ -19,6 +19,7 @@ dev = [
     "pytest>=8",
     "respx>=0.21",
     "ruff>=0.6",
+    "pre-commit>=3.7",
 ]
 
 [project.scripts]
