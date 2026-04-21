@@ -20,7 +20,7 @@ Engine feature-complete through Step 9.1 (home-currency recalculation on `main_c
 
 1. Create GitHub repo `expense_CLI_menu` (public — see [CLAUDE.md](../CLAUDE.md) "Config isolation"). Initialize git in this folder. Enable GitHub secret scanning + push protection under repo settings → Code security.
 2. Create Python virtualenv (`python -m venv .venv`).
-3. Install: `typer[all]`, `httpx`, `pydantic`.
+3. Install: `typer`, `httpx`, `pydantic`. (Note: the `[all]` extra was deprecated in Typer 0.12+; everything is bundled in the base install now.)
 4. Scaffold `expense/__main__.py` with an empty Typer app; wire `python -m expense` to print help.
 5. Add `.gitignore`, `README.md`, `requirements.txt`.
 
@@ -36,7 +36,7 @@ Engine feature-complete through Step 9.1 (home-currency recalculation on `main_c
 
 Pure plumbing — no engine calls, no product decisions. Unblocked by the PAT vs. JWT question, so it can land before Step 1.
 
-1. **`pyproject.toml`** — replace `requirements.txt`. Declare project metadata, dependencies (`typer[all]`, `httpx`, `pydantic`), dev dependencies (`pytest`, `respx`, `ruff`). Add a `[project.scripts]` entry so `expense = "expense.__main__:app"`. Run `pip install -e .` — `expense --help` now works from any directory.
+1. **`pyproject.toml`** — replace `requirements.txt`. Declare project metadata, dependencies (`typer`, `httpx`, `pydantic`), dev dependencies (`pytest`, `respx`, `ruff`). Add a `[project.scripts]` entry so `expense = "expense.__main__:app"`. Run `pip install -e .` — `expense --help` now works from any directory.
 2. **Lint + format** — `ruff check` + `ruff format` configured in `pyproject.toml`. Optional `mypy` for the Pydantic models layer.
 3. **Pre-commit hook** — runs ruff on staged files. Keeps style drift out of commits.
 4. **Test scaffold** — `pytest` with `respx` for mocking httpx responses. Directory layout: `tests/unit/` (respx-mocked), `tests/contract/` (hits staging engine only when `PYTEST_LIVE=1`). One placeholder test per directory proves the harness works.
