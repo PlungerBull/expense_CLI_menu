@@ -1,0 +1,67 @@
+# expense_CLI_menu — CLAUDE.md
+
+## What this repo is
+
+The Hands. A Python (Typer) CLI that talks to the `expense_world_engine` via its HTTPS API. Every command is a thin wrapper around one or more engine endpoints. Zero business logic lives here — if the engine doesn't do it, the CLI can't either.
+
+## Key documentation
+
+| Doc | What it contains | Location |
+|---|---|---|
+| [docs/cli-spec.md](docs/cli-spec.md) | Command groups, output conventions, open questions | Local |
+| [docs/roadmap.md](docs/roadmap.md) | Step-by-step CLI build order | Local |
+| `engine-spec.md` | Every endpoint, every business rule — the API contract the CLI consumes | [../expense_world_engine/docs/engine-spec.md](../expense_world_engine/docs/engine-spec.md) |
+| `api-design-principles.md` | Request/response conventions (error shape, null-over-omission, idempotency, sign) | [../expense_world_engine/docs/api-design-principles.md](../expense_world_engine/docs/api-design-principles.md) |
+| `design-philosophy.md` | Product vision shared across all clients | [../expense_world_engine/docs/design-philosophy.md](../expense_world_engine/docs/design-philosophy.md) |
+| `lessons-*.md` | UX lessons from YNAB, Lunch Money, TickTick, Todoist, Splitwise | [../expense_world_engine/docs/](../expense_world_engine/docs/) |
+
+Engine docs are **referenced, not copied**. Single source of truth lives in the engine repo.
+
+## Tech stack
+
+- **Language:** Python 3.11+
+- **CLI framework:** Typer
+- **HTTP client:** httpx
+- **Config storage:** `~/.expense-config` (chmod 600)
+- **Local cache (optional, Step 7):** SQLite under `~/.expense-cache.sqlite3`
+
+## Non-negotiable conventions
+
+**Thin wrapper**
+Every command parses args → calls an engine endpoint → formats output. No caching, no balance math, no validation beyond "do these flags make sense together."
+
+**Sign convention**
+Input and output are both signed (`debit_as_negative`): negative = expense, positive = income. The CLI is the caller-side preference layer the engine spec references.
+
+**Human default, JSON opt-in**
+Every read command supports `--json` for machine-readable output. Human mode may prettify; `--json` is always the raw engine response, passed through verbatim.
+
+**Idempotency on every write**
+The HTTP client generates a fresh UUID per write and sets `X-Idempotency-Key`. Retrying a failed command must never double-apply.
+
+**Engine errors surface cleanly**
+The engine's standard error shape (`{ error: { code, message, fields } }`) is rendered to the user. Never swallow, never reformat lossily.
+
+**Confirm destructive operations**
+Deletes, reverts, archives prompt for confirmation unless `--yes` is passed.
+
+**Config isolation**
+Auth token + engine URL live in `~/.expense-config`. Never checked in, never shared across machines. The GitHub repo (`PlungerBull/expense_CLI_menu`) is **public** by deliberate choice — which makes this rule non-negotiable: any secret committed is immediately public and permanent in git history. GitHub push protection is enabled as defense-in-depth, but the primary safeguard is that credentials never enter the repo in the first place.
+
+## Build phases (current status)
+
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete; CLI work starts at Step 0.
+
+| Step | Scope | Status |
+|---|---|---|
+| 0 | Repo & skeleton | Pending |
+| 0.5 | Packaging, testing, CI | Pending |
+| 1 | Auth + config | Pending (blocker: PAT vs. JWT decision) |
+| 2 | Accounts / categories / hashtags | Pending |
+| 3 | Inbox + promote + log | Pending |
+| 4 | Transactions | Pending |
+| 5 | Dashboard + reports | Pending |
+| 6 | Reconciliations | Pending |
+| 7 | Sync | Pending |
+| 8 | Activity + exchange rates | Pending |
+| 9 | CLI complete (gate) | Pending |
