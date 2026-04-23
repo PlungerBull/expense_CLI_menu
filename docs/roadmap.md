@@ -10,7 +10,7 @@
 
 ## Status
 
-Engine feature-complete through Step 9.1 (home-currency recalculation on `main_currency` change), deployed to `https://expense-world-engine.onrender.com`. On top of 9.1 the engine also ships, as part of the cross-cutting audit work: archive/unarchive on accounts, categories, hashtags; dashboard honors `include_archived` with lifetime-signed totals in `archived_accounts` / `archived_categories` / `archived_hashtags` panels; attach guard rejects `POST`/`PUT /transactions` with 422 when `hashtag_ids` references an archived hashtag (and the equivalent for archived categories on transactions and pending inbox items); full `POST /{resource}/{id}/restore` coverage on every soft-deletable resource; currencies locked at the schema to USD/PEN (no cross-rate math). Two operational tasks remain in engine [TODO.md](../../expense_world_engine/TODO.md): daily exchange-rate cron wiring + historical FX backfill — neither blocks CLI work. CLI is Step 10 of the overall product roadmap ([../../expense_world_engine/docs/roadmap.md](../../expense_world_engine/docs/roadmap.md)).
+Engine feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23), deployed to `https://expense-world-engine.onrender.com`. On top of auth, the engine also ships as part of the cross-cutting audit work: archive/unarchive on accounts, categories, hashtags; dashboard honors `include_archived` with lifetime-signed totals in `archived_accounts` / `archived_categories` / `archived_hashtags` panels; attach guard rejects `POST`/`PUT /v1/transactions` with 422 when `hashtag_ids` references an archived hashtag (and the equivalent for archived categories on transactions and pending inbox items); full `POST /v1/{resource}/{id}/restore` coverage on every soft-deletable resource; currencies locked at the schema to USD/PEN (no cross-rate math). Two operational tasks remain in engine [TODO.md](../../expense_world_engine/TODO.md): daily exchange-rate cron wiring + historical FX backfill — neither blocks CLI work. **All engine endpoints except `GET /health` are mounted under `/v1/`** — the CLI HTTP client's base path should be `<engine_url>/v1` with `/health` as the one special-case. CLI is Step 10 of the overall product roadmap ([../../expense_world_engine/docs/roadmap.md](../../expense_world_engine/docs/roadmap.md)).
 
 ---
 
@@ -52,20 +52,17 @@ Pure plumbing — no engine calls, no product decisions. Unblocked by the PAT vs
 
 *Deliverable: `expense config`, `expense auth`, and `expense ping` wire the CLI to the live engine.*
 
-**Blocker to resolve first.** The CLI calls for a Personal Access Token in `~/.expense-config`, but the engine today validates Supabase JWTs only — no PAT endpoint exists. Two paths:
+**Blocker resolved 2026-04-23 — went with PAT (Option B).** The engine now ships PAT auth (engine commits `3f729b2` + `b001b85`): `POST /v1/auth/pat` issues a one-shot plaintext token prefixed `ewe_pat_`, `DELETE /v1/auth/pat/{id}` revokes. Middleware in `app/deps.py` branches on the `ewe_pat_` prefix — anything else falls through to JWT verification (HS256 shared-secret or ES256 via Supabase JWKS). The CLI treats the PAT as an opaque Bearer token; no client-side validation needed.
 
-- **Option A (ship now):** use a long-lived Supabase JWT directly. Zero engine changes.
-- **Option B (ship right):** add PAT issuance + validation to the engine first. Correct long-term; reopens engine work.
-
-Owner: @alexterfer. Decision needed before any work on this step begins — record the outcome at the top of the step once made. Step 0.5 can proceed in parallel while this is open.
+For Step 1, the user obtains a PAT out-of-band (direct API call to `POST /v1/auth/pat` with their Supabase JWT, or via the future web dashboard) and pastes it into `expense config set --token <pat>`. CLI-side PAT create/revoke commands are deferred — not required for the daily-driver flow.
 
 1. **`expense config`** — `set` / `get` / `clear`. Store `token`, `engine_url`, `client_id` (auto-generated UUID), `main_currency` in `~/.expense-config` with `chmod 600`.
 2. **HTTP client wrapper** — attaches `Authorization: Bearer <token>`, prepends base URL, generates fresh `X-Idempotency-Key` UUID on every write, attaches `X-Client-Id`. Honors a global `--verbose` flag that prints request + response (method, URL, status, headers, body) for debugging; redact the `Authorization` header.
 3. **Error translator** — renders the engine's standard error shape to the terminal. `--json` passes through verbatim.
 4. **`expense ping`** → `GET /health`. Confirms the engine is reachable.
-5. **`expense auth bootstrap`** → `POST /auth/bootstrap`. First-login upsert.
-6. **`expense auth me`** (alias `whoami`) → `GET /auth/me`. Proves the full auth stack works. Caches `main_currency` into config.
-7. **`expense auth settings`** → `PUT /auth/settings`. Partial update of `display_name`, `timezone`, `main_currency`. Warn the user that changing `main_currency` triggers home-currency recalc on the engine.
+5. **`expense auth bootstrap`** → `POST /v1/auth/bootstrap`. First-login upsert.
+6. **`expense auth me`** (alias `whoami`) → `GET /v1/auth/me`. Proves the full auth stack works. Caches `main_currency` into config.
+7. **`expense auth settings`** → `PUT /v1/auth/settings`. Partial update of `display_name`, `timezone`, `main_currency`. Warn the user that changing `main_currency` triggers home-currency recalc on the engine.
 
 **Verify:** `expense config set … && expense ping && expense auth me` returns current user's settings from the live engine.
 
@@ -103,7 +100,7 @@ Mirrors engine Step 4 (core CRUD), extended with the archive/unarchive/restore v
 1. `expense inbox add` — partial-field capture (title + amount minimum).
 2. `expense inbox list` supports `--ready` (excludes items missing required fields or pointing at archived categories) and `--include-deleted`.
 3. `expense inbox get` / `update` / `delete` / `restore`.
-4. `expense inbox promote <id>` → `POST /inbox/{id}/promote`. On 422, pretty-print the missing/blocking fields and suggest the fix.
+4. `expense inbox promote <id>` → `POST /v1/inbox/{id}/promote`. On 422, pretty-print the missing/blocking fields and suggest the fix.
 5. `expense log` — direct ledger entry, single transaction. All required fields supplied as flags. Transfer creation (`--transfer --to-account`) is deferred to Step 4 alongside the rest of the transactions surface.
 
 **Verify:** add an incomplete inbox item, try to promote (expect a helpful error). Fill in, promote, confirm transaction appears in `expense transactions list` and inbox item is soft-deleted. Archive the category referenced by a ready inbox item and confirm `inbox list --ready` no longer surfaces it.
@@ -133,7 +130,7 @@ Mirrors engine Step 4 (core CRUD), extended with the archive/unarchive/restore v
 
 *Deliverable: current month + historical views in the terminal.*
 
-1. `expense dashboard` → `GET /dashboard`. Renders:
+1. `expense dashboard` → `GET /v1/dashboard`. Renders:
    - Bank accounts (native + home currency)
    - People accounts
    - Categories with expandable hashtag-combination breakdown
@@ -183,8 +180,8 @@ Stateless CLIs rarely need sync the way mobile/web do. Two modes:
 
 *Deliverable: niche read commands for audit trail and rate lookups.*
 
-1. `expense activity list [--resource-type] [--resource-id] [--limit] [--cursor]` → `GET /activity`. Paginated per engine spec: render `next_cursor` as a hint in human mode; preserve verbatim in `--json`.
-2. `expense rates get --target <code> [--base USD] [--date YYYY-MM-DD]` → `GET /exchange-rates`.
+1. `expense activity list [--resource-type] [--resource-id] [--limit] [--cursor]` → `GET /v1/activity`. Paginated per engine spec: render `next_cursor` as a hint in human mode; preserve verbatim in `--json`.
+2. `expense rates get --target <code> [--base USD] [--date YYYY-MM-DD]` → `GET /v1/exchange-rates`.
 
 Low-value by themselves, but they close the gap to full engine coverage.
 

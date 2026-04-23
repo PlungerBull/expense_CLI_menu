@@ -27,16 +27,20 @@ Engine feature-complete through Phase 9.2 (archive/unarchive shipped on accounts
 
 ## Auth model
 
-**Open decision (blocks Step 1 of [roadmap.md](roadmap.md)):** PAT issuance endpoint on the engine vs. long-lived Supabase JWT directly. No engine PAT flow exists today.
+**Resolved 2026-04-23 — PAT (Option B).** The engine ships long-lived Personal Access Tokens prefixed `ewe_pat_`; the middleware branches on the prefix and falls through to JWT verification (HS256 shared-secret or ES256 via Supabase JWKS) for anything else. The CLI treats the PAT as an opaque Bearer token and does no client-side validation. See engine commits `3f729b2` + `b001b85` and the PAT project memory for details.
+
+The user obtains a PAT out-of-band for now: direct call to `POST /v1/auth/pat` with their Supabase JWT, which returns the plaintext token exactly once. A future web dashboard will issue PATs; CLI-side `auth pat create` / `auth pat revoke` commands are deferred until the core daily-driver flow is proven.
+
+All engine endpoints except `GET /health` are mounted under `/v1/`. The CLI HTTP client's base path is `<engine_url>/v1` with `/health` as the one unauthenticated, un-prefixed exception.
 
 Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 | Field | Purpose |
 |---|---|
 | `engine_url` | Base URL of the engine (prod: `https://expense-world-engine.onrender.com`) |
-| `token` | Bearer token (PAT or JWT per the Step 1 decision) |
+| `token` | PAT (prefix `ewe_pat_`). Sent verbatim as `Authorization: Bearer <token>`. |
 | `client_id` | Persistent UUID used as `X-Client-Id` for sync checkpoints (auto-generated on first run) |
-| `main_currency` | Cached from `/auth/me` for offline formatting hints |
+| `main_currency` | Cached from `/v1/auth/me` for offline formatting hints |
 
 ---
 
@@ -48,9 +52,10 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `config clear`
 
 ### `expense auth`
-- `auth bootstrap` → `POST /auth/bootstrap` (first-login upsert, idempotent)
-- `auth me` (alias: `whoami`) → `GET /auth/me`
-- `auth settings` → `PUT /auth/settings` — partial update of `display_name`, `timezone`, `main_currency`, etc. Changing `main_currency` triggers home-currency recalculation on the engine.
+- `auth bootstrap` → `POST /v1/auth/bootstrap` (first-login upsert, idempotent)
+- `auth me` (alias: `whoami`) → `GET /v1/auth/me`
+- `auth settings` → `PUT /v1/auth/settings` — partial update of `display_name`, `timezone`, `main_currency`, etc. Changing `main_currency` triggers home-currency recalculation on the engine.
+- `auth pat create` / `auth pat revoke` — **deferred.** For v1, PATs are issued via direct API call to `POST /v1/auth/pat` (requires a Supabase JWT); the CLI consumes the resulting token but does not issue/revoke.
 
 ### `expense accounts`
 - `accounts list [--include-archived] [--include-deleted] [--include-people]`
@@ -102,10 +107,10 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `reports monthly --from YYYY-MM --to YYYY-MM` — inclusive range (max 24 months).
 
 ### `expense activity`
-- `activity list [--resource-type <t>] [--resource-id <id>]` → `GET /activity` (paginated audit log).
+- `activity list [--resource-type <t>] [--resource-id <id>]` → `GET /v1/activity` (paginated audit log).
 
 ### `expense exchange-rates`
-- `rates get --target <code> [--base USD] [--date YYYY-MM-DD]` → `GET /exchange-rates`.
+- `rates get --target <code> [--base USD] [--date YYYY-MM-DD]` → `GET /v1/exchange-rates`.
 
 ### `expense sync`
 - `sync --full` — wildcard `*`, prints per-resource counts. Stateless.

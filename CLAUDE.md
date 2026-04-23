@@ -50,13 +50,13 @@ Auth token + engine URL live in `~/.expense-config`. Never checked in, never sha
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete; CLI is through Step 0.5 (skeleton + packaging + CI live). Step 1 is blocked on the PAT vs. JWT auth decision.
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23). CLI is through Step 0.5 (skeleton + packaging + CI live); Step 1 is unblocked — PAT was chosen over long-lived JWT.
 
 | Step | Scope | Status |
 |---|---|---|
 | 0 | Repo & skeleton | Done |
 | 0.5 | Packaging, testing, CI | Done |
-| 1 | Auth + config | Pending (blocker: PAT vs. JWT decision) |
+| 1 | Auth + config | Pending |
 | 2 | Accounts / categories / hashtags | Pending |
 | 3 | Inbox + promote + log | Pending |
 | 4 | Transactions | Pending |
