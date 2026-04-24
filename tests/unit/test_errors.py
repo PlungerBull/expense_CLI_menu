@@ -1,0 +1,151 @@
+import json
+
+import pytest
+import typer
+
+from expense.errors import (
+    ConfigMissingError,
+    EngineConnectionError,
+    EngineError,
+    handle_errors,
+    render,
+)
+
+
+def test_engine_error_attributes():
+    err = EngineError(
+        code="VALIDATION_ERROR",
+        message="Amount must not be zero",
+        fields={"amount_cents": "Must not be zero"},
+        status=422,
+        raw_body={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "...",
+                "fields": {"amount_cents": "..."},
+            }
+        },
+    )
+    assert err.code == "VALIDATION_ERROR"
+    assert err.status == 422
+    assert err.fields == {"amount_cents": "Must not be zero"}
+
+
+def test_render_engine_error_human_with_fields():
+    err = EngineError(
+        code="VALIDATION_ERROR",
+        message="Amount must not be zero",
+        fields={"amount_cents": "Must not be zero"},
+        status=422,
+        raw_body={},
+    )
+    output, exit_code, use_stderr = render(err, json_mode=False)
+    assert exit_code == 1
+    assert use_stderr is True
+    assert "Error: VALIDATION_ERROR — Amount must not be zero" in output
+    assert "  amount_cents: Must not be zero" in output
+
+
+def test_render_engine_error_human_no_fields_single_line():
+    err = EngineError(
+        code="UNAUTHORIZED",
+        message="Missing or invalid token",
+        fields=None,
+        status=401,
+        raw_body={},
+    )
+    output, exit_code, use_stderr = render(err, json_mode=False)
+    assert exit_code == 1
+    assert output == "Error: UNAUTHORIZED — Missing or invalid token"
+
+
+def test_render_engine_error_json_passes_through_raw_body():
+    raw = {"error": {"code": "NOT_FOUND", "message": "x", "fields": None}}
+    err = EngineError(
+        code="NOT_FOUND",
+        message="x",
+        fields=None,
+        status=404,
+        raw_body=raw,
+    )
+    output, exit_code, use_stderr = render(err, json_mode=True)
+    assert exit_code == 1
+    assert use_stderr is False
+    assert json.loads(output) == raw
+
+
+def test_render_connection_error_human_includes_url():
+    err = EngineConnectionError(
+        url="https://nonexistent.invalid",
+        original=ConnectionRefusedError("refused"),
+    )
+    output, exit_code, use_stderr = render(err, json_mode=False)
+    assert exit_code == 2
+    assert use_stderr is True
+    assert "https://nonexistent.invalid" in output
+    assert "could not reach engine" in output
+
+
+def test_render_connection_error_json_envelope():
+    err = EngineConnectionError(
+        url="https://x.invalid",
+        original=TimeoutError("timeout"),
+    )
+    output, exit_code, _ = render(err, json_mode=True)
+    assert exit_code == 2
+    envelope = json.loads(output)
+    assert envelope["error"]["code"] == "CONNECTION_ERROR"
+    assert envelope["error"]["fields"] is None
+
+
+def test_render_config_missing_human():
+    err = ConfigMissingError("No config found. Run: expense config set ...")
+    output, exit_code, use_stderr = render(err, json_mode=False)
+    assert exit_code == 3
+    assert use_stderr is True
+    assert "Error:" in output
+    assert "config set" in output
+
+
+def test_render_unknown_exception_reraises():
+    with pytest.raises(RuntimeError, match="unexpected"):
+        render(RuntimeError("unexpected"), json_mode=False)
+
+
+def test_handle_errors_catches_engine_error():
+    @handle_errors
+    def cmd(json_output: bool = False):
+        raise EngineError(code="NOT_FOUND", message="x", fields=None, status=404, raw_body={})
+
+    with pytest.raises(typer.Exit) as exc:
+        cmd()
+    assert exc.value.exit_code == 1
+
+
+def test_handle_errors_catches_connection_error():
+    @handle_errors
+    def cmd(json_output: bool = False):
+        raise EngineConnectionError(url="https://x", original=Exception("x"))
+
+    with pytest.raises(typer.Exit) as exc:
+        cmd()
+    assert exc.value.exit_code == 2
+
+
+def test_handle_errors_catches_config_missing():
+    @handle_errors
+    def cmd(json_output: bool = False):
+        raise ConfigMissingError("no config")
+
+    with pytest.raises(typer.Exit) as exc:
+        cmd()
+    assert exc.value.exit_code == 3
+
+
+def test_handle_errors_propagates_unexpected():
+    @handle_errors
+    def cmd(json_output: bool = False):
+        raise RuntimeError("bug")
+
+    with pytest.raises(RuntimeError, match="bug"):
+        cmd()
