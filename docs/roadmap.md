@@ -200,7 +200,46 @@ All command groups from [cli-spec.md](cli-spec.md) work end-to-end against the l
 - A fresh user goes `expense config set` → `expense auth bootstrap` → `expense dashboard` with no surprises
 - Archive/delete distinction is respected: closed accounts/categories/hashtags appear only with `--include-archived`, deleted ones only with `--include-deleted`
 
-Next: iterate on ergonomics based on actual use. Quick-add natural-language parser (Todoist-style `expense $20 today #food`), interactive prompts, `expense import csv`, shell completions, color conventions — see "To Be Defined" in the spec.
+Next: Step 9.5 (interactive shell) immediately after this gate, then Post-Step-9 ergonomics (quick-add parser, CSV import, shell completions, color conventions).
+
+---
+
+## Step 9.5 — Interactive shell (`expense menu`)
+
+*Deliverable: a menu-driven UI that wraps the now-complete flat command surface, for management/inspection workflows.*
+
+The CLI ships two complementary front doors after Step 9:
+
+- **`expense <command> [flags]`** (current) — flat invocations. Power users, scripting, automation, the future quick-add parser. Stays the canonical interface.
+- **`expense menu`** — drops into an interactive walkdown over the same actions. For first-time discovery, infrequent management tasks ("archive an account I haven't touched in months"), and any case where the user prefers navigating to remembering flag names.
+
+Both paths call the same underlying flat-command implementations. The menu is a thin presentation layer; it does not duplicate logic.
+
+`expense` (no args) keeps its current behavior — prints the group help. Menu is opt-in via the explicit `expense menu` invocation.
+
+1. **Library choice** — `questionary` (built on `prompt_toolkit`). Adds one dev dep, supports text prompts, single/multi-select lists, checkboxes, confirmations. Lighter than Textual; no need for full-screen panels for v1.
+2. **Navigation** — root menu lists the same top-level groups as `expense --help` (config, auth, accounts, categories, hashtags, inbox, transactions, dashboard, reconcile, sync, activity, rates). Selecting a group lists its commands. Selecting a command prompts for inputs (one prompt per flag), then invokes the underlying flat command and renders the result inline.
+3. **Inputs** — for read commands, prompt only for filters (skip them with Enter for "all"). For writes, prompt for required fields first, then offer to "set additional optional fields?" — yes/no fork keeps simple actions short.
+4. **Confirmations** — destructive actions reuse the same `--yes`-equivalent prompts the flat commands already gate on. Currency-change recalc warning surfaces here too.
+5. **Quit / back** — `q` or Ctrl-C at any prompt returns to the previous menu; from the root, exits cleanly.
+6. **Output** — same renderers the flat commands use (no parallel formatting code). After an action completes, the menu prints the result and returns to the parent menu, ready for the next action.
+
+**Out of scope for v1 of the menu:** no full-screen TUI panels, no live dashboards, no mouse, no color theming. Just menus → prompts → invoke → show result → back to menu.
+
+**Verify:** a fresh user types `expense menu` and walks the entire app (set config, bootstrap, browse accounts, log a transaction, view dashboard) without ever consulting `--help` or memorizing a flag.
+
+**Commit:** `feat: interactive shell — expense menu wraps the flat command surface`
+
+---
+
+## Post-Step-9 ergonomics
+
+Land in this order, separately from Step 9.5:
+
+1. **Quick-add natural-language parser** — `expense $20 today #food` → parses amount, sign, date, hashtag, title from free text and dispatches to the flat `log` command. Sign stays literal (`$20` = income, `-$20` = expense). The "low-friction capture" half of the dual-UX strategy; the menu is the "discoverable management" half.
+2. **Shell completions** — zsh, bash, fish. `expense <TAB>` shows commands; `expense auth <TAB>` shows subcommands. Lowest-effort discoverability win for the flat path.
+3. **`expense import csv`** — bulk transaction import for migration.
+4. **Color conventions** — Rich-based output styling; opt-out flag for plain ANSI.
 
 ---
 

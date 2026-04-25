@@ -150,8 +150,8 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ## To Be Defined
 
-- **Quick-add natural-language parser** — Todoist-style single-line capture (`expense $20 today #food` → parses amount/date/hashtag/title from free text). Deferred until after Step 9 so real usage patterns inform the grammar. Sign stays literal: `$20` = income, `-$20` = expense; no default-to-expense magic.
-- Interactive TUI prompts (`expense inbox add` with no flags → interactive mode?)
+- **`expense menu` (Step 9.5)** — interactive walkdown over the entire flat command surface. Library: `questionary`. Triggered explicitly via `expense menu`; `expense` (no args) keeps current group-help behavior. Menu calls flat commands under the hood — single source of truth for behavior. Designed for management/inspection workflows; capture goes through quick-add. See [roadmap.md](roadmap.md) Step 9.5.
+- **Quick-add natural-language parser (Post-Step-9)** — Todoist-style single-line capture (`expense $20 today #food` → parses amount/date/hashtag/title from free text). Sign stays literal: `$20` = income, `-$20` = expense; no default-to-expense magic. Pairs with `expense menu` as the "fast capture" half of the dual-UX strategy.
 - Import commands (`expense import csv`)
 - Shell completions (zsh, bash, fish)
 - Local SQLite cache for `--offline` reads (decision deferred to Step 7)
