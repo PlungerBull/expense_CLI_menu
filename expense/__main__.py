@@ -1,7 +1,14 @@
 import typer
 
 from expense import __version__
-from expense.commands import auth_cmd, config_cmd, ping_cmd
+from expense.commands import (
+    accounts_cmd,
+    auth_cmd,
+    categories_cmd,
+    config_cmd,
+    hashtags_cmd,
+    ping_cmd,
+)
 from expense.context import AppContext
 
 app = typer.Typer(
@@ -33,6 +40,9 @@ def version() -> None:
 
 app.add_typer(config_cmd.app, name="config")
 app.add_typer(auth_cmd.app, name="auth")
+app.add_typer(accounts_cmd.app, name="accounts")
+app.add_typer(categories_cmd.app, name="categories")
+app.add_typer(hashtags_cmd.app, name="hashtags")
 app.command("ping")(ping_cmd.ping)
 app.command("whoami")(auth_cmd.whoami)
 
