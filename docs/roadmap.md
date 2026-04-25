@@ -60,9 +60,10 @@ For Step 1, the user obtains a PAT out-of-band (direct API call to `POST /v1/aut
 2. **HTTP client wrapper** — attaches `Authorization: Bearer <token>`, prepends base URL, generates fresh `X-Idempotency-Key` UUID on every write, attaches `X-Client-Id`. Honors a global `--verbose` flag that prints request + response (method, URL, status, headers, body) for debugging; redact the `Authorization` header.
 3. **Error translator** — renders the engine's standard error shape to the terminal. `--json` passes through verbatim.
 4. **`expense ping`** → `GET /health`. Confirms the engine is reachable.
-5. **`expense auth bootstrap`** → `POST /v1/auth/bootstrap`. First-login upsert.
+5. **`expense auth bootstrap`** → `POST /v1/auth/bootstrap`. First-login upsert. Idempotent: subsequent calls only bump `last_login_at`. The `--display-name` and `--timezone` flags are honored ONLY on the very first call (the INSERT); replays don't overwrite them.
 6. **`expense auth me`** (alias `whoami`) → `GET /v1/auth/me`. Proves the full auth stack works. Caches `main_currency` into config.
-7. **`expense auth settings`** → `PUT /v1/auth/settings`. Partial update of `display_name`, `timezone`, `main_currency`. Warn the user that changing `main_currency` triggers home-currency recalc on the engine.
+7. **`expense auth settings`** → `PUT /v1/auth/settings`. Partial update of `user_settings` fields only: `theme`, `start_of_week`, `main_currency`, `transaction_sort_preference`, `display_timezone`, `sidebar_show_bank_accounts`, `sidebar_show_people`, `sidebar_show_categories`. Warn the user that changing `main_currency` triggers home-currency recalc on the engine.
+8. **`expense auth profile`** → `PUT /v1/auth/profile`. Partial update of `users` (identity) fields. Currently only `--display-name` is mutable in v1; the engine rejects `null` (clearing not supported). Shipped as a follow-on to Step 1 (engine commit `7017615`, CLI commit `99f9008`) to close the gap that bootstrap-idempotency leaves: post-login identity changes need a dedicated endpoint, not a settings overload.
 
 **Verify:** `expense config set … && expense ping && expense auth me` returns current user's settings from the live engine.
 

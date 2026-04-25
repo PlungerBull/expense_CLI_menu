@@ -52,9 +52,10 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `config clear`
 
 ### `expense auth`
-- `auth bootstrap` → `POST /v1/auth/bootstrap` (first-login upsert, idempotent)
+- `auth bootstrap` → `POST /v1/auth/bootstrap` (first-login upsert, idempotent). `--display-name` and `--timezone` are honored only on the first call; subsequent calls only bump `last_login_at`. Use `auth profile` / `auth settings --display-timezone` afterward to mutate.
 - `auth me` (alias: `whoami`) → `GET /v1/auth/me`
-- `auth settings` → `PUT /v1/auth/settings` — partial update of `display_name`, `timezone`, `main_currency`, etc. Changing `main_currency` triggers home-currency recalculation on the engine.
+- `auth profile` → `PUT /v1/auth/profile` — partial update of identity fields on the `users` row. v1 only exposes `--display-name`; engine rejects clearing to null. Bootstrap idempotency is preserved (re-bootstrap won't overwrite a profile-set name).
+- `auth settings` → `PUT /v1/auth/settings` — partial update of `user_settings` fields only: `--theme`, `--start-of-week`, `--main-currency`, `--transaction-sort-preference`, `--display-timezone`, `--sidebar-show-bank-accounts`, `--sidebar-show-people`, `--sidebar-show-categories`. Changing `main_currency` triggers synchronous home-currency recalculation on the engine; the CLI confirms unless `--yes` is passed.
 - `auth pat create` / `auth pat revoke` — **deferred.** For v1, PATs are issued via direct API call to `POST /v1/auth/pat` (requires a Supabase JWT); the CLI consumes the resulting token but does not issue/revoke.
 
 ### `expense accounts`
