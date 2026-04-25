@@ -110,6 +110,22 @@ Mirrors engine Step 4 (core CRUD), extended with the archive/unarchive/restore v
 
 ---
 
+## Step 3.1 — Date input normalization
+
+*Deliverable: users type natural date shapes (`2026-04-25`, `2026-04-25 16:30`); the CLI converts to RFC 3339 with the local tz before sending.*
+
+The engine ships strict aware-only datetime acceptance alongside this step (Pydantic `AwareDatetime` on `Transaction{Create,Update}Request` and `Inbox{Create,Update}Request`; naive input rejected with 422). Matches industry consensus (Stripe, Plaid, Square, GitHub, AWS, GCloud per AIP-142): "no globally-correct interpretation" of a naive timestamp in a financial system. The CLI absorbs the user-friendly conversion.
+
+1. New `expense/dates.py` — `to_canonical_aware(user_input)` accepts `YYYY-MM-DD`, naive datetime (T or space separator, with or without seconds), or RFC 3339 with offset. Naive forms get the user's local timezone (via `tzlocal`) attached and are re-emitted as RFC 3339; aware forms pass through verbatim. Unparseable input raises `typer.BadParameter` with a clear message.
+2. `expense log --date`, `expense inbox add --date`, `expense inbox update --date` route user input through the helper before building the request payload. Default for `expense log --date` (when omitted) stays as local-aware "now".
+3. New runtime dependency: `tzlocal>=5.2`.
+
+**Verify:** unit tests cover all accepted shapes; live smoke runs `expense log --date 2026-04-25` and `expense log --date "2026-04-25 16:30"` against the engine and confirms 201 (not a CLI BadParameter, not an engine 422).
+
+**Commit:** `feat: date input normalization — accept naive forms, send RFC 3339`
+
+---
+
 ## Step 4 — Transactions
 
 *Deliverable: full ledger management including batch and restore.*

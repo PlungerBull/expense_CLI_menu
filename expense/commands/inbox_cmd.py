@@ -6,6 +6,7 @@ import typer
 from expense import config as config_module
 from expense.commands._resource import build_update_payload, require_yes
 from expense.context import get_verbose
+from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
 
@@ -113,7 +114,8 @@ def add(
     date: str | None = typer.Option(
         None,
         "--date",
-        help="ISO 8601 datetime; engine auto-fetches FX rate when paired with --account-id.",
+        help="YYYY-MM-DD, 'YYYY-MM-DD HH:MM[:SS]', or RFC 3339 with offset. "
+        "Naive forms get the local timezone attached.",
     ),
     account_id: str | None = typer.Option(None, "--account-id"),
     category_id: str | None = typer.Option(None, "--category-id"),
@@ -135,7 +137,7 @@ def add(
         "amount_cents": amount,
     }
     if date is not None:
-        payload["date"] = date
+        payload["date"] = to_canonical_aware(date)
     if account_id is not None:
         payload["account_id"] = account_id
     if category_id is not None:
@@ -178,7 +180,7 @@ def update(
         {
             "title": title,
             "amount_cents": amount,
-            "date": date,
+            "date": to_canonical_aware(date) if date is not None else None,
             "account_id": account_id,
             "category_id": category_id,
             "description": description,

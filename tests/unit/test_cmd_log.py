@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID, uuid4
 
 import httpx
@@ -132,9 +132,9 @@ def test_log_default_date_is_today(configured):
     assert result.exit_code == 0, result.output
 
     body = json.loads(route.calls.last.request.content)
-    today_utc = datetime.now(UTC).date().isoformat()
-    assert body["date"].startswith(today_utc)
-    assert body["date"].endswith("Z")
+    parsed = datetime.fromisoformat(body["date"])
+    assert parsed.tzinfo is not None
+    assert parsed.date() == datetime.now().astimezone().date()
 
 
 @respx.mock

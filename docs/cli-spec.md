@@ -138,7 +138,8 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 - **Tables** — monospace columns, header row + separator. Human mode only.
 - **Amounts** — currency symbol prefix (`S/ 8,420.50`, `$5,200.00`). Native + home currency shown side-by-side when they differ. Outflows prefixed with `-`.
-- **Dates** — ISO 8601 by default (`2026-04-19`). Relative hints (`3 days ago`) only in detail (`get`) views.
+- **Dates (output)** — ISO 8601 by default (`2026-04-19`). Relative hints (`3 days ago`) only in detail (`get`) views.
+- **Dates (input)** — Commands that accept `--date` (`expense log`, `expense inbox add`, `expense inbox update`; later `expense transactions update`) accept `YYYY-MM-DD`, `YYYY-MM-DD HH:MM[:SS]`, `YYYY-MM-DDTHH:MM[:SS]`, `YYYY-MM-DDTHH:MM:SSZ`, or `YYYY-MM-DDTHH:MM:SS±HH:MM`. Naive forms get the user's local timezone attached automatically by the CLI's normalizer in [expense/dates.py](../expense/dates.py). The engine itself rejects naive datetimes with 422 — the CLI's normalizer is the only place that accepts them.
 - **Errors** — engine's `{ error: { code, message, fields } }` rendered as:
   ```
   Error: VALIDATION_ERROR — Amount must not be zero.

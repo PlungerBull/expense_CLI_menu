@@ -1,18 +1,13 @@
 import json
-from datetime import UTC, datetime
 from uuid import uuid4
 
 import typer
 
 from expense import config as config_module
 from expense.context import get_verbose
+from expense.dates import now_local_iso, to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
-
-
-def _now_utc_iso() -> str:
-    """Engine requires ISO 8601 with timezone — naive datetimes return 500."""
-    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _render_transaction(body: dict, *, json_mode: bool) -> None:
@@ -36,7 +31,10 @@ def log(
     account_id: str = typer.Option(..., "--account-id"),
     category_id: str = typer.Option(..., "--category-id"),
     date: str | None = typer.Option(
-        None, "--date", help="ISO 8601. Defaults to current local datetime if omitted."
+        None,
+        "--date",
+        help="YYYY-MM-DD, 'YYYY-MM-DD HH:MM[:SS]', or RFC 3339 with offset. "
+        "Naive forms get the local timezone attached. Defaults to now.",
     ),
     description: str | None = typer.Option(None, "--description"),
     cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
@@ -59,7 +57,7 @@ def log(
         "amount_cents": amount,
         "account_id": account_id,
         "category_id": category_id,
-        "date": date if date is not None else _now_utc_iso(),
+        "date": to_canonical_aware(date) if date is not None else now_local_iso(),
     }
     if description is not None:
         payload["description"] = description
