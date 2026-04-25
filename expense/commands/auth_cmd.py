@@ -65,6 +65,16 @@ def _render_settings_only(body: dict, *, json_mode: bool) -> None:
         typer.echo(f"  {key}: {display}")
 
 
+def _render_user_only(body: dict, *, json_mode: bool) -> None:
+    if json_mode:
+        typer.echo(json.dumps(body, indent=2))
+        return
+    typer.echo("User:")
+    for key, value in body.items():
+        display = value if value is not None else "(null)"
+        typer.echo(f"  {key}: {display}")
+
+
 def _cache_main_currency(cfg: Config, settings: dict) -> None:
     main_currency = settings.get("main_currency") if settings else None
     if main_currency and main_currency != cfg.main_currency:
@@ -141,6 +151,37 @@ def whoami(
 ) -> None:
     """Shortcut for `expense auth me`."""
     _me_impl(ctx, json_output)
+
+
+@app.command("profile")
+@handle_errors
+def profile(
+    ctx: typer.Context,
+    display_name: str | None = typer.Option(
+        None, "--display-name", help="New display name. Cannot be cleared (engine rejects null)."
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """PUT /v1/auth/profile. Mutate identity fields on the users row.
+
+    Bootstrap is idempotent and won't overwrite display_name on re-login;
+    this is the post-bootstrap path to change it.
+    """
+    cfg = config_module.ensure_loaded()
+    verbose = get_verbose(ctx)
+
+    payload: dict = {}
+    if display_name is not None:
+        payload["display_name"] = display_name
+
+    if not payload:
+        typer.echo("Error: No profile fields to update; pass at least one flag.", err=True)
+        raise typer.Exit(code=1)
+
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        body = client.put("/auth/profile", json_body=payload)
+
+    _render_user_only(body, json_mode=json_output)
 
 
 @app.command("settings")

@@ -201,6 +201,57 @@ def test_me_json_mode(configured):
     assert data == BOOTSTRAP_RESPONSE
 
 
+def test_profile_no_flags_errors(configured):
+    result = runner.invoke(cli_app, ["auth", "profile"])
+    assert result.exit_code == 1
+    assert "No profile fields to update" in result.output
+
+
+@respx.mock
+def test_profile_display_name_success(configured):
+    updated_user = {**BOOTSTRAP_RESPONSE["user"], "display_name": "Alex"}
+    route = respx.put("https://api.example.com/v1/auth/profile").mock(
+        return_value=httpx.Response(200, json=updated_user)
+    )
+    result = runner.invoke(cli_app, ["auth", "profile", "--display-name", "Alex"])
+    assert result.exit_code == 0, result.output
+
+    req_body = json.loads(route.calls.last.request.content)
+    assert req_body == {"display_name": "Alex"}
+    assert "display_name: Alex" in result.output
+
+
+@respx.mock
+def test_profile_json_mode(configured):
+    updated_user = {**BOOTSTRAP_RESPONSE["user"], "display_name": "Alex"}
+    respx.put("https://api.example.com/v1/auth/profile").mock(
+        return_value=httpx.Response(200, json=updated_user)
+    )
+    result = runner.invoke(cli_app, ["auth", "profile", "--display-name", "Alex", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == updated_user
+
+
+@respx.mock
+def test_profile_422_renders_engine_error(configured):
+    respx.put("https://api.example.com/v1/auth/profile").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid input.",
+                    "fields": {"display_name": "Must not be null."},
+                }
+            },
+        )
+    )
+    result = runner.invoke(cli_app, ["auth", "profile", "--display-name", "Alex"])
+    assert result.exit_code == 1
+    assert "VALIDATION_ERROR" in result.output
+    assert "display_name" in result.output
+
+
 @respx.mock
 def test_bootstrap_timezone_auto_detected_from_tz_env(configured, monkeypatch):
     monkeypatch.setenv("TZ", "America/Lima")
