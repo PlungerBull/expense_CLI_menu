@@ -147,19 +147,19 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 
 *Deliverable: current month + historical views in the terminal.*
 
-1. `expense dashboard` → `GET /v1/dashboard`. Renders:
+1. `expense dashboard` → `GET /v1/dashboard`. Current-month-only (the engine endpoint is current-month-only — there is no `?month=` parameter). Renders:
    - Bank accounts (native + home currency)
    - People accounts
    - Categories with expandable hashtag-combination breakdown
    - Totals (inflow / outflow / net)
 2. `--include-archived` → adds `archived_accounts`, `archived_categories`, `archived_hashtags` panels with lifetime signed totals.
-3. `--month YYYY-MM` → switches to single-month report.
-4. `--json` → raw engine response.
-5. `expense reports monthly` — separate command for historical:
-   - `--year <y> --month <m>` → single month.
-   - `--from YYYY-MM --to YYYY-MM` → inclusive range (max 24 months). Output renders as a table: rows = categories, cols = months.
+3. `--json` → raw engine response.
+4. `expense reports monthly` — separate command for historical flow (no balances; balances are a "now" concept and live on `/dashboard` only):
+   - `--date YYYY-MM` → single month.
+   - `--from YYYY-MM --to YYYY-MM` → inclusive range (max 24 months). Output renders as a table: rows = categories, cols = months. Mutually exclusive with `--date`.
+   - `--json` → raw engine response.
 
-**Verify:** `dashboard` matches the web view semantically. `dashboard --include-archived` surfaces the archived panels with lifetime totals. `reports monthly --from 2025-11 --to 2026-04` returns 6 months.
+**Verify:** `dashboard` matches the web view semantically. `dashboard --include-archived` surfaces the archived panels with lifetime totals. `reports monthly --date 2026-03` returns a single month. `reports monthly --from 2025-11 --to 2026-04` returns 6 months.
 
 **Commit:** `feat: dashboard + reports — current month, historical, archived panels`
 

@@ -98,14 +98,15 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `reconcile revert <id>` — unlocks fields; requires `--yes`.
 
 ### `expense dashboard`
-- `dashboard` — current month: bank accounts, people, categories (with hashtag-combination breakdown), totals.
+- `dashboard` — current month: bank accounts, people, categories (with hashtag-combination breakdown), totals. Current-month-only because `GET /v1/dashboard` is current-month-only.
 - `--include-archived` — adds `archived_accounts`, `archived_categories`, `archived_hashtags` panels with lifetime signed totals.
-- `--month YYYY-MM` — switches to historical single month (uses `/reports/monthly`).
 - `--json` — raw engine response.
+- For historical months, see `expense reports monthly`.
 
 ### `expense reports`
-- `reports monthly --year <y> --month <m>` — single month.
-- `reports monthly --from YYYY-MM --to YYYY-MM` — inclusive range (max 24 months).
+- `reports monthly --date YYYY-MM` — single month.
+- `reports monthly --from YYYY-MM --to YYYY-MM` — inclusive range (max 24 months). Mutually exclusive with `--date`.
+- `--json` — raw engine response.
 
 ### `expense activity`
 - `activity list [--resource-type <t>] [--resource-id <id>]` → `GET /v1/activity` (paginated audit log).
