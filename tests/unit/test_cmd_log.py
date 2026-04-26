@@ -226,6 +226,14 @@ def test_log_transfer_payload(configured):
     assert leg["id"] != body["id"]
 
 
+def _collapse(s: str) -> str:
+    """Strip ANSI codes / panel borders / whitespace so substring checks survive
+    Typer's terminal-width-dependent error-panel line-wrapping."""
+    import re
+
+    return re.sub(r"[\s│╭╮╰╯─]+", " ", re.sub(r"\x1b\[[0-9;]*m", "", s))
+
+
 def test_log_transfer_requires_to_account_and_amount(configured):
     result = runner.invoke(
         cli_app,
@@ -243,7 +251,7 @@ def test_log_transfer_requires_to_account_and_amount(configured):
         ],
     )
     assert result.exit_code != 0
-    assert "--transfer requires" in result.output
+    assert "--transfer requires" in _collapse(result.output)
 
 
 def test_log_to_account_without_transfer_errors(configured):
@@ -266,7 +274,7 @@ def test_log_to_account_without_transfer_errors(configured):
         ],
     )
     assert result.exit_code != 0
-    assert "only apply with --transfer" in result.output
+    assert "only apply with --transfer" in _collapse(result.output)
 
 
 @respx.mock
