@@ -50,7 +50,7 @@ Auth token + engine URL live in `~/.expense-config`. Never checked in, never sha
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 4 (transactions: list/get/update/delete/restore/batch + log --transfer).
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 5 (dashboard: current month + balances + archived panels; reports monthly: single-month + 24-month range table).
 
 | Step | Scope | Status |
 |---|---|---|
@@ -61,7 +61,7 @@ See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 
 | 3 | Inbox + promote + log | Done |
 | 3.1 | Date input normalization | Done |
 | 4 | Transactions | Done |
-| 5 | Dashboard + reports | Pending |
+| 5 | Dashboard + reports | Done |
 | 6 | Reconciliations | Pending |
 | 7 | Sync | Pending |
 | 8 | Activity + exchange rates | Pending |

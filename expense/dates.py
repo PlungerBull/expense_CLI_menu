@@ -51,3 +51,33 @@ def to_canonical_aware(user_input: str) -> str:
     if dt.tzinfo is not None:
         return user_input
     return dt.replace(tzinfo=_local_tz()).isoformat(timespec="seconds")
+
+
+def parse_year_month(user_input: str, *, param_hint: str = "--date") -> tuple[int, int]:
+    """Parse a YYYY-MM string into (year, month) integers.
+
+    Used by `expense reports monthly` for --date / --from / --to. Strict shape:
+    exactly four-digit year, dash, two-digit month. Month must be in 1..12.
+
+    Raises typer.BadParameter on bad shape or out-of-range month.
+    """
+    parts = user_input.split("-")
+    if len(parts) != 2 or len(parts[0]) != 4 or len(parts[1]) != 2:
+        raise typer.BadParameter(
+            f"Invalid month {user_input!r}. Use YYYY-MM (e.g. 2026-04).",
+            param_hint=param_hint,
+        )
+    try:
+        year = int(parts[0])
+        month = int(parts[1])
+    except ValueError as exc:
+        raise typer.BadParameter(
+            f"Invalid month {user_input!r}. Use YYYY-MM (e.g. 2026-04).",
+            param_hint=param_hint,
+        ) from exc
+    if not 1 <= month <= 12:
+        raise typer.BadParameter(
+            f"Invalid month {user_input!r}. Month must be 01..12.",
+            param_hint=param_hint,
+        )
+    return year, month
