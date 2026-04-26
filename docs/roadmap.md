@@ -130,14 +130,14 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 
 *Deliverable: full ledger management including batch and restore.*
 
-1. `transactions list` — filters: `--account`, `--category`, `--hashtag`, `--reconciliation`, `--from`, `--to`, `--cleared`, `--approved`, `--search`. Pagination: `--limit`, `--cursor` passed through to the engine; render the `next_cursor` in human mode as a hint and preserve it verbatim in `--json`.
-2. `transactions get <id>` — full detail. `--with-activity` includes activity log entries.
-3. `transactions update <id>` — partial update. `hashtag_ids` and `reconciliation_id` editable through update. Field locking under completed reconciliations surfaces cleanly.
-4. `transactions delete <id>` / `restore <id>` — `delete` confirms unless `--yes`.
-5. Extend `expense log` with `--transfer --to-account <id>` for paired transfer creation in a single call (the basic `log` shipped in Step 3).
-6. `transactions batch` — atomic multi-tx create from flags or stdin JSON.
+1. `transactions list` — filters: `--account`, `--category`, `--hashtag`, `--reconciliation`, `--from`, `--to`, `--cleared/--no-cleared`, `--search`, `--include-deleted`, `--debit-as-negative`. Pagination is offset-based: `--limit`, `--offset` (engine response shape `{items, total, limit, offset}`); human mode prints a `(showing N of M; pass --offset N --limit ... for more)` hint when truncated, `--json` is pass-through.
+2. `transactions get <id>` — full detail. (`--with-activity` is deferred to Step 8: activity-log entries surface via `expense activity list --resource-type expense_transactions --resource-id <id>`.)
+3. `transactions update <id>` — partial update. `hashtag_ids` (comma-separated) and `reconciliation_id` editable through update. Field locking under completed reconciliations and the transfer-pair edit guard surface as 422s with friendly hints.
+4. `transactions delete <id>` / `restore <id>` — `delete` confirms unless `--yes`. Both render the engine's `warnings: list[str]` envelope as `Warning: ...` lines in human mode; `--json` passes through verbatim.
+5. Extend `expense log` with `--transfer --to-account-id <id> --to-amount <signed_cents>` for paired transfer creation in a single atomic POST (engine creates both legs and links via `transfer_transaction_id`).
+6. `transactions batch` — atomic multi-tx create from stdin JSON (or `--file <path>`). Wraps the array in `{"transactions": [...]}` per engine schema; injects `id` UUIDs for items missing one; rejects items with a `transfer` field locally before any HTTP call.
 
-**Verify:** create, update, delete, restore a single tx. Create a transfer and confirm both sides paired via `transfer_transaction_id`. Complete a reconciliation and try to edit a locked field. Batch-create 3 transactions in one call.
+**Verify:** create, update, delete, restore a single tx. Create a transfer and confirm both sides paired via `transfer_transaction_id`. Complete a reconciliation and try to edit a locked field (Step 6 for the reconciliation create; Step 4 only verifies the hint surfaces). Batch-create 3 transactions in one call.
 
 **Commit:** `feat: transactions — list, view, edit, delete, restore, transfer, batch`
 

@@ -10,6 +10,7 @@ from expense.commands import (
     inbox_cmd,
     log_cmd,
     ping_cmd,
+    transactions_cmd,
 )
 from expense.context import AppContext
 
@@ -46,6 +47,7 @@ app.add_typer(accounts_cmd.app, name="accounts")
 app.add_typer(categories_cmd.app, name="categories")
 app.add_typer(hashtags_cmd.app, name="hashtags")
 app.add_typer(inbox_cmd.app, name="inbox")
+app.add_typer(transactions_cmd.app, name="transactions")
 app.command("ping")(ping_cmd.ping)
 app.command("whoami")(auth_cmd.whoami)
 app.command("log")(log_cmd.log)

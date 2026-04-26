@@ -50,16 +50,17 @@ Auth token + engine URL live in `~/.expense-config`. Never checked in, never sha
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 1 (auth + config + HTTP client + bootstrap/me/whoami/profile/settings, all green on live engine).
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 4 (transactions: list/get/update/delete/restore/batch + log --transfer).
 
 | Step | Scope | Status |
 |---|---|---|
 | 0 | Repo & skeleton | Done |
 | 0.5 | Packaging, testing, CI | Done |
 | 1 | Auth + config + HTTP client | Done |
-| 2 | Accounts / categories / hashtags | Pending |
-| 3 | Inbox + promote + log | Pending |
-| 4 | Transactions | Pending |
+| 2 | Accounts / categories / hashtags | Done |
+| 3 | Inbox + promote + log | Done |
+| 3.1 | Date input normalization | Done |
+| 4 | Transactions | Done |
 | 5 | Dashboard + reports | Pending |
 | 6 | Reconciliations | Pending |
 | 7 | Sync | Pending |

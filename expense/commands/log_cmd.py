@@ -41,12 +41,39 @@ def log(
     exchange_rate: float | None = typer.Option(
         None, "--exchange-rate", help="Override engine auto-fetch."
     ),
+    transfer: bool = typer.Option(
+        False,
+        "--transfer",
+        help="Create a paired transfer. Requires --to-account-id and --to-amount.",
+    ),
+    to_account_id: str | None = typer.Option(
+        None, "--to-account-id", help="Sibling account for the transfer pair."
+    ),
+    to_amount: int | None = typer.Option(
+        None,
+        "--to-amount",
+        help="Sibling signed-cents amount. Must be opposite sign to --amount.",
+    ),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     """POST /v1/transactions. Direct ledger entry; bypasses the inbox.
 
-    Transfers (--transfer --to-account) are deferred to Step 4.
+    Pass --transfer with --to-account-id and --to-amount to create a paired
+    transfer in a single atomic call (engine creates both legs and links them).
     """
+    if transfer:
+        if to_account_id is None or to_amount is None:
+            raise typer.BadParameter(
+                "--transfer requires both --to-account-id and --to-amount.",
+                param_hint="--transfer",
+            )
+    else:
+        if to_account_id is not None or to_amount is not None:
+            raise typer.BadParameter(
+                "--to-account-id and --to-amount only apply with --transfer.",
+                param_hint="--to-account-id/--to-amount",
+            )
+
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -65,6 +92,15 @@ def log(
         payload["cleared"] = cleared
     if exchange_rate is not None:
         payload["exchange_rate"] = exchange_rate
+
+    sibling_id: str | None = None
+    if transfer:
+        sibling_id = str(uuid4())
+        payload["transfer"] = {
+            "id": sibling_id,
+            "account_id": to_account_id,
+            "amount_cents": to_amount,
+        }
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         try:
@@ -86,4 +122,6 @@ def log(
 
     if not json_output:
         typer.echo(f"Created: {new_id}")
+        if sibling_id is not None:
+            typer.echo(f"Created (transfer leg): {sibling_id}")
     _render_transaction(body, json_mode=json_output)
