@@ -92,10 +92,16 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `transactions batch` — atomic multi-tx create from flags or a stdin JSON payload.
 
 ### `expense reconcile`
-- `reconcile list [--account]`
-- `reconcile create`, `get`, `update`, `delete`, `restore`
-- `reconcile complete <id>` — locks fields on included transactions; prints the count of newly-locked rows.
-- `reconcile revert <id>` — unlocks fields; requires `--yes`.
+- `reconcile list [--account <id>] [--include-deleted] [--limit <n>] [--offset <n>] [--json]` — when `--account` is set, sorted by `sort_order ASC, created_at ASC` (matches engine).
+- `reconcile get <id> [--limit <n>] [--offset <n>] [--json]` — embeds a paged window of assigned transactions; surfaces a `transactions_truncated` hint pointing at `expense transactions list --reconciliation <id>` for full filter power.
+- `reconcile create --account <id> --name <n> [--date-start ...] [--date-end ...] [--beginning-balance <cents>] [--ending-balance <cents>] [--source manual|chained] [--sort-order <n>]`. Omit `--beginning-balance` to chain from the previous reconciliation in the account.
+- `reconcile update <id>` — partial update; supports `--source manual|chained`. `--source chained` is mutually exclusive with `--beginning-balance` (CLI blocks at parse). `--sort-order` rejected — use `move` / `reorder`.
+- `reconcile delete <id> [--yes]` — only allowed in draft (engine 409 otherwise; CLI hints "revert first"). Cascade-unassigns attached transactions.
+- `reconcile restore <id>` — restored row comes back empty (engine doesn't re-link transactions).
+- `reconcile complete <id>` — flips status → completed; prints count of newly-locked transactions. Locks `amount_cents`, `account_id`, `title`, `date` on every assigned transaction plus the reconciliation's own balance/date fields.
+- `reconcile revert <id> --yes` — flips status → draft; required `--yes` (audit event).
+- `reconcile move <id> --to <n> | --before <id> | --after <id>` — single-row reorder via `PUT /v1/accounts/{account_id}/reconciliations/order`.
+- `reconcile reorder --account <id>` — opens `$EDITOR` on a temp file with the current order; save and exit applies the new order via the bulk endpoint (git-rebase-i style).
 
 ### `expense dashboard`
 - `dashboard` — current month: bank accounts, people, categories (with hashtag-combination breakdown), totals. Current-month-only because `GET /v1/dashboard` is current-month-only.

@@ -167,14 +167,23 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 
 ## Step 6 — Reconciliations
 
-*Deliverable: `expense reconcile` matches the engine reconciliation state machine.*
+*Deliverable: `expense reconcile` matches the engine reconciliation state machine, including `sort_order` chaining and the bulk reorder endpoint.*
 
-1. `reconcile list [--account]`.
-2. `reconcile create`, `get`, `update`, `delete`, `restore`.
-3. `reconcile complete <id>` — prints the count of newly-locked transactions.
-4. `reconcile revert <id>` — requires `--yes`; unlocks fields and is a meaningful audit event.
+The engine ships `sort_order`, `beginning_balance_source` (`"manual"` or `"chained"`), `chained_from_reconciliation_id`, and a new `PUT /v1/accounts/{account_id}/reconciliations/order` bulk reorder endpoint alongside this step. `PUT /v1/reconciliations/{id}` rejects `beginning_balance_source: "chained" + beginning_balance_cents: <number>` with a field-scoped 422 — the CLI blocks the equivalent flag combination at parse time.
 
-**Commit:** `feat: reconcile — full lifecycle`
+1. `reconcile list [--account]` — when filtered by account, sorted by `sort_order ASC, created_at ASC`. List rows surface `[chained from <id>]` / `[manual]` markers.
+2. `reconcile create`, `get`, `update`, `delete`, `restore`. Beginning-balance UX:
+   - omit `--beginning-balance` → engine chains from previous reconciliation (default for "next month follows last month")
+   - pass `--beginning-balance <cents>` → engine forces `source = "manual"`, value stored verbatim
+   - `--source manual|chained` toggle on `update` (mutually exclusive with `--beginning-balance` for `chained`).
+3. `reconcile complete <id>` — prints the count of newly-locked transactions. Locks 4 transaction fields + 5 reconciliation fields (incl. `beginning_balance_source`).
+4. `reconcile revert <id>` — requires `--yes`; unlocks all assigned transactions and the reconciliation's own balance/date fields. A meaningful audit event.
+5. `reconcile move <id> --to <n> | --before <id> | --after <id>` — single-row reorder. CLI fetches current chain, computes the new `ordered_ids`, sends one `PUT /v1/accounts/{account_id}/reconciliations/order`.
+6. `reconcile reorder --account <id>` — bulk reorder via `$EDITOR`. CLI writes the current order to a temp file, launches the user's editor, parses the saved result, sends one bulk request. Mirrors `git rebase -i` UX. First `subprocess + tempfile` pattern in the CLI; helper lives at `expense/_editor.py`.
+
+**Verify:** `reconcile create` without `--beginning-balance` chains from previous month. `reconcile update <id> --source chained --beginning-balance N` rejected at parse time. `reconcile complete <id>` on an empty batch returns the engine's 422 with a friendly hint. `reconcile move <id> --after <other>` reorders with the cascade running engine-side. `reconcile reorder --account <id>` opens `$EDITOR`, accepts the rearranged file, and prints `recalculated_count` from the response.
+
+**Commit:** `feat: reconcile — full lifecycle + sort_order, source toggle, bulk reorder`
 
 ---
 
