@@ -459,3 +459,80 @@ def test_delete_409_surfaces_hint(configured):
     assert result.exit_code == 1
     assert "CONFLICT" in result.output
     assert "expense reconcile revert" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: restore, complete, revert (state machine)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_restore_happy_with_note(configured):
+    route = respx.post(
+        "https://api.example.com/v1/reconciliations/11111111-1111-1111-1111-111111111111/restore"
+    ).mock(return_value=httpx.Response(200, json=RECON_DRAFT_RESPONSE))
+    result = runner.invoke(
+        cli_app, ["reconcile", "restore", "11111111-1111-1111-1111-111111111111"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "NOT re-linked" in result.output
+    assert "X-Idempotency-Key" in route.calls.last.request.headers
+
+
+@respx.mock
+def test_complete_happy_prints_locked_count(configured):
+    response_with_count = {**RECON_DRAFT_RESPONSE, "status": 2, "transactions_total": 17}
+    route = respx.post(
+        "https://api.example.com/v1/reconciliations/11111111-1111-1111-1111-111111111111/complete"
+    ).mock(return_value=httpx.Response(200, json=response_with_count))
+    result = runner.invoke(
+        cli_app, ["reconcile", "complete", "11111111-1111-1111-1111-111111111111"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "Locked 17 transactions." in result.output
+    assert "X-Idempotency-Key" in route.calls.last.request.headers
+
+
+@respx.mock
+def test_complete_422_empty_batch_surfaces_hint(configured):
+    respx.post(
+        "https://api.example.com/v1/reconciliations/11111111-1111-1111-1111-111111111111/complete"
+    ).mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "No transactions assigned to this reconciliation.",
+                    "fields": {},
+                }
+            },
+        )
+    )
+    result = runner.invoke(
+        cli_app, ["reconcile", "complete", "11111111-1111-1111-1111-111111111111"]
+    )
+    assert result.exit_code == 1
+    assert "VALIDATION_ERROR" in result.output
+    assert "expense transactions update" in result.output
+
+
+def test_revert_requires_yes_in_non_tty(configured):
+    result = runner.invoke(cli_app, ["reconcile", "revert", "11111111-1111-1111-1111-111111111111"])
+    assert result.exit_code == 1
+    assert "non-interactive" in result.output
+
+
+@respx.mock
+def test_revert_with_yes_prints_unlocked_count(configured):
+    response_with_count = {**RECON_DRAFT_RESPONSE, "status": 1, "transactions_total": 17}
+    route = respx.post(
+        "https://api.example.com/v1/reconciliations/11111111-1111-1111-1111-111111111111/revert"
+    ).mock(return_value=httpx.Response(200, json=response_with_count))
+    result = runner.invoke(
+        cli_app,
+        ["reconcile", "revert", "11111111-1111-1111-1111-111111111111", "--yes"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Unlocked 17 transactions." in result.output
+    assert "X-Idempotency-Key" in route.calls.last.request.headers

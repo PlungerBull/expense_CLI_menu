@@ -4,7 +4,7 @@ from uuid import uuid4
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import build_update_payload, require_yes
+from expense.commands._resource import build_update_payload, require_yes, run_toggle
 from expense.context import get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -30,6 +30,14 @@ _FIELD_LOCKED_HINT = (
 _DELETE_LOCKED_HINT = (
     "Hint: this reconciliation is completed and cannot be deleted. "
     "Use 'expense reconcile revert <id> --yes' first."
+)
+_COMPLETE_EMPTY_HINT = (
+    "Hint: assign at least one transaction to this reconciliation before completing. "
+    "Use 'expense transactions update <tx-id> --reconciliation-id <recon-id>'."
+)
+_RESTORE_NOTE = (
+    "Note: assigned transactions were NOT re-linked. They may have moved to other "
+    "batches or been edited. Reassign manually if needed."
 )
 
 
@@ -397,3 +405,116 @@ def delete(
             raise
 
     _render_reconciliation(body, json_mode=json_output)
+
+
+def _render_after_state_change(body: dict, *, lock_verb: str) -> None:
+    _render_reconciliation(body, json_mode=False)
+    marker = _format_source_marker(body)
+    if marker:
+        typer.echo(f"  {marker}")
+    transactions_total = body.get("transactions_total")
+    if isinstance(transactions_total, int):
+        typer.echo(f"\n{lock_verb} {transactions_total} transactions.")
+
+
+@app.command("restore")
+@handle_errors
+def restore(
+    ctx: typer.Context,
+    id_: str = typer.Argument(..., metavar="ID"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """POST /v1/reconciliations/{id}/restore.
+
+    The restored reconciliation comes back empty — the engine does NOT re-link
+    transactions that were unassigned during delete.
+    """
+
+    def _render(body: dict) -> None:
+        _render_reconciliation(body, json_mode=False)
+        marker = _format_source_marker(body)
+        if marker:
+            typer.echo(f"  {marker}")
+        typer.echo(f"\n{_RESTORE_NOTE}")
+
+    run_toggle(
+        ctx,
+        resource=_RESOURCE,
+        id_=id_,
+        verb="restore",
+        json_output=json_output,
+        render_human=_render,
+    )
+
+
+@app.command("complete")
+@handle_errors
+def complete(
+    ctx: typer.Context,
+    id_: str = typer.Argument(..., metavar="ID"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """POST /v1/reconciliations/{id}/complete.
+
+    Locks amount_cents/account_id/title/date on every assigned transaction and
+    locks the reconciliation's own balance/date fields. 422 if no transactions
+    are assigned.
+    """
+    cfg = config_module.ensure_loaded()
+    verbose = get_verbose(ctx)
+
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        try:
+            body = client.post(f"/{_RESOURCE}/{id_}/complete")
+        except EngineError as err:
+            if err.status == 422:
+                haystack = (err.message or "").lower()
+                if isinstance(err.fields, dict):
+                    haystack += (
+                        " "
+                        + " ".join(
+                            f"{k} {v}" for k, v in err.fields.items() if isinstance(v, str)
+                        ).lower()
+                    )
+                if "transaction" in haystack and (
+                    "no " in haystack or "empty" in haystack or "at least" in haystack
+                ):
+                    typer.echo(_COMPLETE_EMPTY_HINT, err=True)
+            raise
+
+    if json_output:
+        typer.echo(json.dumps(body, indent=2))
+    else:
+        _render_after_state_change(body, lock_verb="Locked")
+
+
+@app.command("revert")
+@handle_errors
+def revert(
+    ctx: typer.Context,
+    id_: str = typer.Argument(..., metavar="ID"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """POST /v1/reconciliations/{id}/revert.
+
+    Unlocks all assigned transactions and the reconciliation's own balance/date
+    fields. A meaningful audit event — requires --yes.
+    """
+    require_yes(
+        yes,
+        f"Revert reconciliation {id_}? This unlocks all assigned transactions "
+        "and is a meaningful audit event.",
+    )
+
+    def _render(body: dict) -> None:
+        _render_after_state_change(body, lock_verb="Unlocked")
+
+    run_toggle(
+        ctx,
+        resource=_RESOURCE,
+        id_=id_,
+        verb="revert",
+        json_output=json_output,
+        render_human=_render,
+    )
