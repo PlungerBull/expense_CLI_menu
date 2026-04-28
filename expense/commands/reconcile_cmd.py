@@ -518,3 +518,167 @@ def revert(
         json_output=json_output,
         render_human=_render,
     )
+
+
+# ---------------------------------------------------------------------------
+# Reorder helpers (used by move + reorder)
+# ---------------------------------------------------------------------------
+
+
+_CHAIN_PAGE_SIZE = 200
+
+
+def _fetch_account_chain(client: ExpenseClient, account_id: str) -> list[dict]:
+    """Return every active reconciliation for an account in sort_order ASC."""
+    items: list[dict] = []
+    offset = 0
+    while True:
+        body = client.get(
+            f"/{_RESOURCE}",
+            params={
+                "account_id": account_id,
+                "limit": str(_CHAIN_PAGE_SIZE),
+                "offset": str(offset),
+            },
+        )
+        page = body.get("items", []) if isinstance(body, dict) else (body or [])
+        items.extend(page)
+        if not isinstance(body, dict):
+            break
+        total = body.get("total")
+        if not isinstance(total, int) or len(items) >= total or not page:
+            break
+        offset += len(page)
+    return items
+
+
+def _render_reorder_response(body: dict, *, json_mode: bool) -> None:
+    if json_mode:
+        typer.echo(json.dumps(body, indent=2))
+        return
+    items = body.get("reconciliations") or []
+    if not items:
+        typer.echo("(no reconciliations returned)")
+    else:
+        typer.echo("Updated:")
+        for item in items:
+            sort_order = item.get("sort_order", "?")
+            name = item.get("name", "(unnamed)")
+            recon_id = item.get("id", "?")
+            typer.echo(f"  [{sort_order}] {name}  ({recon_id})")
+            marker = _format_source_marker(item)
+            if marker:
+                typer.echo(f"      {marker}")
+    recalculated = body.get("recalculated_count")
+    if isinstance(recalculated, int):
+        typer.echo(f"\n{recalculated} chained beginning balance(s) recalculated.")
+
+
+@app.command("move")
+@handle_errors
+def move(
+    ctx: typer.Context,
+    id_: str = typer.Argument(..., metavar="ID"),
+    to: int | None = typer.Option(
+        None, "--to", help="1-based slot in the account chain (mutually exclusive)."
+    ),
+    before: str | None = typer.Option(
+        None, "--before", help="UUID of the peer to land before (mutually exclusive)."
+    ),
+    after: str | None = typer.Option(
+        None, "--after", help="UUID of the peer to land after (mutually exclusive)."
+    ),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Reorder a single reconciliation within its account chain.
+
+    Composite: GET /v1/reconciliations/{id} -> GET account chain ->
+    PUT /v1/accounts/{account_id}/reconciliations/order with the new ordered_ids.
+
+    Example: expense reconcile move <feb-id> --after <jan-id>
+    """
+    flags_set = sum(arg is not None for arg in (to, before, after))
+    if flags_set == 0:
+        raise typer.BadParameter(
+            "Pass exactly one of --to, --before, --after.",
+            param_hint="--to/--before/--after",
+        )
+    if flags_set > 1:
+        raise typer.BadParameter(
+            "--to, --before, --after are mutually exclusive.",
+            param_hint="--to/--before/--after",
+        )
+    if to is not None and to < 1:
+        raise typer.BadParameter("Must be >= 1.", param_hint="--to")
+
+    cfg = config_module.ensure_loaded()
+    verbose = get_verbose(ctx)
+
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        source = client.get(f"/{_RESOURCE}/{id_}")
+        account_id = source.get("account_id")
+        if not isinstance(account_id, str):
+            raise typer.BadParameter(
+                "Source reconciliation has no account_id; cannot reorder.",
+                param_hint="ID",
+            )
+
+        chain = _fetch_account_chain(client, account_id)
+        chain_ids = [item.get("id") for item in chain]
+        if id_ not in chain_ids:
+            raise typer.BadParameter(
+                f"Reconciliation {id_} is not active in account {account_id}.",
+                param_hint="ID",
+            )
+
+        if to is not None:
+            if to > len(chain_ids):
+                raise typer.BadParameter(
+                    f"--to {to} exceeds chain length {len(chain_ids)}.",
+                    param_hint="--to",
+                )
+            target_index = to - 1
+        elif before is not None:
+            if before not in chain_ids:
+                raise typer.BadParameter(
+                    f"--before {before} is not in account {account_id}.",
+                    param_hint="--before",
+                )
+            if before == id_:
+                raise typer.BadParameter(
+                    "--before cannot reference the source itself.",
+                    param_hint="--before",
+                )
+            target_index = chain_ids.index(before)
+        else:
+            assert after is not None
+            if after not in chain_ids:
+                raise typer.BadParameter(
+                    f"--after {after} is not in account {account_id}.",
+                    param_hint="--after",
+                )
+            if after == id_:
+                raise typer.BadParameter(
+                    "--after cannot reference the source itself.",
+                    param_hint="--after",
+                )
+            target_index = chain_ids.index(after) + 1
+
+        current_index = chain_ids.index(id_)
+        new_order = list(chain_ids)
+        new_order.pop(current_index)
+        if current_index < target_index:
+            target_index -= 1
+        new_order.insert(target_index, id_)
+
+        if new_order == chain_ids:
+            if not json_output:
+                typer.echo("No changes.")
+            return
+
+        body = client.put(
+            f"/accounts/{account_id}/reconciliations/order",
+            json_body={"ordered_ids": new_order},
+        )
+
+    _render_reorder_response(body, json_mode=json_output)

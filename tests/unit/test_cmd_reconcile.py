@@ -536,3 +536,171 @@ def test_revert_with_yes_prints_unlocked_count(configured):
     assert result.exit_code == 0, result.output
     assert "Unlocked 17 transactions." in result.output
     assert "X-Idempotency-Key" in route.calls.last.request.headers
+
+
+# ---------------------------------------------------------------------------
+# Phase 3a: move (single-row reorder)
+# ---------------------------------------------------------------------------
+
+ACCOUNT_ID = "22222222-2222-2222-2222-222222222222"
+RECON_A = {
+    **RECON_DRAFT_RESPONSE,
+    "id": "aaaa",
+    "account_id": ACCOUNT_ID,
+    "sort_order": 1,
+    "name": "Jan",
+}
+RECON_B = {
+    **RECON_DRAFT_RESPONSE,
+    "id": "bbbb",
+    "account_id": ACCOUNT_ID,
+    "sort_order": 2,
+    "name": "Feb",
+}
+RECON_C = {
+    **RECON_DRAFT_RESPONSE,
+    "id": "cccc",
+    "account_id": ACCOUNT_ID,
+    "sort_order": 3,
+    "name": "Mar",
+}
+
+CHAIN_LIST = {
+    "items": [RECON_A, RECON_B, RECON_C],
+    "total": 3,
+    "limit": 200,
+    "offset": 0,
+}
+
+REORDER_RESPONSE = {
+    "reconciliations": [
+        {**RECON_C, "sort_order": 1},
+        {**RECON_A, "sort_order": 2},
+        {**RECON_B, "sort_order": 3},
+    ],
+    "recalculated_count": 1,
+}
+
+
+@respx.mock
+def test_move_to_position(configured):
+    respx.get("https://api.example.com/v1/reconciliations/cccc").mock(
+        return_value=httpx.Response(200, json=RECON_C)
+    )
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(
+        f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order"
+    ).mock(return_value=httpx.Response(200, json=REORDER_RESPONSE))
+
+    result = runner.invoke(cli_app, ["reconcile", "move", "cccc", "--to", "1"])
+    assert result.exit_code == 0, result.output
+    assert "1 chained beginning balance(s) recalculated." in result.output
+
+    body = json.loads(put_route.calls.last.request.content)
+    assert body == {"ordered_ids": ["cccc", "aaaa", "bbbb"]}
+    assert "X-Idempotency-Key" in put_route.calls.last.request.headers
+
+
+@respx.mock
+def test_move_before(configured):
+    respx.get("https://api.example.com/v1/reconciliations/cccc").mock(
+        return_value=httpx.Response(200, json=RECON_C)
+    )
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(
+        f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order"
+    ).mock(return_value=httpx.Response(200, json=REORDER_RESPONSE))
+
+    result = runner.invoke(cli_app, ["reconcile", "move", "cccc", "--before", "bbbb"])
+    assert result.exit_code == 0, result.output
+
+    body = json.loads(put_route.calls.last.request.content)
+    assert body == {"ordered_ids": ["aaaa", "cccc", "bbbb"]}
+
+
+@respx.mock
+def test_move_after(configured):
+    respx.get("https://api.example.com/v1/reconciliations/aaaa").mock(
+        return_value=httpx.Response(200, json=RECON_A)
+    )
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(
+        f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order"
+    ).mock(return_value=httpx.Response(200, json=REORDER_RESPONSE))
+
+    result = runner.invoke(cli_app, ["reconcile", "move", "aaaa", "--after", "bbbb"])
+    assert result.exit_code == 0, result.output
+
+    body = json.loads(put_route.calls.last.request.content)
+    assert body == {"ordered_ids": ["bbbb", "aaaa", "cccc"]}
+
+
+@respx.mock
+def test_move_no_op(configured):
+    respx.get("https://api.example.com/v1/reconciliations/aaaa").mock(
+        return_value=httpx.Response(200, json=RECON_A)
+    )
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
+
+    result = runner.invoke(cli_app, ["reconcile", "move", "aaaa", "--to", "1"])
+    assert result.exit_code == 0, result.output
+    assert "No changes." in result.output
+    assert put_route.call_count == 0
+
+
+def test_move_no_flags_blocks_at_parse(configured):
+    result = runner.invoke(cli_app, ["reconcile", "move", "aaaa"])
+    assert result.exit_code != 0
+    stripped = _strip_panel(result.output)
+    assert "Pass exactly one of --to, --before, --after" in stripped
+
+
+def test_move_multiple_flags_blocks_at_parse(configured):
+    result = runner.invoke(cli_app, ["reconcile", "move", "aaaa", "--to", "1", "--before", "bbbb"])
+    assert result.exit_code != 0
+    stripped = _strip_panel(result.output)
+    assert "mutually exclusive" in stripped
+
+
+def test_move_to_zero_blocks_at_parse(configured):
+    result = runner.invoke(cli_app, ["reconcile", "move", "aaaa", "--to", "0"])
+    assert result.exit_code != 0
+    stripped = _strip_panel(result.output)
+    assert "Must be >= 1" in stripped
+
+
+@respx.mock
+def test_move_to_out_of_range_errors(configured):
+    respx.get("https://api.example.com/v1/reconciliations/aaaa").mock(
+        return_value=httpx.Response(200, json=RECON_A)
+    )
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    result = runner.invoke(cli_app, ["reconcile", "move", "aaaa", "--to", "99"])
+    assert result.exit_code != 0
+    stripped = _strip_panel(result.output)
+    assert "exceeds chain length" in stripped
+
+
+@respx.mock
+def test_move_before_unknown_peer_errors(configured):
+    respx.get("https://api.example.com/v1/reconciliations/aaaa").mock(
+        return_value=httpx.Response(200, json=RECON_A)
+    )
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    result = runner.invoke(cli_app, ["reconcile", "move", "aaaa", "--before", "unknown"])
+    assert result.exit_code != 0
+    stripped = _strip_panel(result.output)
+    assert "is not in account" in stripped
