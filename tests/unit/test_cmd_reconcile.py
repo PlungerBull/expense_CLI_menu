@@ -704,3 +704,185 @@ def test_move_before_unknown_peer_errors(configured):
     assert result.exit_code != 0
     stripped = _strip_panel(result.output)
     assert "is not in account" in stripped
+
+
+# ---------------------------------------------------------------------------
+# Phase 3b: reorder via $EDITOR
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_reorder_json_skips_editor_and_no_http(configured, monkeypatch):
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
+
+    called: list[bool] = []
+
+    def fake_edit_text(*args, **kwargs):
+        called.append(True)
+        return None
+
+    monkeypatch.setattr("expense._editor.edit_text", fake_edit_text)
+
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID, "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload == {"ordered_ids": ["aaaa", "bbbb", "cccc"]}
+    assert called == []
+    assert put_route.call_count == 0
+
+
+@respx.mock
+def test_reorder_empty_chain(configured, monkeypatch):
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json={"items": [], "total": 0, "limit": 200, "offset": 0})
+    )
+    monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: None)
+
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    assert result.exit_code == 0, result.output
+    assert "(no reconciliations to reorder)" in result.output
+
+
+@respx.mock
+def test_reorder_aborts_when_editor_returns_none(configured, monkeypatch):
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
+    monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: None)
+
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    assert result.exit_code == 0, result.output
+    assert "Aborted." in result.output
+    assert put_route.call_count == 0
+
+
+@respx.mock
+def test_reorder_no_changes(configured, monkeypatch):
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
+
+    same_order = "aaaa  2026-01-01..2026-01-31  Jan\nbbbb  ...  Feb\ncccc  ...  Mar\n"
+    monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: same_order)
+
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    assert result.exit_code == 0, result.output
+    assert "No changes." in result.output
+    assert put_route.call_count == 0
+
+
+@respx.mock
+def test_reorder_happy_path_sends_correct_body(configured, monkeypatch):
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(
+        f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order"
+    ).mock(return_value=httpx.Response(200, json=REORDER_RESPONSE))
+
+    edited = "# header\ncccc  ...  Mar\naaaa  ...  Jan\nbbbb  ...  Feb\n"
+    monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: edited)
+
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    assert result.exit_code == 0, result.output
+    assert "1 chained beginning balance(s) recalculated." in result.output
+
+    body = json.loads(put_route.calls.last.request.content)
+    assert body == {"ordered_ids": ["cccc", "aaaa", "bbbb"]}
+    assert "X-Idempotency-Key" in put_route.calls.last.request.headers
+
+
+@respx.mock
+def test_reorder_unknown_id_in_editor_blocks(configured, monkeypatch):
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
+
+    edited = "aaaa  ...  Jan\nbbbb  ...  Feb\nzzzz  smuggled\n"
+    monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: edited)
+
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    assert result.exit_code != 0
+    stripped = _strip_panel(result.output)
+    assert "Unknown reconciliation id" in stripped
+    assert put_route.call_count == 0
+
+
+@respx.mock
+def test_reorder_duplicate_id_in_editor_blocks(configured, monkeypatch):
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
+
+    edited = "aaaa  ...\nbbbb  ...\naaaa  duplicate\ncccc  ...\n"
+    monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: edited)
+
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    assert result.exit_code != 0
+    stripped = _strip_panel(result.output)
+    assert "Duplicate id" in stripped
+    assert put_route.call_count == 0
+
+
+@respx.mock
+def test_reorder_missing_id_in_editor_blocks(configured, monkeypatch):
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
+
+    edited = "aaaa  ...\nbbbb  ...\n"  # missing cccc
+    monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: edited)
+
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    assert result.exit_code != 0
+    stripped = _strip_panel(result.output)
+    assert "Missing ids" in stripped
+    assert put_route.call_count == 0
+
+
+@respx.mock
+def test_reorder_year_filter(configured, monkeypatch):
+    chain = {
+        "items": [
+            {
+                **RECON_A,
+                "id": "old-1",
+                "date_start": "2024-01-01T00:00:00Z",
+                "date_end": "2024-01-31T23:59:59Z",
+            },
+            {
+                **RECON_A,
+                "id": "new-1",
+                "date_start": "2025-01-01T00:00:00Z",
+                "date_end": "2025-01-31T23:59:59Z",
+            },
+            {
+                **RECON_A,
+                "id": "new-2",
+                "date_start": "2025-02-01T00:00:00Z",
+                "date_end": "2025-02-28T23:59:59Z",
+            },
+        ],
+        "total": 3,
+        "limit": 200,
+        "offset": 0,
+    }
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=chain)
+    )
+
+    result = runner.invoke(
+        cli_app,
+        ["reconcile", "reorder", "--account", ACCOUNT_ID, "--year", "2025", "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload == {"ordered_ids": ["new-1", "new-2"]}

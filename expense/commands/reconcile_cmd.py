@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import typer
 
+from expense import _editor
 from expense import config as config_module
 from expense.commands._resource import build_update_payload, require_yes, run_toggle
 from expense.context import get_verbose
@@ -682,3 +683,143 @@ def move(
         )
 
     _render_reorder_response(body, json_mode=json_output)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3b: bulk editor reorder (reconcile reorder)
+# ---------------------------------------------------------------------------
+
+
+_REORDER_EDITOR_HEADER = (
+    "# Reorder reconciliations for account {account_id}.\n"
+    "# One line per reconciliation, in current order.\n"
+    "# Rearrange lines, save, and exit to apply.\n"
+    "# Empty the file or exit without changes to abort.\n"
+    "# Lines starting with '#' are ignored.\n"
+    "\n"
+)
+
+
+def _format_chain_for_editor(chain: list[dict], account_id: str) -> str:
+    lines = [_REORDER_EDITOR_HEADER.format(account_id=account_id)]
+    for item in chain:
+        recon_id = item.get("id", "?")
+        date_start = (item.get("date_start") or "")[:10] or "(no start)"
+        date_end = (item.get("date_end") or "")[:10] or "(no end)"
+        name = item.get("name", "(unnamed)")
+        lines.append(f"{recon_id}  {date_start}..{date_end}  {name}\n")
+    return "".join(lines)
+
+
+def _parse_editor_output(text: str) -> list[str]:
+    """Strip comments / blank lines; return the first whitespace token of each."""
+    ids: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        token = line.split()[0]
+        ids.append(token)
+    return ids
+
+
+def _filter_chain_by_year(chain: list[dict], year: int) -> list[dict]:
+    prefix = f"{year:04d}-"
+    out: list[dict] = []
+    for item in chain:
+        for field in ("date_start", "date_end"):
+            value = item.get(field)
+            if isinstance(value, str) and value.startswith(prefix):
+                out.append(item)
+                break
+    return out
+
+
+@app.command("reorder")
+@handle_errors
+def reorder(
+    ctx: typer.Context,
+    account_id: str = typer.Option(..., "--account", help="Owning account UUID."),
+    year: int | None = typer.Option(
+        None,
+        "--year",
+        help="Scope the editor list to a single year (filters by date_start/date_end).",
+    ),
+    editor: str | None = typer.Option(
+        None,
+        "--editor",
+        help="Override $EDITOR for this invocation. Default: $EDITOR or 'vi'.",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Skip the editor; print the current order as JSON.",
+    ),
+) -> None:
+    """Bulk reorder reconciliations via $EDITOR (git-rebase-i style).
+
+    Fetches the current account chain, opens the user's editor on a temp file
+    with one line per reconciliation, parses the saved result, and sends one
+    PUT /v1/accounts/{account_id}/reconciliations/order.
+
+    Example: expense reconcile reorder --account <id>
+    Example: expense reconcile reorder --account <id> --year 2025
+    """
+    cfg = config_module.ensure_loaded()
+    verbose = get_verbose(ctx)
+
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        chain = _fetch_account_chain(client, account_id)
+        if year is not None:
+            chain = _filter_chain_by_year(chain, year)
+        chain_ids = [item.get("id") for item in chain if isinstance(item.get("id"), str)]
+
+        if not chain_ids:
+            typer.echo("(no reconciliations to reorder)")
+            return
+
+        if json_output:
+            typer.echo(json.dumps({"ordered_ids": chain_ids}, indent=2))
+            return
+
+        initial_text = _format_chain_for_editor(chain, account_id)
+        edited = _editor.edit_text(initial_text, suffix=".reorder", editor=editor)
+        if edited is None:
+            typer.echo("Aborted.")
+            return
+
+        new_order = _parse_editor_output(edited)
+
+        original_set = set(chain_ids)
+        new_set = set(new_order)
+        seen: set[str] = set()
+        for token in new_order:
+            if token in seen:
+                raise typer.BadParameter(
+                    f"Duplicate id in editor output: {token!r}",
+                    param_hint="editor file",
+                )
+            seen.add(token)
+            if token not in original_set:
+                raise typer.BadParameter(
+                    f"Unknown reconciliation id in editor output: {token!r}",
+                    param_hint="editor file",
+                )
+        missing = original_set - new_set
+        if missing:
+            raise typer.BadParameter(
+                f"Missing ids in editor output: {sorted(missing)}. "
+                "This command reorders, it doesn't delete.",
+                param_hint="editor file",
+            )
+
+        if new_order == chain_ids:
+            typer.echo("No changes.")
+            return
+
+        body = client.put(
+            f"/accounts/{account_id}/reconciliations/order",
+            json_body={"ordered_ids": new_order},
+        )
+
+    _render_reorder_response(body, json_mode=False)
