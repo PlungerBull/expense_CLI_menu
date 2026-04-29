@@ -34,9 +34,18 @@ def main(
         "-v",
         help="Print HTTP request/response to stderr (Authorization redacted).",
     ),
+    no_cache: bool = typer.Option(
+        False,
+        "--no-cache",
+        envvar="EXPENSE_STATELESS",
+        help=(
+            "Bypass the local replica; reads go straight to the engine. "
+            "Stateless mode for CSV imports, CI, scripts."
+        ),
+    ),
 ) -> None:
     """The Hands — expense_world_engine CLI."""
-    ctx.obj = AppContext(verbose=verbose)
+    ctx.obj = AppContext(verbose=verbose, no_cache=no_cache)
 
 
 @app.command()

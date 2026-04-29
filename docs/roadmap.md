@@ -205,13 +205,31 @@ First ship. Calls `GET /v1/sync?sync_token=*`, prints a per-resource count summa
 
 **Commit:** `feat: sync --full (stateless milestone)`
 
-### Step 7b — Local SQLite replica
+### Step 7b — Local SQLite replica (split into 7b.1 / 7b.2 / 7b.3)
 
-Replica file under `~/.expense-cache.sqlite3` keyed by `(user_id, X-Client-Id)`. Bare `expense sync` does delta sync against the cache; `--full` becomes "rebuild cache from scratch"; `--no-cache` and `EXPENSE_STATELESS=1` skip the cache for one-off invocations. Read commands (`list`, `get`, dashboard pickers) gain replica-backed paths; balance-sensitive aggregates (dashboard totals, reports) still hit the engine to avoid FX-drift in cached `*_home_cents`. Writes still go directly to the engine — no offline write queue (iOS-only feature, by design).
+Replica file under `~/.expense-cache.sqlite3` keyed by `(user_id, X-Client-Id)`. Built incrementally so the rest of the engine surface (Step 8+) isn't blocked on replica-backed reads.
 
-See [cli-runtime.md](cli-runtime.md) for the full runtime semantics across both phases.
+#### Step 7b.1 — Foundation (cache built, not yet consumed)
 
-**Commit:** `feat: local SQLite replica + delta sync + --no-cache`
+SQLite layer, schema, WAL setup, cold start, delta sync, tombstone application, `sync_token` persistence. Bare `expense sync` becomes meaningful (delta against cache; cold-starts on first run). `--full` rebuilds cache from scratch. `--no-cache` (root flag) and `EXPENSE_STATELESS=1` (env var) preserve the 7a stateless behavior. Read commands still hit the engine — `--no-cache` is a no-op on reads in 7b.1.
+
+**Verify:** `expense sync --full` populates cache; second `expense sync` shows mostly-zero deltas; mutate via `expense transactions create`, re-sync, confirm `+1` insert and the row is in the SQLite cache; corrupt the stored `sync_token`, re-sync, confirm engine 422 falls back to cold start.
+
+**Commit:** `feat: local SQLite replica foundation (Step 7b.1)`
+
+#### Step 7b.2 — Read consumption + auto cold-start
+
+For each of the 6 cacheable resources (accounts, categories, hashtags, transactions, inbox, reconciliations), switch `list` and `get` to a replica-backed default path. `--no-cache` (existing flag from 7b.1) forces an engine round-trip. Auto cold-start when a read hits an empty cache. Pagination + filter logic moves client-side over cached rows. `dashboard`, `reports/*`, `log`, `whoami`, `ping` stay engine-only (FX drift / not in `/sync`).
+
+**Commit:** `feat: replica-backed list/get + auto cold-start (Step 7b.2)`
+
+#### Step 7b.3 — Write-path refresh
+
+After every successful write, automatically run a delta sync to keep the cache consistent. `--no-sync-after` escape hatch on individual writes for batch scripts. Errors during the post-write sync are non-fatal (the write already succeeded).
+
+**Commit:** `feat: cache refresh on writes (Step 7b.3)`
+
+See [cli-runtime.md](cli-runtime.md) for the full runtime semantics across all phases.
 
 ---
 

@@ -6,9 +6,14 @@ How the CLI behaves at runtime — sync model, write semantics, identity, error 
 
 The CLI is a thin wrapper around the engine. It holds no business logic. The engine is the only authoritative store; anything cached client-side is a disposable performance optimization that can be rebuilt at any time from `GET /sync`.
 
-Long-term the CLI is **cache-by-default** (matches iOS, web, every interactive client per §3b): a local SQLite replica under `~/.expense-cache.sqlite3` powers instant reads, with `GET /sync` keeping it current. The **stateless mode** is the explicit escape hatch — `--no-cache` per command or `EXPENSE_STATELESS=1` process-wide — for CSV imports, CI, cron jobs, and `jq` automation where per-invocation freshness matters more than speed.
+Long-term the CLI is **cache-by-default** (matches iOS, web, every interactive client per §3b): a local SQLite replica under `~/.expense-cache.sqlite3` powers instant reads, with `GET /sync` keeping it current. The **stateless mode** is the explicit escape hatch — `--no-cache` (root flag) or `EXPENSE_STATELESS=1` (env var) — for CSV imports, CI, cron jobs, and `jq` automation where per-invocation freshness matters more than speed.
 
-Today the replica isn't built yet. See "Phasing" below.
+The replica is being built in three phases:
+
+- **7a (shipped)** — stateless `expense sync --full` only. No cache.
+- **7b.1 (shipped)** — SQLite layer, delta sync, cold start, tombstones, `sync_token` persistence. Cache exists; `expense sync` fills/refreshes it. Read commands still hit the engine — `--no-cache` is a no-op on reads.
+- **7b.2 (pending)** — replica-backed paths for `list`/`get` on the 6 cacheable resources. Auto cold-start when a read hits an empty cache. `--no-cache` becomes meaningful.
+- **7b.3 (pending)** — write-path refresh (auto delta sync after every successful write).
 
 ## Sync model
 
@@ -21,14 +26,14 @@ The CLI maps onto these two modes through different invocation forms.
 
 ## Phasing
 
-| Invocation | Step 7a (today) | Step 7b (replica lands) |
+| Invocation | Step 7b.1 (today) | Step 7b.2+ (replica reads land) |
 |---|---|---|
-| `expense sync --full` | Stateless full snapshot, throw away the returned token | Force full pull, rebuild local cache from scratch |
-| `expense sync` (bare) | **Errors with hint** | Delta sync against local cache (steady state) |
-| `expense sync --no-cache` | Not implemented | One-off stateless invocation, bypasses cache |
-| `EXPENSE_STATELESS=1 expense <any>` | Not implemented | Process-wide stateless mode |
-
-The bare `expense sync` form is **deliberately unbound** in Step 7a so it can be defined as delta-sync in Step 7b without breaking muscle memory. Don't redefine it as an alias for `--full` to "be friendlier today" — that's a breaking change deferred.
+| `expense sync` (bare) | Delta sync against cache; cold-starts on first run | Same — steady-state delta sync |
+| `expense sync --full` | Cold start: wipe + full pull + rebuild cache | Same |
+| `expense sync --no-cache` | Stateless full snapshot (7a behavior preserved); cache untouched | Same |
+| `EXPENSE_STATELESS=1 expense sync` | Same as `--no-cache` | Same |
+| `expense transactions list` | **Engine round-trip** (cache not consumed yet) | **Replica-backed** by default; `--no-cache` forces engine round-trip |
+| `expense dashboard`, `reports/*`, `log`, `whoami`, `ping` | Engine-only | Engine-only (FX drift / not in `/sync`) |
 
 ## Write semantics
 
@@ -50,14 +55,21 @@ The Todoist-style offline write queue is an iOS-only feature (§3b). The CLI doe
 
 In stateless mode (Step 7b's `--no-cache`), the engine response with `sync_token=*` is identical regardless of `X-Client-Id`, so the implementation can either send the persisted ID or skip the header entirely. Today we send the persisted ID.
 
-## Cache lifecycle (Step 7b — placeholder)
+## Cache lifecycle
 
-To be filled in when the replica ships. Outline:
+**Storage.** `~/.expense-cache.sqlite3` (override via `EXPENSE_CACHE` env var). `chmod 600` on creation. WAL journal mode for safe concurrent CLI invocations. Hybrid schema: typed columns for fields that 7b.2 read paths will filter or sort by (`id`, `user_id`, foreign keys, `date`, `deleted_at`, `version`, `updated_at`), plus a `body TEXT NOT NULL` column holding the full row as JSON. New non-indexed engine fields land in `body` without local migrations. Indexed-column changes bump `SCHEMA_VERSION` and trigger wipe + cold-start.
 
-- Storage: `~/.expense-cache.sqlite3`, schema mirrors engine resource tables, keyed by `(user_id, X-Client-Id)`.
-- Cold start: any error reading the cache, schema version mismatch, or first-run condition triggers a `sync_token=*` rebuild. **Never repair the replica from partial local state — when in doubt, full-sync.**
-- Steady state: bare `expense sync` does delta sync; deltas are applied as inserts / updates / tombstone-driven deletes inside one local transaction; new `sync_token` persisted on success.
-- Reads: `list`, `get`, dashboard pickers prefer the replica. `--no-cache` forces the engine call. Balance-sensitive aggregates (dashboard totals, reports) always go to the engine — see drift warning below.
+**Tables.** Seven resource tables (`accounts`, `categories`, `hashtags`, `transactions`, `inbox`, `reconciliations`, `settings`) plus a singleton `_cache_meta` row tracking `schema_version`, `user_id`, `client_id`, `engine_url`, `sync_token`, `last_synced_at`. Junction-flattened `transactions.hashtag_ids` ([§3a](../../expense_world_engine/docs/api-design-principles.md)) lives inside the `body` JSON.
+
+**Cold start.** Triggered by `expense sync --full`, by bare `expense sync` against a cache with no stored `sync_token`, or by any health-check failure (schema mismatch, user_id mismatch, engine_url mismatch, unknown-token 422 from engine). Sequence: wipe the cache file, fetch `GET /v1/sync?sync_token=*&debit_as_negative=true`, populate, persist new token + identity. Re-runnable safely.
+
+**Delta sync.** Bare `expense sync` against a healthy cache. Reads stored token, fetches `GET /v1/sync?sync_token=<stored>&debit_as_negative=true`, applies inserts/updates/tombstones inside one SQLite transaction, persists new token. On unknown-token 422 → falls through to cold start automatically.
+
+**Tombstones.** A row arriving with `deleted_at != null` deletes the row from the cache (physical delete — once a row is pruned, it's gone; no need to keep tombstones around once applied). Wildcard fetches never include tombstones; only deltas do.
+
+**Cache disposal.** `expense config clear` doesn't auto-wipe the cache today (out of scope for 7b.1). Users wanting a clean slate can `rm ~/.expense-cache.sqlite3` and re-run `expense sync --full`. The cache also auto-wipes when the engine returns an unknown-token 422 (see "Cold start" above).
+
+**Never repair from partial local state.** Any inconsistency → cold start. The replica is disposable by design ([§3b](../../expense_world_engine/docs/api-design-principles.md)); recovery is always a full re-pull, never a stitched repair.
 
 ## Home-currency drift warning
 

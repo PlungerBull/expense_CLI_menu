@@ -64,9 +64,9 @@ Auth token + engine URL live in `~/.expense-config`. Never checked in, never sha
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 7a (stateless `expense sync --full`).
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 7b.1 (SQLite replica foundation: cache built and refreshed by `expense sync`, but not yet consumed by read commands).
 
-The CLI is **cache-by-default by design** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), with stateless as the explicit escape hatch. Step 7 is split into 7a (stateless milestone, shipped) and 7b (local SQLite replica, pending) so Step 8+ isn't blocked on the replica.
+The CLI is **cache-by-default by design** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), with stateless as the explicit escape hatch. Step 7 is split into 7a (stateless milestone, shipped), 7b.1 (replica foundation, shipped), 7b.2 (replica-backed reads, pending), and 7b.3 (write-path refresh, pending) so Step 8+ isn't blocked on full replica integration.
 
 | Step | Scope | Status |
 |---|---|---|
@@ -80,7 +80,9 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 5 | Dashboard + reports | Done |
 | 6 | Reconciliations | Done |
 | 7a | Sync — stateless `--full` | Done |
-| 7b | Sync — local SQLite replica + `--no-cache` | Pending |
+| 7b.1 | Sync — SQLite replica foundation | Done |
+| 7b.2 | Sync — replica-backed `list`/`get` + auto cold-start | Pending |
+| 7b.3 | Sync — write-path refresh | Pending |
 | 8 | Activity + exchange rates | Pending |
 | 9 | CLI complete (gate) | Pending |
 | 9.5 | Interactive shell (`expense menu`) | Pending |
