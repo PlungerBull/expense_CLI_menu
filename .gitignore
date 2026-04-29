@@ -35,6 +35,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Claude Code session state (local-only)
+.claude/
+
 # Secrets — defense in depth; real config lives at ~/.expense-config
 .expense-config
 .env
