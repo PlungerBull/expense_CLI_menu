@@ -22,6 +22,7 @@ Implications for every decision in this repo:
 | Doc | What it contains | Location |
 |---|---|---|
 | [docs/cli-spec.md](docs/cli-spec.md) | Command groups, output conventions, open questions | Local |
+| [docs/cli-runtime.md](docs/cli-runtime.md) | CLI runtime behavior — sync model, write semantics, X-Client-Id lifecycle, cache phasing | Local |
 | [docs/roadmap.md](docs/roadmap.md) | Step-by-step CLI build order | Local |
 | `engine-spec.md` | Every endpoint, every business rule — the API contract the CLI consumes | [../expense_world_engine/docs/engine-spec.md](../expense_world_engine/docs/engine-spec.md) |
 | `api-design-principles.md` | Request/response conventions (error shape, null-over-omission, idempotency, sign) | [../expense_world_engine/docs/api-design-principles.md](../expense_world_engine/docs/api-design-principles.md) |
@@ -36,7 +37,7 @@ Engine docs are **referenced, not copied**. Single source of truth lives in the 
 - **CLI framework:** Typer
 - **HTTP client:** httpx
 - **Config storage:** `~/.expense-config` (chmod 600)
-- **Local cache (optional, Step 7):** SQLite under `~/.expense-cache.sqlite3`
+- **Local cache (Step 7b — committed deliverable, not optional):** SQLite under `~/.expense-cache.sqlite3` per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md). Stateless escape hatch via `--no-cache` / `EXPENSE_STATELESS=1`. See [docs/cli-runtime.md](docs/cli-runtime.md).
 
 ## Non-negotiable conventions
 
@@ -63,7 +64,9 @@ Auth token + engine URL live in `~/.expense-config`. Never checked in, never sha
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 6 (reconciliations: full lifecycle + sort_order chaining + bulk reorder via $EDITOR).
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 7a (stateless `expense sync --full`).
+
+The CLI is **cache-by-default by design** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), with stateless as the explicit escape hatch. Step 7 is split into 7a (stateless milestone, shipped) and 7b (local SQLite replica, pending) so Step 8+ isn't blocked on the replica.
 
 | Step | Scope | Status |
 |---|---|---|
@@ -76,7 +79,8 @@ See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 
 | 4 | Transactions | Done |
 | 5 | Dashboard + reports | Done |
 | 6 | Reconciliations | Done |
-| 7 | Sync | Pending |
+| 7a | Sync — stateless `--full` | Done |
+| 7b | Sync — local SQLite replica + `--no-cache` | Pending |
 | 8 | Activity + exchange rates | Pending |
 | 9 | CLI complete (gate) | Pending |
 | 9.5 | Interactive shell (`expense menu`) | Pending |

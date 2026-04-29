@@ -13,6 +13,7 @@ from expense.commands import (
     ping_cmd,
     reconcile_cmd,
     reports_cmd,
+    sync_cmd,
     transactions_cmd,
 )
 from expense.context import AppContext
@@ -57,6 +58,7 @@ app.command("ping")(ping_cmd.ping)
 app.command("whoami")(auth_cmd.whoami)
 app.command("log")(log_cmd.log)
 app.command("dashboard")(dashboard_cmd.dashboard)
+app.command("sync")(sync_cmd.sync)
 
 
 if __name__ == "__main__":

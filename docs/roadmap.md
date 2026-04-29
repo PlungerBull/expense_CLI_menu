@@ -189,16 +189,29 @@ The engine ships `sort_order`, `beginning_balance_source` (`"manual"` or `"chain
 
 ## Step 7 — Sync
 
-*Deliverable: `expense sync --full` pulls a complete snapshot from the engine. Local cache deferred.*
+*Deliverable: cache-by-default CLI per [api-design-principles.md §3b](../../expense_world_engine/docs/api-design-principles.md). Shipped in two phases.*
 
-Stateless CLIs rarely need sync the way mobile/web do. Two modes:
+The CLI is **cache-by-default by design**, not stateless-by-default. The local SQLite replica is a committed deliverable (matches iOS, web, every interactive client per §3b) — it powers instant reads via a `GET /sync`-backed local store. The stateless mode is the explicit escape hatch via `--no-cache` per command or `EXPENSE_STATELESS=1` process-wide.
 
-1. **`expense sync --full`** → wildcard `*`. Prints per-resource counts. No local persistence. Ship this first.
-2. **`expense sync --cache`** (optional, ship only if demand appears) — local SQLite cache under `~/.expense-cache.sqlite3`, persists `sync_token` per `X-Client-Id`. Enables `--offline` on read commands.
+Splitting into two phases so the rest of the engine surface (Step 8 onward) isn't blocked on the replica:
 
-**Verify:** `sync --full` returns all active records. Mutate on the server via another client, re-sync, confirm the delta.
+### Step 7a — `expense sync --full` (stateless milestone)
 
-**Commit:** `feat: sync --full (cache optional)`
+First ship. Calls `GET /v1/sync?sync_token=*`, prints a per-resource count summary plus the new `sync_token` and a local `pulled_at` timestamp, throws away the token. Stateless. Validates the engine's sync contract end-to-end through real CLI use — junction-flattened `hashtag_ids`, home-currency derivation, sign convention, error envelope — before the replica is built on top, and before web/iOS clients consume the same endpoint.
+
+`--full` is the only mode that works in 7a. The bare `expense sync` form errors with a hint pointing to `--full`; bare is reserved for 7b's delta-sync default to avoid a breaking redefinition later.
+
+**Verify:** `sync --full` returns all active records. Mutate on the server via another client, re-sync, confirm the new `sync_token` differs and the relevant count moved.
+
+**Commit:** `feat: sync --full (stateless milestone)`
+
+### Step 7b — Local SQLite replica
+
+Replica file under `~/.expense-cache.sqlite3` keyed by `(user_id, X-Client-Id)`. Bare `expense sync` does delta sync against the cache; `--full` becomes "rebuild cache from scratch"; `--no-cache` and `EXPENSE_STATELESS=1` skip the cache for one-off invocations. Read commands (`list`, `get`, dashboard pickers) gain replica-backed paths; balance-sensitive aggregates (dashboard totals, reports) still hit the engine to avoid FX-drift in cached `*_home_cents`. Writes still go directly to the engine — no offline write queue (iOS-only feature, by design).
+
+See [cli-runtime.md](cli-runtime.md) for the full runtime semantics across both phases.
+
+**Commit:** `feat: local SQLite replica + delta sync + --no-cache`
 
 ---
 
