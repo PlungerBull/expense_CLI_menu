@@ -66,6 +66,27 @@ def test_ping_connection_error(configured):
     assert "could not reach engine" in result.output
 
 
+@respx.mock
+def test_ping_500_engine_error(configured):
+    respx.get("https://api.example.com/health").mock(
+        return_value=httpx.Response(
+            500,
+            json={"error": {"code": "INTERNAL", "message": "boom", "fields": None}},
+        )
+    )
+    result = runner.invoke(cli_app, ["ping"])
+    assert result.exit_code == 1
+    assert "INTERNAL" in result.output
+
+
+@respx.mock
+def test_ping_timeout(configured):
+    respx.get("https://api.example.com/health").mock(side_effect=httpx.ReadTimeout("timeout"))
+    result = runner.invoke(cli_app, ["ping"])
+    assert result.exit_code == 2
+    assert "could not reach engine" in result.output
+
+
 def test_ping_without_config_errors_cleanly(tmp_path, monkeypatch):
     config_path = tmp_path / ".expense-config"
     monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))

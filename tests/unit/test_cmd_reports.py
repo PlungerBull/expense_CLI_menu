@@ -257,3 +257,46 @@ def test_monthly_invalid_date_shape_errors_before_http(configured):
     assert result.exit_code != 0
     assert "YYYY-MM" in _strip_panel(result.output)
     assert route.call_count == 0
+
+
+@respx.mock
+def test_monthly_engine_422_surfaces_validation_error(configured):
+    respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid month payload.",
+                    "fields": {"year": "Must be between 2000 and 2100."},
+                }
+            },
+        )
+    )
+    result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-04"])
+    assert result.exit_code == 1
+    assert "VALIDATION_ERROR" in result.output
+    assert "year" in result.output
+
+
+@respx.mock
+def test_monthly_engine_500(configured):
+    respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(
+            500,
+            json={"error": {"code": "INTERNAL", "message": "boom", "fields": None}},
+        )
+    )
+    result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-04"])
+    assert result.exit_code == 1
+    assert "INTERNAL" in result.output
+
+
+@respx.mock
+def test_monthly_connection_error(configured):
+    respx.get("https://api.example.com/v1/reports/monthly").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-04"])
+    assert result.exit_code == 2
+    assert "could not reach engine" in result.output

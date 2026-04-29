@@ -215,3 +215,53 @@ def test_dashboard_handles_empty_collections(configured):
     assert "(no bank accounts)" in result.output
     assert "(no categories)" in result.output
     assert "People:" not in result.output
+
+
+@respx.mock
+def test_dashboard_404_surfaces_engine_error(configured):
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(
+            404,
+            json={"error": {"code": "NOT_FOUND", "message": "Not found", "fields": None}},
+        )
+    )
+    result = runner.invoke(cli_app, ["dashboard"])
+    assert result.exit_code == 1
+    assert "NOT_FOUND" in result.output
+
+
+@respx.mock
+def test_dashboard_500_surfaces_engine_error(configured):
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(
+            500,
+            json={"error": {"code": "INTERNAL", "message": "boom", "fields": None}},
+        )
+    )
+    result = runner.invoke(cli_app, ["dashboard"])
+    assert result.exit_code == 1
+    assert "INTERNAL" in result.output
+
+
+@respx.mock
+def test_dashboard_connection_error(configured):
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    result = runner.invoke(cli_app, ["dashboard"])
+    assert result.exit_code == 2
+    assert "could not reach engine" in result.output
+
+
+@respx.mock
+def test_dashboard_401_surfaces_config_set_hint(configured):
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(
+            401,
+            json={"error": {"code": "UNAUTHORIZED", "message": "bad token", "fields": None}},
+        )
+    )
+    result = runner.invoke(cli_app, ["dashboard"])
+    assert result.exit_code == 1
+    assert "UNAUTHORIZED" in result.output
+    assert "expense config set --token" in result.output
