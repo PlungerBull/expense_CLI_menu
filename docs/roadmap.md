@@ -265,6 +265,7 @@ Land in this order, separately from Step 9.5:
 2. **Shell completions** — zsh, bash, fish. `expense <TAB>` shows commands; `expense auth <TAB>` shows subcommands. Lowest-effort discoverability win for the flat path.
 3. **`expense import csv`** — bulk transaction import for migration.
 4. **Color conventions** — Rich-based output styling; opt-out flag for plain ANSI.
+5. **Human-name resolution for reference flags** — accept either UUIDs or human-readable names on every command that takes an `--account-id` / `--category-id` / `--hashtag-id` / `--reconciliation-id`. CLI-side lookup via the existing list endpoints with disambiguation rules (case-insensitive exact match; reject ambiguous matches with a "be more specific" error pointing at `expense <resource> list`). UUIDs continue to pass through unchanged. Significant feature; deserves its own plan-mode session.
 
 ---
 
