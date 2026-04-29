@@ -212,5 +212,6 @@ def test_dashboard_handles_empty_collections(configured):
     result = runner.invoke(cli_app, ["dashboard"])
     assert result.exit_code == 0, result.output
     assert "Bank accounts:" in result.output
-    assert "(none)" in result.output
+    assert "(no bank accounts)" in result.output
+    assert "(no categories)" in result.output
     assert "People:" not in result.output

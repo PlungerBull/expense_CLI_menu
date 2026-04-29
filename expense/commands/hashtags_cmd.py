@@ -4,7 +4,12 @@ from uuid import uuid4
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import build_update_payload, require_yes, run_toggle
+from expense.commands._resource import (
+    build_update_payload,
+    render_pagination_hint,
+    require_yes,
+    run_toggle,
+)
 from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -37,6 +42,7 @@ def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
         for key, value in item.items():
             display = value if value is not None else "(null)"
             typer.echo(f"  {key}: {display}")
+    render_pagination_hint(body, items)
 
 
 @app.command("list")
@@ -49,7 +55,10 @@ def list_(
     offset: int | None = typer.Option(None, "--offset"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/hashtags."""
+    """GET /v1/hashtags.
+
+    Example: expense hashtags list --include-archived
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -76,7 +85,10 @@ def get(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/hashtags/{id}."""
+    """GET /v1/hashtags/{id}.
+
+    Example: expense hashtags get <hashtag-id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -94,7 +106,10 @@ def create(
     sort_order: int | None = typer.Option(None, "--sort-order"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/hashtags. Hashtags are NOT auto-created on transaction use."""
+    """POST /v1/hashtags. Hashtags are NOT auto-created on transaction use.
+
+    Example: expense hashtags create --name lunch
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -120,7 +135,10 @@ def update(
     sort_order: int | None = typer.Option(None, "--sort-order"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """PUT /v1/hashtags/{id}."""
+    """PUT /v1/hashtags/{id}.
+
+    Example: expense hashtags update <hashtag-id> --name lunch-work
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -140,7 +158,10 @@ def delete(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """DELETE /v1/hashtags/{id}. Cascades soft-delete to junction rows; restore does NOT undo."""
+    """DELETE /v1/hashtags/{id}. Cascades soft-delete to junction rows; restore does NOT undo.
+
+    Example: expense hashtags delete <hashtag-id> --yes
+    """
     require_yes(
         yes,
         f"Delete hashtag {id_}? Junction rows on transactions will be cascaded "
@@ -163,7 +184,10 @@ def restore(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/hashtags/{id}/restore. Does NOT restore cascaded junction rows."""
+    """POST /v1/hashtags/{id}/restore. Does NOT restore cascaded junction rows.
+
+    Example: expense hashtags restore <hashtag-id>
+    """
     run_toggle(
         ctx,
         resource=_RESOURCE,
@@ -181,7 +205,10 @@ def archive(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/hashtags/{id}/archive. Junction rows left intact."""
+    """POST /v1/hashtags/{id}/archive. Junction rows left intact.
+
+    Example: expense hashtags archive <hashtag-id>
+    """
     run_toggle(
         ctx,
         resource=_RESOURCE,
@@ -199,7 +226,10 @@ def unarchive(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/hashtags/{id}/unarchive."""
+    """POST /v1/hashtags/{id}/unarchive.
+
+    Example: expense hashtags unarchive <hashtag-id>
+    """
     run_toggle(
         ctx,
         resource=_RESOURCE,

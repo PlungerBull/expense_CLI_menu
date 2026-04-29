@@ -98,6 +98,8 @@ def bootstrap(
 
     Idempotent within 24h — replays return the first call's response verbatim,
     not a fresh `last_login_at`.
+
+    Example: expense auth bootstrap --display-name "Alex" --timezone America/Lima
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
@@ -140,7 +142,10 @@ def me(
     ctx: typer.Context,
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/auth/me. Alias: `whoami` (top-level)."""
+    """GET /v1/auth/me. Alias: `whoami` (top-level).
+
+    Example: expense auth me
+    """
     _me_impl(ctx, json_output)
 
 
@@ -149,7 +154,10 @@ def whoami(
     ctx: typer.Context,
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Shortcut for `expense auth me`."""
+    """Shortcut for `expense auth me`.
+
+    Example: expense whoami
+    """
     _me_impl(ctx, json_output)
 
 
@@ -166,6 +174,8 @@ def profile(
 
     Bootstrap is idempotent and won't overwrite display_name on re-login;
     this is the post-bootstrap path to change it.
+
+    Example: expense auth profile --display-name "Alex Tern"
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
@@ -211,7 +221,10 @@ def settings(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """PUT /v1/auth/settings. Partial update; main_currency change triggers engine recalc."""
+    """PUT /v1/auth/settings. Partial update; main_currency change triggers engine recalc.
+
+    Example: expense auth settings --theme dark --start-of-week monday
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 

@@ -4,7 +4,12 @@ from uuid import uuid4
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import build_update_payload, require_yes, run_toggle
+from expense.commands._resource import (
+    build_update_payload,
+    render_pagination_hint,
+    require_yes,
+    run_toggle,
+)
 from expense.context import get_verbose
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
@@ -38,6 +43,7 @@ def _render_category_list(body: dict, *, json_mode: bool) -> None:
         for key, value in item.items():
             display = value if value is not None else "(null)"
             typer.echo(f"  {key}: {display}")
+    render_pagination_hint(body, items)
 
 
 @app.command("list")
@@ -50,7 +56,10 @@ def list_(
     offset: int | None = typer.Option(None, "--offset"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/categories."""
+    """GET /v1/categories.
+
+    Example: expense categories list --include-archived
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -77,7 +86,10 @@ def get(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/categories/{id}."""
+    """GET /v1/categories/{id}.
+
+    Example: expense categories get <category-id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -96,7 +108,10 @@ def create(
     sort_order: int | None = typer.Option(None, "--sort-order"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/categories."""
+    """POST /v1/categories.
+
+    Example: expense categories create --name Food --color "#FF6B6B"
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -127,7 +142,10 @@ def update(
     sort_order: int | None = typer.Option(None, "--sort-order"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """PUT /v1/categories/{id}. System categories CAN be renamed."""
+    """PUT /v1/categories/{id}. System categories CAN be renamed.
+
+    Example: expense categories update <category-id> --name "Food & Drink"
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -147,7 +165,10 @@ def delete(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """DELETE /v1/categories/{id}. Soft-delete (use archive for categories with history)."""
+    """DELETE /v1/categories/{id}. Soft-delete (use archive for categories with history).
+
+    Example: expense categories delete <category-id> --yes
+    """
     require_yes(yes, f"Delete category {id_}? This is for cleanup/mistakes only.")
 
     cfg = config_module.ensure_loaded()
@@ -177,7 +198,10 @@ def restore(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/categories/{id}/restore."""
+    """POST /v1/categories/{id}/restore.
+
+    Example: expense categories restore <category-id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -203,7 +227,10 @@ def archive(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/categories/{id}/archive."""
+    """POST /v1/categories/{id}/archive.
+
+    Example: expense categories archive <category-id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -225,7 +252,10 @@ def unarchive(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/categories/{id}/unarchive."""
+    """POST /v1/categories/{id}/unarchive.
+
+    Example: expense categories unarchive <category-id>
+    """
     run_toggle(
         ctx,
         resource=_RESOURCE,

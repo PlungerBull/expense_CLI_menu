@@ -4,7 +4,12 @@ from uuid import uuid4
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import build_update_payload, require_yes, run_toggle
+from expense.commands._resource import (
+    build_update_payload,
+    render_pagination_hint,
+    require_yes,
+    run_toggle,
+)
 from expense.context import get_verbose
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
@@ -37,6 +42,7 @@ def _render_account_list(body: dict, *, json_mode: bool) -> None:
         for key, value in item.items():
             display = value if value is not None else "(null)"
             typer.echo(f"  {key}: {display}")
+    render_pagination_hint(body, items)
 
 
 @app.command("list")
@@ -48,7 +54,10 @@ def list_(
     include_people: bool = typer.Option(False, "--include-people"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/accounts."""
+    """GET /v1/accounts.
+
+    Example: expense accounts list --include-archived
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -73,7 +82,10 @@ def get(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/accounts/{id}."""
+    """GET /v1/accounts/{id}.
+
+    Example: expense accounts get <account-id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -95,7 +107,10 @@ def create(
     sort_order: int | None = typer.Option(None, "--sort-order"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/accounts."""
+    """POST /v1/accounts.
+
+    Example: expense accounts create --name "BCP Soles" --currency-code PEN
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -133,7 +148,10 @@ def update(
     ),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """PUT /v1/accounts/{id}."""
+    """PUT /v1/accounts/{id}.
+
+    Example: expense accounts update <account-id> --name "BCP Soles (joint)"
+    """
     if currency_code is not None:
         raise typer.BadParameter(
             "Currency cannot be changed after creation. Create a new account.",
@@ -159,7 +177,10 @@ def delete(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """DELETE /v1/accounts/{id}. Soft-delete (use archive for closed accounts with history)."""
+    """DELETE /v1/accounts/{id}. Soft-delete (use archive for closed accounts with history).
+
+    Example: expense accounts delete <account-id> --yes
+    """
     require_yes(yes, f"Delete account {id_}? This is for cleanup/mistakes only.")
 
     cfg = config_module.ensure_loaded()
@@ -187,7 +208,10 @@ def restore(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/accounts/{id}/restore."""
+    """POST /v1/accounts/{id}/restore.
+
+    Example: expense accounts restore <account-id>
+    """
     run_toggle(
         ctx,
         resource=_RESOURCE,
@@ -205,7 +229,10 @@ def archive(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/accounts/{id}/archive. Hides from pickers; transactions remain."""
+    """POST /v1/accounts/{id}/archive. Hides from pickers; transactions remain.
+
+    Example: expense accounts archive <account-id>
+    """
     run_toggle(
         ctx,
         resource=_RESOURCE,
@@ -223,7 +250,10 @@ def unarchive(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/accounts/{id}/unarchive."""
+    """POST /v1/accounts/{id}/unarchive.
+
+    Example: expense accounts unarchive <account-id>
+    """
     run_toggle(
         ctx,
         resource=_RESOURCE,

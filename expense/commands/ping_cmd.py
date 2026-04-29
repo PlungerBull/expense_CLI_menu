@@ -14,7 +14,10 @@ def ping(
     ctx: typer.Context,
     json_output: bool = typer.Option(False, "--json", help="Output raw engine response."),
 ) -> None:
-    """Probe GET /health. Confirms the engine is reachable."""
+    """Probe GET /health. Confirms the engine is reachable.
+
+    Example: expense ping
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 

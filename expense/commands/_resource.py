@@ -41,6 +41,27 @@ def build_update_payload(items: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def render_pagination_hint(body: Any, items: list[Any]) -> None:
+    """Print a `(showing N of M; pass --offset ... --limit ... for more)` hint.
+
+    No-op when the body isn't paginated, items fit on one page, or required
+    metadata is missing. Used by every paginated `list` renderer.
+    """
+    if not isinstance(body, dict):
+        return
+    total = body.get("total")
+    limit = body.get("limit")
+    offset = body.get("offset")
+    if not (isinstance(total, int) and isinstance(limit, int) and isinstance(offset, int)):
+        return
+    if offset + len(items) >= total:
+        return
+    next_offset = offset + len(items)
+    typer.echo(
+        f"\n(showing {len(items)} of {total}; pass --offset {next_offset} --limit {limit} for more)"
+    )
+
+
 def run_toggle(
     ctx: typer.Context,
     *,

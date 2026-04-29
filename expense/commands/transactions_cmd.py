@@ -5,7 +5,11 @@ from uuid import uuid4
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import build_update_payload, require_yes
+from expense.commands._resource import (
+    build_update_payload,
+    render_pagination_hint,
+    require_yes,
+)
 from expense.context import get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -55,21 +59,7 @@ def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
             display = value if value is not None else "(null)"
             typer.echo(f"  {key}: {display}")
 
-    if isinstance(body, dict):
-        total = body.get("total")
-        limit = body.get("limit")
-        offset = body.get("offset")
-        if (
-            isinstance(total, int)
-            and isinstance(limit, int)
-            and isinstance(offset, int)
-            and offset + len(items) < total
-        ):
-            next_offset = offset + len(items)
-            typer.echo(
-                f"\n(showing {len(items)} of {total}; "
-                f"pass --offset {next_offset} --limit {limit} for more)"
-            )
+    render_pagination_hint(body, items)
 
 
 def _print_warnings(body: dict) -> None:
@@ -103,11 +93,11 @@ def _parse_hashtag_ids(raw: str) -> list[str]:
 @handle_errors
 def list_(
     ctx: typer.Context,
-    account: str | None = typer.Option(None, "--account", help="Filter by account_id."),
-    category: str | None = typer.Option(None, "--category", help="Filter by category_id."),
-    hashtag: str | None = typer.Option(None, "--hashtag", help="Filter by hashtag_id."),
+    account: str | None = typer.Option(None, "--account-id", help="Filter by account_id."),
+    category: str | None = typer.Option(None, "--category-id", help="Filter by category_id."),
+    hashtag: str | None = typer.Option(None, "--hashtag-id", help="Filter by hashtag_id."),
     reconciliation: str | None = typer.Option(
-        None, "--reconciliation", help="Filter by reconciliation_id."
+        None, "--reconciliation-id", help="Filter by reconciliation_id."
     ),
     date_from: str | None = typer.Option(None, "--from", help="ISO 8601 lower bound (inclusive)."),
     date_to: str | None = typer.Option(None, "--to", help="ISO 8601 upper bound (inclusive)."),
@@ -121,7 +111,10 @@ def list_(
     debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/transactions."""
+    """GET /v1/transactions.
+
+    Example: expense transactions list --account-id <id> --from 2026-04-01 --to 2026-04-30
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -170,6 +163,8 @@ def get(
     Activity-log entries for a transaction will be reachable via
     'expense activity list --resource-type expense_transactions --resource-id <id>'
     once Step 8 ships.
+
+    Example: expense transactions get <transaction-id>
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
@@ -203,7 +198,10 @@ def update(
     reconciliation_id: str | None = typer.Option(None, "--reconciliation-id"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """PUT /v1/transactions/{id}. Partial update."""
+    """PUT /v1/transactions/{id}. Partial update.
+
+    Example: expense transactions update <transaction-id> --title "Renamed" --cleared
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -243,7 +241,10 @@ def delete(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """DELETE /v1/transactions/{id}. Soft-delete; transfer pairs delete atomically."""
+    """DELETE /v1/transactions/{id}. Soft-delete; transfer pairs delete atomically.
+
+    Example: expense transactions delete <transaction-id> --yes
+    """
     require_yes(yes, f"Delete transaction {id_}?")
 
     cfg = config_module.ensure_loaded()
@@ -267,6 +268,8 @@ def restore(
     """POST /v1/transactions/{id}/restore.
 
     Re-applies balance impact and re-links transfer pair atomically.
+
+    Example: expense transactions restore <transaction-id>
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
@@ -304,7 +307,10 @@ def batch(
     ),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/transactions/batch. Atomic multi-create. Transfers not supported in batch."""
+    """POST /v1/transactions/batch. Atomic multi-create. Transfers not supported in batch.
+
+    Example: cat transactions.json | expense transactions batch
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 

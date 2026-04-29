@@ -5,7 +5,12 @@ import typer
 
 from expense import _editor
 from expense import config as config_module
-from expense.commands._resource import build_update_payload, require_yes, run_toggle
+from expense.commands._resource import (
+    build_update_payload,
+    render_pagination_hint,
+    require_yes,
+    run_toggle,
+)
 from expense.context import get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -83,21 +88,7 @@ def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
         if marker:
             typer.echo(f"  {marker}")
 
-    if isinstance(body, dict):
-        total = body.get("total")
-        limit = body.get("limit")
-        offset = body.get("offset")
-        if (
-            isinstance(total, int)
-            and isinstance(limit, int)
-            and isinstance(offset, int)
-            and offset + len(items) < total
-        ):
-            next_offset = offset + len(items)
-            typer.echo(
-                f"\n(showing {len(items)} of {total}; "
-                f"pass --offset {next_offset} --limit {limit} for more)"
-            )
+    render_pagination_hint(body, items)
 
 
 def _render_reconciliation_detail(body: dict, *, json_mode: bool) -> None:
@@ -136,12 +127,12 @@ def _render_reconciliation_detail(body: dict, *, json_mode: bool) -> None:
         if isinstance(transactions_total, int):
             typer.echo(
                 f"\n  ({transactions_total - shown} more transactions; "
-                f"use 'expense transactions list --reconciliation {recon_id}' for full view)"
+                f"use 'expense transactions list --reconciliation-id {recon_id}' for full view)"
             )
         else:
             typer.echo(
                 f"\n  (more transactions; use 'expense transactions list "
-                f"--reconciliation {recon_id}' for full view)"
+                f"--reconciliation-id {recon_id}' for full view)"
             )
 
 
@@ -176,7 +167,7 @@ def list_(
     ctx: typer.Context,
     account: str | None = typer.Option(
         None,
-        "--account",
+        "--account-id",
         help="Filter by account_id (sorts the chain by sort_order ASC).",
     ),
     include_deleted: bool = typer.Option(False, "--include-deleted"),
@@ -243,8 +234,8 @@ def get(
 @handle_errors
 def create(
     ctx: typer.Context,
-    account_id: str = typer.Option(..., "--account", help="Owning account UUID."),
-    name: str = typer.Option(..., "--name"),
+    account_id: str = typer.Option(..., "--account-id", help="Owning account UUID."),
+    name: str = typer.Option(..., "--name", help="Human-readable label (e.g. 'April 2026')."),
     date_start: str | None = typer.Option(
         None,
         "--date-start",
@@ -739,7 +730,7 @@ def _filter_chain_by_year(chain: list[dict], year: int) -> list[dict]:
 @handle_errors
 def reorder(
     ctx: typer.Context,
-    account_id: str = typer.Option(..., "--account", help="Owning account UUID."),
+    account_id: str = typer.Option(..., "--account-id", help="Owning account UUID."),
     year: int | None = typer.Option(
         None,
         "--year",

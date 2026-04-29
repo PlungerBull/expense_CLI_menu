@@ -28,8 +28,10 @@ def log(
         "--amount",
         help="Signed cents. Negative = expense, positive = income. Sign is mandatory.",
     ),
-    account_id: str = typer.Option(..., "--account-id"),
-    category_id: str = typer.Option(..., "--category-id"),
+    account_id: str = typer.Option(..., "--account-id", help="Account UUID to debit/credit."),
+    category_id: str = typer.Option(
+        ..., "--category-id", help="Category UUID for this transaction."
+    ),
     date: str | None = typer.Option(
         None,
         "--date",
@@ -60,6 +62,8 @@ def log(
 
     Pass --transfer with --to-account-id and --to-amount to create a paired
     transfer in a single atomic call (engine creates both legs and links them).
+
+    Example: expense log --title Lunch --amount -1500 --account-id <id> --category-id <id>
     """
     if transfer:
         if to_account_id is None or to_amount is None:

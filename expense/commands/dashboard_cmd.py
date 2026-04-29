@@ -33,7 +33,7 @@ def render_category_section(categories: list[dict] | None, *, header: str = "Cat
     """Render the categories + hashtag-breakdown block. Shared with reports_cmd."""
     typer.echo(f"{header}:")
     if not categories:
-        typer.echo("  (none)")
+        typer.echo("  (no categories)")
         return
     for cat in categories:
         name = cat.get("name", "(unnamed)")
@@ -59,7 +59,7 @@ def render_category_section(categories: list[dict] | None, *, header: str = "Cat
 def _render_totals(totals: dict | None) -> None:
     typer.echo("Totals:")
     if not isinstance(totals, dict):
-        typer.echo("  (none)")
+        typer.echo("  (no totals)")
         return
     for key in ("inflow_cents", "outflow_cents", "net_cents"):
         native = totals.get(key)
@@ -74,7 +74,7 @@ def _render_totals(totals: dict | None) -> None:
 def _render_archived_accounts(items: list[dict] | None) -> None:
     typer.echo("Archived accounts:")
     if not items:
-        typer.echo("  (none)")
+        typer.echo("  (no archived accounts)")
         return
     for item in items:
         _render_account_row(item)
@@ -83,7 +83,7 @@ def _render_archived_accounts(items: list[dict] | None) -> None:
 def _render_archived_lifetime(items: list[dict] | None, *, header: str) -> None:
     typer.echo(f"{header}:")
     if not items:
-        typer.echo("  (none)")
+        typer.echo(f"  (no {header.lower()})")
         return
     for item in items:
         name = item.get("name", "(unnamed)")
@@ -106,7 +106,7 @@ def _render_dashboard(body: dict, *, json_mode: bool) -> None:
     typer.echo("Bank accounts:")
     bank_accounts = body.get("bank_accounts") or []
     if not bank_accounts:
-        typer.echo("  (none)")
+        typer.echo("  (no bank accounts)")
     else:
         for item in bank_accounts:
             _render_account_row(item)

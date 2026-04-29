@@ -117,7 +117,7 @@ def test_list_happy_with_account_filter(configured):
     )
     result = runner.invoke(
         cli_app,
-        ["reconcile", "list", "--account", "22222222-2222-2222-2222-222222222222"],
+        ["reconcile", "list", "--account-id", "22222222-2222-2222-2222-222222222222"],
     )
     assert result.exit_code == 0, result.output
     assert "Statement April 2026" in result.output
@@ -201,7 +201,7 @@ def test_create_chained_default(configured):
         [
             "reconcile",
             "create",
-            "--account",
+            "--account-id",
             "22222222-2222-2222-2222-222222222222",
             "--name",
             "Statement April 2026",
@@ -237,7 +237,7 @@ def test_create_with_manual_balance(configured):
         [
             "reconcile",
             "create",
-            "--account",
+            "--account-id",
             "22222222-2222-2222-2222-222222222222",
             "--name",
             "Cutover",
@@ -260,7 +260,7 @@ def test_create_chained_with_balance_blocks_at_parse(configured):
         [
             "reconcile",
             "create",
-            "--account",
+            "--account-id",
             "acct",
             "--name",
             "X",
@@ -281,7 +281,7 @@ def test_create_invalid_source_value_blocks_at_parse(configured):
         [
             "reconcile",
             "create",
-            "--account",
+            "--account-id",
             "acct",
             "--name",
             "X",
@@ -726,7 +726,7 @@ def test_reorder_json_skips_editor_and_no_http(configured, monkeypatch):
 
     monkeypatch.setattr("expense._editor.edit_text", fake_edit_text)
 
-    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID, "--json"])
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account-id", ACCOUNT_ID, "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload == {"ordered_ids": ["aaaa", "bbbb", "cccc"]}
@@ -741,7 +741,7 @@ def test_reorder_empty_chain(configured, monkeypatch):
     )
     monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: None)
 
-    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account-id", ACCOUNT_ID])
     assert result.exit_code == 0, result.output
     assert "(no reconciliations to reorder)" in result.output
 
@@ -754,7 +754,7 @@ def test_reorder_aborts_when_editor_returns_none(configured, monkeypatch):
     put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
     monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: None)
 
-    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account-id", ACCOUNT_ID])
     assert result.exit_code == 0, result.output
     assert "Aborted." in result.output
     assert put_route.call_count == 0
@@ -770,7 +770,7 @@ def test_reorder_no_changes(configured, monkeypatch):
     same_order = "aaaa  2026-01-01..2026-01-31  Jan\nbbbb  ...  Feb\ncccc  ...  Mar\n"
     monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: same_order)
 
-    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account-id", ACCOUNT_ID])
     assert result.exit_code == 0, result.output
     assert "No changes." in result.output
     assert put_route.call_count == 0
@@ -788,7 +788,7 @@ def test_reorder_happy_path_sends_correct_body(configured, monkeypatch):
     edited = "# header\ncccc  ...  Mar\naaaa  ...  Jan\nbbbb  ...  Feb\n"
     monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: edited)
 
-    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account-id", ACCOUNT_ID])
     assert result.exit_code == 0, result.output
     assert "1 chained beginning balance(s) recalculated." in result.output
 
@@ -807,7 +807,7 @@ def test_reorder_unknown_id_in_editor_blocks(configured, monkeypatch):
     edited = "aaaa  ...  Jan\nbbbb  ...  Feb\nzzzz  smuggled\n"
     monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: edited)
 
-    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account-id", ACCOUNT_ID])
     assert result.exit_code != 0
     stripped = _strip_panel(result.output)
     assert "Unknown reconciliation id" in stripped
@@ -824,7 +824,7 @@ def test_reorder_duplicate_id_in_editor_blocks(configured, monkeypatch):
     edited = "aaaa  ...\nbbbb  ...\naaaa  duplicate\ncccc  ...\n"
     monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: edited)
 
-    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account-id", ACCOUNT_ID])
     assert result.exit_code != 0
     stripped = _strip_panel(result.output)
     assert "Duplicate id" in stripped
@@ -841,7 +841,7 @@ def test_reorder_missing_id_in_editor_blocks(configured, monkeypatch):
     edited = "aaaa  ...\nbbbb  ...\n"  # missing cccc
     monkeypatch.setattr("expense._editor.edit_text", lambda *a, **k: edited)
 
-    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account", ACCOUNT_ID])
+    result = runner.invoke(cli_app, ["reconcile", "reorder", "--account-id", ACCOUNT_ID])
     assert result.exit_code != 0
     stripped = _strip_panel(result.output)
     assert "Missing ids" in stripped
@@ -881,7 +881,7 @@ def test_reorder_year_filter(configured, monkeypatch):
 
     result = runner.invoke(
         cli_app,
-        ["reconcile", "reorder", "--account", ACCOUNT_ID, "--year", "2025", "--json"],
+        ["reconcile", "reorder", "--account-id", ACCOUNT_ID, "--year", "2025", "--json"],
     )
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)

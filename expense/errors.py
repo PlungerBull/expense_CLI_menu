@@ -46,6 +46,13 @@ def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
         if err.fields:
             for field, message in err.fields.items():
                 lines.append(f"  {field}: {message}")
+        if err.status == 401:
+            lines.append("")
+            lines.append(
+                "Hint: token is missing or invalid. Run "
+                "'expense config set --token <pat>' to install a fresh PAT, "
+                "or 'expense auth bootstrap' if your account is not yet provisioned."
+            )
         return "\n".join(lines), 1, True
 
     if isinstance(err, EngineConnectionError):

@@ -55,7 +55,10 @@ def list_(
     debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/inbox."""
+    """GET /v1/inbox.
+
+    Example: expense inbox list --ready
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -87,7 +90,10 @@ def get(
     debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/inbox/{id}."""
+    """GET /v1/inbox/{id}.
+
+    Example: expense inbox get <inbox-id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -117,16 +123,25 @@ def add(
         help="YYYY-MM-DD, 'YYYY-MM-DD HH:MM[:SS]', or RFC 3339 with offset. "
         "Naive forms get the local timezone attached.",
     ),
-    account_id: str | None = typer.Option(None, "--account-id"),
-    category_id: str | None = typer.Option(None, "--category-id"),
-    description: str | None = typer.Option(None, "--description"),
-    cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
+    account_id: str | None = typer.Option(
+        None, "--account-id", help="Account UUID. Optional on draft; required to promote."
+    ),
+    category_id: str | None = typer.Option(
+        None, "--category-id", help="Category UUID. Optional on draft; required to promote."
+    ),
+    description: str | None = typer.Option(None, "--description", help="Free-form notes."),
+    cleared: bool | None = typer.Option(
+        None, "--cleared/--no-cleared", help="Has the transaction posted at the bank?"
+    ),
     exchange_rate: float | None = typer.Option(
         None, "--exchange-rate", help="Override engine auto-fetch."
     ),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/inbox. Drop a partial draft into the inbox; fill in later, then promote."""
+    """POST /v1/inbox. Drop a partial draft into the inbox; fill in later, then promote.
+
+    Example: expense inbox add --title "Lunch" --amount -1500
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -172,7 +187,10 @@ def update(
     exchange_rate: float | None = typer.Option(None, "--exchange-rate"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """PUT /v1/inbox/{id}."""
+    """PUT /v1/inbox/{id}.
+
+    Example: expense inbox update <inbox-id> --account-id <id> --category-id <id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -203,7 +221,10 @@ def delete(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """DELETE /v1/inbox/{id}. Soft-delete (dismiss the draft); restore is the inverse."""
+    """DELETE /v1/inbox/{id}. Soft-delete (dismiss the draft); restore is the inverse.
+
+    Example: expense inbox delete <inbox-id> --yes
+    """
     require_yes(yes, f"Delete inbox item {id_}?")
 
     cfg = config_module.ensure_loaded()
@@ -222,7 +243,10 @@ def restore(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/inbox/{id}/restore. Undo a dismissed draft."""
+    """POST /v1/inbox/{id}/restore. Undo a dismissed draft.
+
+    Example: expense inbox restore <inbox-id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -248,7 +272,10 @@ def promote(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """POST /v1/inbox/{id}/promote. Convert the draft into a real ledger transaction."""
+    """POST /v1/inbox/{id}/promote. Convert the draft into a real ledger transaction.
+
+    Example: expense inbox promote <inbox-id>
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 

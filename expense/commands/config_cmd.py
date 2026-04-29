@@ -20,7 +20,10 @@ def set_cmd(
         help="Cached main currency. Usually set automatically by `auth me`.",
     ),
 ) -> None:
-    """Set one or more fields in ~/.expense-config. Creates the file on first run."""
+    """Set one or more fields in ~/.expense-config. Creates the file on first run.
+
+    Example: expense config set --token ewe_pat_xxx --engine-url https://expense-world-engine.onrender.com
+    """
     existing = config_module.load()
 
     if existing is None:
@@ -67,7 +70,10 @@ def get_cmd(
     ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON."),
 ) -> None:
-    """Print the current config. Token is redacted unless --show-token is passed."""
+    """Print the current config. Token is redacted unless --show-token is passed.
+
+    Example: expense config get
+    """
     cfg = config_module.ensure_loaded()
     data = cfg.model_dump(mode="json")
     if not show_token:
@@ -85,7 +91,10 @@ def get_cmd(
 def clear_cmd(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
 ) -> None:
-    """Remove ~/.expense-config."""
+    """Remove ~/.expense-config.
+
+    Example: expense config clear --yes
+    """
     path = config_module.config_path()
     if not path.exists():
         typer.echo("No config file to clear.")

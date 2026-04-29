@@ -68,6 +68,23 @@ def test_list_happy(configured):
 
 
 @respx.mock
+def test_list_pagination_hint(configured):
+    """Pagination hint surfaces when total > offset + items in a paginated body."""
+    paginated = {
+        "items": [CATEGORY_RESPONSE],
+        "total": 5,
+        "limit": 1,
+        "offset": 0,
+    }
+    respx.get("https://api.example.com/v1/categories").mock(
+        return_value=httpx.Response(200, json=paginated)
+    )
+    result = runner.invoke(cli_app, ["categories", "list"])
+    assert result.exit_code == 0, result.output
+    assert "showing 1 of 5" in result.output
+
+
+@respx.mock
 def test_list_json_mode(configured):
     respx.get("https://api.example.com/v1/categories").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)

@@ -46,7 +46,7 @@ def test_render_engine_error_human_with_fields():
     assert "  amount_cents: Must not be zero" in output
 
 
-def test_render_engine_error_human_no_fields_single_line():
+def test_render_engine_error_human_401_surfaces_config_set_hint():
     err = EngineError(
         code="UNAUTHORIZED",
         message="Missing or invalid token",
@@ -56,7 +56,23 @@ def test_render_engine_error_human_no_fields_single_line():
     )
     output, exit_code, use_stderr = render(err, json_mode=False)
     assert exit_code == 1
-    assert output == "Error: UNAUTHORIZED — Missing or invalid token"
+    assert use_stderr is True
+    assert output.startswith("Error: UNAUTHORIZED — Missing or invalid token")
+    assert "expense config set --token" in output
+    assert "expense auth bootstrap" in output
+
+
+def test_render_engine_error_human_non_401_no_hint():
+    err = EngineError(
+        code="NOT_FOUND",
+        message="Not found",
+        fields=None,
+        status=404,
+        raw_body={},
+    )
+    output, exit_code, use_stderr = render(err, json_mode=False)
+    assert exit_code == 1
+    assert output == "Error: NOT_FOUND — Not found"
 
 
 def test_render_engine_error_json_passes_through_raw_body():
