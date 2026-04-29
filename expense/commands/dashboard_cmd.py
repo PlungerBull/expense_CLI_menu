@@ -147,7 +147,7 @@ def dashboard(
     if include_archived:
         params["include_archived"] = "true"
 
-    with ExpenseClient(cfg, verbose=verbose) as client:
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
         body = client.get("/dashboard", params=params or None)
 
     _render_dashboard(body, json_mode=json_output)

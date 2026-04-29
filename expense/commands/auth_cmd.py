@@ -110,7 +110,7 @@ def bootstrap(
 
     payload = {"display_name": display_name, "timezone": timezone}
 
-    with ExpenseClient(cfg, verbose=verbose) as client:
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
         body = client.post("/auth/bootstrap", json_body=payload)
 
     _cache_main_currency(cfg, body.get("settings", {}))
@@ -121,7 +121,7 @@ def _me_impl(ctx: typer.Context, json_output: bool) -> None:
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
-    with ExpenseClient(cfg, verbose=verbose) as client:
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
         try:
             body = client.get("/auth/me")
         except EngineError as err:
