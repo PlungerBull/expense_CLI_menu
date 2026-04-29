@@ -1,4 +1,5 @@
 import json
+import re
 from uuid import UUID, uuid4
 
 import httpx
@@ -23,8 +24,12 @@ cli_app.add_typer(reconcile_app, name="reconcile")
 runner = CliRunner()
 
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[mGKH]")
+
+
 def _strip_panel(output: str) -> str:
-    no_box = "".join(c for c in output if c not in "│╭╮╰╯─\n\t")
+    no_ansi = _ANSI_ESCAPE_RE.sub("", output)
+    no_box = "".join(c for c in no_ansi if c not in "│╭╮╰╯─\n\t")
     return " ".join(no_box.split())
 
 

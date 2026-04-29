@@ -1,4 +1,5 @@
 import json
+import re
 from uuid import uuid4
 
 import httpx
@@ -23,13 +24,18 @@ cli_app.add_typer(reports_app, name="reports")
 runner = CliRunner()
 
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[mGKH]")
+
+
 def _strip_panel(output: str) -> str:
     """Typer wraps long error messages across box-drawn panel lines.
 
-    Strip box-drawing characters and collapse line breaks so substring asserts
-    work regardless of terminal width. Spaces inside the message are preserved.
+    Strip ANSI color codes (which CI emits but local doesn't), box-drawing
+    characters, and collapse line breaks so substring asserts work regardless
+    of terminal width or color support. Spaces inside the message are preserved.
     """
-    no_box = "".join(c for c in output if c not in "│╭╮╰╯─\n\t")
+    no_ansi = _ANSI_ESCAPE_RE.sub("", output)
+    no_box = "".join(c for c in no_ansi if c not in "│╭╮╰╯─\n\t")
     return " ".join(no_box.split())
 
 
