@@ -202,22 +202,17 @@ def restore(
 
     Example: expense categories restore <category-id>
     """
-    cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        try:
-            body = client.post(f"/{_RESOURCE}/{id_}/restore")
-        except EngineError as err:
-            if err.status == 409:
-                typer.echo(
-                    "Hint: A category with that name already exists. "
-                    "Rename the existing one first.",
-                    err=True,
-                )
-            raise
-
-    _render_category(body, json_mode=json_output)
+    run_toggle(
+        ctx,
+        resource=_RESOURCE,
+        id_=id_,
+        verb="restore",
+        json_output=json_output,
+        render_human=lambda body: _render_category(body, json_mode=False),
+        hints={
+            409: ("Hint: A category with that name already exists. Rename the existing one first."),
+        },
+    )
 
 
 @app.command("archive")
@@ -231,18 +226,15 @@ def archive(
 
     Example: expense categories archive <category-id>
     """
-    cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        try:
-            body = client.post(f"/{_RESOURCE}/{id_}/archive")
-        except EngineError as err:
-            if err.status == 403:
-                typer.echo(f"Hint: {_SYSTEM_HINT}", err=True)
-            raise
-
-    _render_category(body, json_mode=json_output)
+    run_toggle(
+        ctx,
+        resource=_RESOURCE,
+        id_=id_,
+        verb="archive",
+        json_output=json_output,
+        render_human=lambda body: _render_category(body, json_mode=False),
+        hints={403: f"Hint: {_SYSTEM_HINT}"},
+    )
 
 
 @app.command("unarchive")

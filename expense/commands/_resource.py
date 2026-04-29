@@ -10,6 +10,7 @@ import typer
 from expense import config as config_module
 from expense.config import Config
 from expense.context import get_verbose
+from expense.errors import EngineError
 from expense.http import ExpenseClient
 
 
@@ -41,6 +42,27 @@ def build_update_payload(items: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def render_totals(totals: dict | None) -> None:
+    """Render the canonical inflow/outflow/net block.
+
+    Shared by `dashboard` and `reports monthly` (single-month view) — both
+    surface the same `{inflow, outflow, net}_cents` + `_home_cents` shape.
+    Empty/missing totals print '(no totals)'.
+    """
+    typer.echo("Totals:")
+    if not isinstance(totals, dict):
+        typer.echo("  (no totals)")
+        return
+    for key in ("inflow_cents", "outflow_cents", "net_cents"):
+        native = totals.get(key)
+        home_key = key.replace("_cents", "_home_cents")
+        home = totals.get(home_key)
+        native_s = native if native is not None else "(null)"
+        home_s = home if home is not None else "(null)"
+        label = key.replace("_cents", "")
+        typer.echo(f"  {label}: {native_s} (home: {home_s})")
+
+
 def render_pagination_hint(body: Any, items: list[Any]) -> None:
     """Print a `(showing N of M; pass --offset ... --limit ... for more)` hint.
 
@@ -70,17 +92,30 @@ def run_toggle(
     verb: str,
     json_output: bool,
     render_human: Callable[[dict], None],
+    hints: dict[int, str] | None = None,
 ) -> None:
     """Execute one of the {archive, unarchive, restore} toggle verbs.
 
     All three are POST /{resource}/{id}/{verb} with no body and an identical
     response shape (the resource row).
+
+    `hints` maps HTTP status code → stderr hint string. When the engine
+    raises an EngineError whose `.status` matches a key, the hint is
+    printed before the error envelope renders. This lets archive/restore
+    on resources with domain-specific 403/409 conditions (e.g. system
+    categories, name conflicts) keep their friendly recovery prompts
+    without forking the call site.
     """
     cfg: Config = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
     with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.post(f"/{resource}/{id_}/{verb}")
+        try:
+            body = client.post(f"/{resource}/{id_}/{verb}")
+        except EngineError as err:
+            if hints and err.status in hints:
+                typer.echo(hints[err.status], err=True)
+            raise
 
     if json_output:
         typer.echo(json.dumps(body, indent=2))

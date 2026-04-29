@@ -3,6 +3,7 @@ import json
 import typer
 
 from expense import config as config_module
+from expense.commands._resource import render_totals
 from expense.commands.dashboard_cmd import render_category_section
 from expense.context import get_verbose
 from expense.dates import parse_year_month
@@ -29,21 +30,6 @@ def _months_between(from_ym: tuple[int, int], to_ym: tuple[int, int]) -> int:
     return (to_ym[0] - from_ym[0]) * 12 + (to_ym[1] - from_ym[1]) + 1
 
 
-def _render_totals(totals: dict | None) -> None:
-    typer.echo("Totals:")
-    if not isinstance(totals, dict):
-        typer.echo("  (none)")
-        return
-    for key in ("inflow_cents", "outflow_cents", "net_cents"):
-        native = totals.get(key)
-        home_key = key.replace("_cents", "_home_cents")
-        home = totals.get(home_key)
-        native_s = native if native is not None else "(null)"
-        home_s = home if home is not None else "(null)"
-        label = key.replace("_cents", "")
-        typer.echo(f"  {label}: {native_s} (home: {home_s})")
-
-
 def _render_single_month(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
@@ -52,7 +38,7 @@ def _render_single_month(body: dict, *, json_mode: bool) -> None:
     typer.echo("")
     render_category_section(body.get("categories"))
     typer.echo("")
-    _render_totals(body.get("totals"))
+    render_totals(body.get("totals"))
 
 
 def _render_range_table(body: dict, *, json_mode: bool) -> None:

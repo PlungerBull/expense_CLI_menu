@@ -3,6 +3,7 @@ import json
 import typer
 
 from expense import config as config_module
+from expense.commands._resource import render_totals
 from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -56,21 +57,6 @@ def render_category_section(categories: list[dict] | None, *, header: str = "Cat
                 typer.echo(f"      {label}: {row_amount_s} (home: {row_home_s})")
 
 
-def _render_totals(totals: dict | None) -> None:
-    typer.echo("Totals:")
-    if not isinstance(totals, dict):
-        typer.echo("  (no totals)")
-        return
-    for key in ("inflow_cents", "outflow_cents", "net_cents"):
-        native = totals.get(key)
-        home_key = key.replace("_cents", "_home_cents")
-        home = totals.get(home_key)
-        native_s = native if native is not None else "(null)"
-        home_s = home if home is not None else "(null)"
-        label = key.replace("_cents", "")
-        typer.echo(f"  {label}: {native_s} (home: {home_s})")
-
-
 def _render_archived_accounts(items: list[dict] | None) -> None:
     typer.echo("Archived accounts:")
     if not items:
@@ -122,7 +108,7 @@ def _render_dashboard(body: dict, *, json_mode: bool) -> None:
     render_category_section(body.get("categories"))
     typer.echo("")
 
-    _render_totals(body.get("totals"))
+    render_totals(body.get("totals"))
 
     archived_accounts = body.get("archived_accounts")
     archived_categories = body.get("archived_categories")
