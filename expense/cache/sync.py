@@ -9,10 +9,11 @@ On unknown-token 422, fall through to cold-start.
 """
 
 import json
+import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from sqlite3 import Connection
-from typing import Literal
+from typing import IO, Literal
 
 from expense.cache import db, state
 from expense.cache.db import SCHEMA_VERSION
@@ -197,6 +198,43 @@ def cold_start(client: ExpenseClient, cfg: Config) -> SyncSummary:
     summary.pulled_at = pulled_at
     summary.raw_response = response
     return summary
+
+
+def ensure_synced(
+    client: ExpenseClient, cfg: Config, *, notice_stream: IO[str] | None = None
+) -> SyncSummary | None:
+    """Cold-start the cache if missing/unhealthy. No-op when healthy.
+
+    Prints a one-line notice to `notice_stream` (default stderr) before a
+    cold-start so users know why the first read is slow. Returns the
+    summary if a sync ran, else None.
+    """
+    stream = notice_stream if notice_stream is not None else sys.stderr
+    conn = db.connect()
+    try:
+        cur_state = state.read(conn)
+    finally:
+        conn.close()
+
+    if cur_state.user_id is None:
+        needs_cold_start = True
+    else:
+        healthy = state.is_healthy(
+            cur_state,
+            expected_user_id=cur_state.user_id,
+            expected_client_id=str(cfg.client_id),
+            expected_engine_url=cfg.engine_url,
+        )
+        needs_cold_start = (not healthy) or cur_state.sync_token is None
+
+    if not needs_cold_start:
+        return None
+
+    print(
+        f"First-run sync against {cfg.engine_url} — this may take a moment...",
+        file=stream,
+    )
+    return cold_start(client, cfg)
 
 
 def delta_sync(client: ExpenseClient, cfg: Config) -> SyncSummary:

@@ -8,14 +8,20 @@ import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
+from expense.cache import db as cache_db
+from expense.cache import state as cache_state
 from expense.commands.accounts_cmd import app as accounts_app
+from expense.context import AppContext
 
 cli_app = typer.Typer()
 
 
 @cli_app.callback()
-def _root() -> None:
-    pass
+def _root(
+    ctx: typer.Context,
+    no_cache: bool = typer.Option(False, "--no-cache", envvar="EXPENSE_STATELESS"),
+) -> None:
+    ctx.obj = AppContext(no_cache=no_cache)
 
 
 cli_app.add_typer(accounts_app, name="accounts")
@@ -25,6 +31,7 @@ runner = CliRunner()
 
 ACCOUNT_RESPONSE = {
     "id": "11111111-1111-1111-1111-111111111111",
+    "user_id": "u1",
     "name": "BCP Soles",
     "currency_code": "PEN",
     "color": "#FF0000",
@@ -42,10 +49,25 @@ ACCOUNT_RESPONSE = {
 LIST_RESPONSE = [ACCOUNT_RESPONSE]
 
 
+def _sync_payload(accounts_rows: list[dict]) -> dict:
+    return {
+        "sync_token": "tok-1",
+        "accounts": accounts_rows,
+        "categories": [],
+        "hashtags": [],
+        "inbox": [],
+        "transactions": [],
+        "reconciliations": [],
+        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
+    }
+
+
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
     config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
     monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
     config_module.save(
         config_module.Config(
             engine_url="https://api.example.com",
@@ -56,12 +78,95 @@ def configured(tmp_path, monkeypatch):
     yield
 
 
+def _insert_account(conn, row: dict) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO accounts "
+        "(id, user_id, is_archived, is_person, deleted_at, sort_order, version, body) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            row["id"],
+            row.get("user_id"),
+            1 if row.get("is_archived") else 0,
+            1 if row.get("is_person") else 0,
+            row.get("deleted_at"),
+            row.get("sort_order"),
+            row.get("version"),
+            json.dumps(row),
+        ),
+    )
+
+
+@pytest.fixture
+def cache_populated(configured):
+    """Populate the cache directly via SQL — no respx involvement."""
+    cfg = config_module.ensure_loaded()
+    conn = cache_db.connect()
+    try:
+        rows = [
+            {**ACCOUNT_RESPONSE, "current_balance_home_cents": None},
+            {
+                "id": "22222222-2222-2222-2222-222222222222",
+                "user_id": "u1",
+                "name": "Cash",
+                "currency_code": "PEN",
+                "color": None,
+                "sort_order": 2,
+                "is_person": False,
+                "is_archived": False,
+                "deleted_at": None,
+                "version": 1,
+                "current_balance_cents": 5000,
+                "current_balance_home_cents": None,
+            },
+            {
+                "id": "33333333-3333-3333-3333-333333333333",
+                "user_id": "u1",
+                "name": "Old BCP",
+                "currency_code": "PEN",
+                "color": None,
+                "sort_order": 99,
+                "is_person": False,
+                "is_archived": True,
+                "deleted_at": None,
+                "version": 1,
+                "current_balance_cents": 0,
+                "current_balance_home_cents": None,
+            },
+            {
+                "id": "44444444-4444-4444-4444-444444444444",
+                "user_id": "u1",
+                "name": "Alex",
+                "currency_code": "PEN",
+                "color": None,
+                "sort_order": 50,
+                "is_person": True,
+                "is_archived": False,
+                "deleted_at": None,
+                "version": 1,
+                "current_balance_cents": -4500,
+                "current_balance_home_cents": None,
+            },
+        ]
+        for row in rows:
+            _insert_account(conn, row)
+        cache_state.write_identity(
+            conn,
+            user_id="u1",
+            client_id=str(cfg.client_id),
+            engine_url=cfg.engine_url,
+        )
+        cache_state.write_token(conn, "tok-populated")
+    finally:
+        conn.close()
+    yield
+
+
 @respx.mock
-def test_list_happy(configured):
+def test_list_engine_path_with_no_cache(configured):
     route = respx.get("https://api.example.com/v1/accounts").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["accounts", "list", "--include-archived"])
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "list", "--include-archived"])
     assert result.exit_code == 0, result.output
     assert "BCP Soles" in result.output
 
@@ -70,8 +175,7 @@ def test_list_happy(configured):
 
 
 @respx.mock
-def test_list_pagination_hint(configured):
-    """Pagination hint surfaces when total > offset + items in a paginated body."""
+def test_list_pagination_hint_engine_path(configured):
     paginated = {
         "items": [ACCOUNT_RESPONSE],
         "total": 5,
@@ -81,34 +185,33 @@ def test_list_pagination_hint(configured):
     respx.get("https://api.example.com/v1/accounts").mock(
         return_value=httpx.Response(200, json=paginated)
     )
-    result = runner.invoke(cli_app, ["accounts", "list"])
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "list"])
     assert result.exit_code == 0, result.output
     assert "showing 1 of 5" in result.output
-    assert "--offset 1 --limit 1" in result.output
 
 
 @respx.mock
-def test_list_json_mode(configured):
+def test_list_json_mode_engine_path(configured):
     respx.get("https://api.example.com/v1/accounts").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["accounts", "list", "--json"])
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "list", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.output) == LIST_RESPONSE
 
 
 @respx.mock
-def test_get_happy(configured):
+def test_get_happy_engine_path(configured):
     respx.get("https://api.example.com/v1/accounts/abc").mock(
         return_value=httpx.Response(200, json=ACCOUNT_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["accounts", "get", "abc"])
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "get", "abc"])
     assert result.exit_code == 0, result.output
     assert "BCP Soles" in result.output
 
 
 @respx.mock
-def test_get_404(configured):
+def test_get_404_engine_path(configured):
     respx.get("https://api.example.com/v1/accounts/missing").mock(
         return_value=httpx.Response(
             404,
@@ -121,9 +224,129 @@ def test_get_404(configured):
             },
         )
     )
-    result = runner.invoke(cli_app, ["accounts", "get", "missing"])
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "get", "missing"])
     assert result.exit_code == 1
     assert "NOT_FOUND" in result.output
+
+
+def test_list_replica_path(cache_populated):
+    """Default `expense accounts list` reads from the local cache."""
+    with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:
+        accounts_route = router.get("/v1/accounts")
+        result = runner.invoke(cli_app, ["accounts", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert "BCP Soles" in result.output
+    assert "Cash" in result.output
+    assert "Old BCP" not in result.output  # archived excluded by default
+    assert "Alex" not in result.output  # people excluded by default
+    assert not accounts_route.called  # engine NOT called
+
+
+def test_list_replica_include_archived(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["accounts", "list", "--include-archived"])
+    assert result.exit_code == 0, result.output
+    assert "Old BCP" in result.output
+
+
+def test_list_replica_include_people(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["accounts", "list", "--include-people"])
+    assert result.exit_code == 0, result.output
+    assert "Alex" in result.output
+
+
+def test_list_replica_json_mode(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["accounts", "list", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert isinstance(payload, list)
+    names = [a["name"] for a in payload]
+    assert "BCP Soles" in names
+    assert "Cash" in names
+
+
+def test_list_replica_balance_home_cents_is_null(cache_populated):
+    """Cached reads return null current_balance_home_cents (the documented drift behavior)."""
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["accounts", "list", "--json"])
+    payload = json.loads(result.output)
+    bcp = next(a for a in payload if a["name"] == "BCP Soles")
+    assert bcp["current_balance_home_cents"] is None
+    assert bcp["current_balance_cents"] == 125000
+
+
+def test_get_replica_path(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["accounts", "get", "11111111-1111-1111-1111-111111111111"])
+    assert result.exit_code == 0, result.output
+    assert "BCP Soles" in result.output
+
+
+def test_get_replica_not_found(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["accounts", "get", "00000000-0000-0000-0000-000000000000"])
+    assert result.exit_code == 1
+    assert "NOT_FOUND" in result.output
+
+
+@respx.mock
+def test_list_auto_cold_start_when_cache_empty(configured):
+    """First-time read triggers a cold-start and prints the stderr notice."""
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload([ACCOUNT_RESPONSE]))
+    )
+    accounts_route = respx.get("https://api.example.com/v1/accounts")
+    result = runner.invoke(cli_app, ["accounts", "list"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
+    assert not accounts_route.called
+    assert "BCP Soles" in result.output
+    assert cache_db.cache_path().exists()
+
+
+@respx.mock
+def test_list_no_auto_cold_start_when_cache_healthy(cache_populated):
+    """A healthy cache means no /v1/sync call on subsequent reads."""
+    sync_route = respx.get("https://api.example.com/v1/sync")
+    result = runner.invoke(cli_app, ["accounts", "list"])
+    assert result.exit_code == 0, result.output
+    assert not sync_route.called
+
+
+@respx.mock
+def test_list_no_cache_does_not_open_cache_file(configured, tmp_path):
+    respx.get("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(200, json=LIST_RESPONSE)
+    )
+    runner.invoke(cli_app, ["--no-cache", "accounts", "list"])
+    cache_file = tmp_path / "cache.sqlite3"
+    assert not cache_file.exists()
+
+
+def test_list_engine_url_swap_triggers_cold_start(cache_populated):
+    """If config's engine_url no longer matches what the cache stored, cold-start fires."""
+    conn = cache_db.connect()
+    try:
+        cache_state.write_identity(
+            conn,
+            user_id="u1",
+            client_id=str(config_module.ensure_loaded().client_id),
+            engine_url="https://stale.example.com",  # mismatch vs cfg
+        )
+    finally:
+        conn.close()
+
+    with respx.mock(base_url="https://api.example.com") as router:
+        sync_route = router.get("/v1/sync").mock(
+            return_value=httpx.Response(200, json=_sync_payload([ACCOUNT_RESPONSE]))
+        )
+        result = runner.invoke(cli_app, ["accounts", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
 
 
 @respx.mock

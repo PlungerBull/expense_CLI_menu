@@ -428,3 +428,229 @@ def test_wipe_removes_cache_file(cache_path):
     assert cache_db.cache_path().exists()
     cache.wipe()
     assert not cache_db.cache_path().exists()
+
+
+def _seed_accounts(conn, rows: list[dict]) -> None:
+    for row in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO accounts "
+            "(id, user_id, is_archived, is_person, deleted_at, sort_order, version, body) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["id"],
+                row.get("user_id"),
+                1 if row.get("is_archived") else 0,
+                1 if row.get("is_person") else 0,
+                row.get("deleted_at"),
+                row.get("sort_order"),
+                row.get("version"),
+                json.dumps(row),
+            ),
+        )
+
+
+def _seed_categories(conn, rows: list[dict]) -> None:
+    for row in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO categories "
+            "(id, user_id, is_archived, is_system, deleted_at, sort_order, version, body) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["id"],
+                row.get("user_id"),
+                1 if row.get("is_archived") else 0,
+                1 if row.get("is_system") else 0,
+                row.get("deleted_at"),
+                row.get("sort_order"),
+                row.get("version"),
+                json.dumps(row),
+            ),
+        )
+
+
+def _seed_hashtags(conn, rows: list[dict]) -> None:
+    for row in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO hashtags "
+            "(id, user_id, is_archived, deleted_at, sort_order, version, body) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["id"],
+                row.get("user_id"),
+                1 if row.get("is_archived") else 0,
+                row.get("deleted_at"),
+                row.get("sort_order"),
+                row.get("version"),
+                json.dumps(row),
+            ),
+        )
+
+
+def test_list_accounts_default_excludes_archived_and_people(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_accounts(
+            conn,
+            [
+                {"id": "a1", "user_id": "u1", "name": "Active", "sort_order": 1, "version": 1},
+                {
+                    "id": "a2",
+                    "user_id": "u1",
+                    "name": "Old",
+                    "is_archived": True,
+                    "sort_order": 2,
+                    "version": 1,
+                },
+                {
+                    "id": "a3",
+                    "user_id": "u1",
+                    "name": "Alex",
+                    "is_person": True,
+                    "sort_order": 3,
+                    "version": 1,
+                },
+            ],
+        )
+    finally:
+        conn.close()
+    rows = cache.list_accounts()
+    names = [r["name"] for r in rows]
+    assert names == ["Active"]
+
+
+def test_list_accounts_with_includes(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_accounts(
+            conn,
+            [
+                {"id": "a1", "user_id": "u1", "name": "Active", "sort_order": 1, "version": 1},
+                {
+                    "id": "a2",
+                    "user_id": "u1",
+                    "name": "Old",
+                    "is_archived": True,
+                    "sort_order": 2,
+                    "version": 1,
+                },
+                {
+                    "id": "a3",
+                    "user_id": "u1",
+                    "name": "Alex",
+                    "is_person": True,
+                    "sort_order": 3,
+                    "version": 1,
+                },
+            ],
+        )
+    finally:
+        conn.close()
+    assert {r["name"] for r in cache.list_accounts(include_archived=True)} == {"Active", "Old"}
+    assert {r["name"] for r in cache.list_accounts(include_people=True)} == {"Active", "Alex"}
+
+
+def test_list_accounts_sort_order(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_accounts(
+            conn,
+            [
+                {"id": "a1", "user_id": "u1", "name": "Third", "sort_order": 3, "version": 1},
+                {"id": "a2", "user_id": "u1", "name": "First", "sort_order": 1, "version": 1},
+                {"id": "a3", "user_id": "u1", "name": "Second", "sort_order": 2, "version": 1},
+            ],
+        )
+    finally:
+        conn.close()
+    assert [r["name"] for r in cache.list_accounts()] == ["First", "Second", "Third"]
+
+
+def test_get_account_hits_and_miss(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_accounts(
+            conn,
+            [{"id": "a1", "user_id": "u1", "name": "Hit", "sort_order": 1, "version": 1}],
+        )
+    finally:
+        conn.close()
+    body = cache.get_account("a1")
+    assert body["name"] == "Hit"
+
+    with pytest.raises(EngineError) as exc:
+        cache.get_account("missing")
+    assert exc.value.code == "NOT_FOUND"
+    assert exc.value.status == 404
+
+
+def test_list_categories_paginated_shape(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_categories(
+            conn,
+            [
+                {"id": f"c{i}", "user_id": "u1", "name": f"Cat{i}", "sort_order": i, "version": 1}
+                for i in range(1, 6)
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_categories(limit=2, offset=1)
+    assert body["total"] == 5
+    assert body["limit"] == 2
+    assert body["offset"] == 1
+    assert [c["name"] for c in body["items"]] == ["Cat2", "Cat3"]
+
+
+def test_list_hashtags_smoke(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_hashtags(
+            conn,
+            [
+                {"id": "h1", "user_id": "u1", "name": "lunch", "sort_order": 1, "version": 1},
+                {
+                    "id": "h2",
+                    "user_id": "u1",
+                    "name": "old",
+                    "is_archived": True,
+                    "sort_order": 2,
+                    "version": 1,
+                },
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_hashtags()
+    assert body["total"] == 1
+    assert body["items"][0]["name"] == "lunch"
+
+
+@respx.mock
+def test_ensure_synced_no_op_on_healthy_cache(cache_path, cfg, capsys):
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+
+    respx.get("https://api.example.com/v1/sync")
+    with _make_client(cfg) as client:
+        result = cache.ensure_synced(client, cfg)
+    assert result is None
+    captured = capsys.readouterr()
+    assert "First-run sync" not in captured.err
+
+
+@respx.mock
+def test_ensure_synced_cold_starts_empty_cache(cache_path, cfg, capsys):
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        result = cache.ensure_synced(client, cfg)
+    assert result is not None
+    assert result.kind == "cold_start"
+    assert sync_route.called
+    captured = capsys.readouterr()
+    assert "First-run sync" in captured.err

@@ -11,8 +11,10 @@ Long-term the CLI is **cache-by-default** (matches iOS, web, every interactive c
 The replica is being built in three phases:
 
 - **7a (shipped)** — stateless `expense sync --full` only. No cache.
-- **7b.1 (shipped)** — SQLite layer, delta sync, cold start, tombstones, `sync_token` persistence. Cache exists; `expense sync` fills/refreshes it. Read commands still hit the engine — `--no-cache` is a no-op on reads.
-- **7b.2 (pending)** — replica-backed paths for `list`/`get` on the 6 cacheable resources. Auto cold-start when a read hits an empty cache. `--no-cache` becomes meaningful.
+- **7b.1 (shipped)** — SQLite layer, delta sync, cold start, tombstones, `sync_token` persistence. Cache exists; `expense sync` fills/refreshes it.
+- **7b.2.1 (shipped)** — replica-backed `list`/`get` for accounts, categories, hashtags. Auto cold-start when a read hits an empty cache. `--no-cache` is now meaningful on these commands.
+- **7b.2.2 (pending)** — replica-backed reads for inbox + reconciliations.
+- **7b.2.3 (pending)** — replica-backed reads for transactions (8 filters incl. hashtag JSON containment + ILIKE search).
 - **7b.3 (pending)** — write-path refresh (auto delta sync after every successful write).
 
 ## Sync model
@@ -26,13 +28,18 @@ The CLI maps onto these two modes through different invocation forms.
 
 ## Phasing
 
-| Invocation | Step 7b.1 (today) | Step 7b.2+ (replica reads land) |
+| Invocation | Step 7b.2.1 (today) | Step 7b.2.2+ (more reads land) |
 |---|---|---|
-| `expense sync` (bare) | Delta sync against cache; cold-starts on first run | Same — steady-state delta sync |
+| `expense sync` (bare) | Delta sync against cache; cold-starts on first run | Same |
 | `expense sync --full` | Cold start: wipe + full pull + rebuild cache | Same |
-| `expense sync --no-cache` | Stateless full snapshot (7a behavior preserved); cache untouched | Same |
+| `expense sync --no-cache` | Stateless full snapshot; cache untouched | Same |
 | `EXPENSE_STATELESS=1 expense sync` | Same as `--no-cache` | Same |
-| `expense transactions list` | **Engine round-trip** (cache not consumed yet) | **Replica-backed** by default; `--no-cache` forces engine round-trip |
+| `expense accounts list/get` | **Replica-backed** by default; `--no-cache` round-trips engine | Same |
+| `expense categories list/get` | **Replica-backed** | Same |
+| `expense hashtags list/get` | **Replica-backed** | Same |
+| `expense inbox list/get` | Engine round-trip | **Replica-backed** in 7b.2.2 |
+| `expense reconciliations list/get` | Engine round-trip | **Replica-backed** in 7b.2.2 |
+| `expense transactions list/get` | Engine round-trip | **Replica-backed** in 7b.2.3 |
 | `expense dashboard`, `reports/*`, `log`, `whoami`, `ping` | Engine-only | Engine-only (FX drift / not in `/sync`) |
 
 ## Write semantics
@@ -61,7 +68,9 @@ In stateless mode (Step 7b's `--no-cache`), the engine response with `sync_token
 
 **Tables.** Seven resource tables (`accounts`, `categories`, `hashtags`, `transactions`, `inbox`, `reconciliations`, `settings`) plus a singleton `_cache_meta` row tracking `schema_version`, `user_id`, `client_id`, `engine_url`, `sync_token`, `last_synced_at`. Junction-flattened `transactions.hashtag_ids` ([§3a](../../expense_world_engine/docs/api-design-principles.md)) lives inside the `body` JSON.
 
-**Cold start.** Triggered by `expense sync --full`, by bare `expense sync` against a cache with no stored `sync_token`, or by any health-check failure (schema mismatch, user_id mismatch, engine_url mismatch, unknown-token 422 from engine). Sequence: wipe the cache file, fetch `GET /v1/sync?sync_token=*&debit_as_negative=true`, populate, persist new token + identity. Re-runnable safely.
+**Cold start.** Triggered by `expense sync --full`, by bare `expense sync` against a cache with no stored `sync_token`, or by any health-check failure (schema mismatch, engine_url mismatch, client_id mismatch, unknown-token 422 from engine). Sequence: wipe the cache file, fetch `GET /v1/sync?sync_token=*&debit_as_negative=true`, populate, persist new token + identity. Re-runnable safely.
+
+**Auto cold-start on reads.** Replica-backed read commands (currently accounts/categories/hashtags `list` and `get`, more in 7b.2.2 / 7b.2.3) call `cache.ensure_synced(client, cfg)` before querying. If the cache is missing/empty/unhealthy, this triggers a cold-start with a one-line stderr notice ("First-run sync against `<engine_url>` — this may take a moment...") so users understand why the first read is slow. Subsequent reads against a healthy cache run with no engine round-trip and no notice. The notice goes to stderr so `--json` on stdout stays pipe-clean.
 
 **Delta sync.** Bare `expense sync` against a healthy cache. Reads stored token, fetches `GET /v1/sync?sync_token=<stored>&debit_as_negative=true`, applies inserts/updates/tombstones inside one SQLite transaction, persists new token. On unknown-token 422 → falls through to cold start automatically.
 
@@ -73,7 +82,9 @@ In stateless mode (Step 7b's `--no-cache`), the engine response with `sync_token
 
 ## Home-currency drift warning
 
-`amount_home_cents` and related fields in cached rows reflect FX rates **at sync time**, not now. Across a multi-day cache they drift. Replica readers must:
+`amount_home_cents` and related fields in cached rows reflect FX rates **at sync time**, not now. Across a multi-day cache they drift. **Accounts are stricter still:** `/sync` returns `current_balance_home_cents: null` for every account row by design — only `GET /v1/dashboard` computes it against current FX rates. So `expense accounts list/get` returns null where engine-direct calls would return a value. Run `expense dashboard` or pass `--no-cache` for current balances.
+
+Replica readers must:
 
 - Prefer `GET /v1/dashboard` and `GET /v1/reports/*` for any balance-sensitive aggregate display (current balances, monthly totals, net-worth views). The engine recomputes these against current rates.
 - Never sum `amount_home_cents` across cached transaction rows to derive balances or totals.

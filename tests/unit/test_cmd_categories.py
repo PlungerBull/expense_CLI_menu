@@ -8,14 +8,20 @@ import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
+from expense.cache import db as cache_db
+from expense.cache import state as cache_state
 from expense.commands.categories_cmd import app as categories_app
+from expense.context import AppContext
 
 cli_app = typer.Typer()
 
 
 @cli_app.callback()
-def _root() -> None:
-    pass
+def _root(
+    ctx: typer.Context,
+    no_cache: bool = typer.Option(False, "--no-cache", envvar="EXPENSE_STATELESS"),
+) -> None:
+    ctx.obj = AppContext(no_cache=no_cache)
 
 
 cli_app.add_typer(categories_app, name="categories")
@@ -25,6 +31,7 @@ runner = CliRunner()
 
 CATEGORY_RESPONSE = {
     "id": "22222222-2222-2222-2222-222222222222",
+    "user_id": "u1",
     "name": "Food",
     "color": "#00FF00",
     "sort_order": 1,
@@ -40,10 +47,43 @@ CATEGORY_RESPONSE = {
 LIST_RESPONSE = [CATEGORY_RESPONSE]
 
 
+def _sync_payload(categories_rows: list[dict]) -> dict:
+    return {
+        "sync_token": "tok-1",
+        "accounts": [],
+        "categories": categories_rows,
+        "hashtags": [],
+        "inbox": [],
+        "transactions": [],
+        "reconciliations": [],
+        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
+    }
+
+
+def _insert_category(conn, row: dict) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO categories "
+        "(id, user_id, is_archived, is_system, deleted_at, sort_order, version, body) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            row["id"],
+            row.get("user_id"),
+            1 if row.get("is_archived") else 0,
+            1 if row.get("is_system") else 0,
+            row.get("deleted_at"),
+            row.get("sort_order"),
+            row.get("version"),
+            json.dumps(row),
+        ),
+    )
+
+
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
     config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
     monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
     config_module.save(
         config_module.Config(
             engine_url="https://api.example.com",
@@ -54,12 +94,53 @@ def configured(tmp_path, monkeypatch):
     yield
 
 
+@pytest.fixture
+def cache_populated(configured):
+    cfg = config_module.ensure_loaded()
+    conn = cache_db.connect()
+    try:
+        rows = [
+            CATEGORY_RESPONSE,
+            {
+                "id": "33333333-3333-3333-3333-333333333333",
+                "user_id": "u1",
+                "name": "Transport",
+                "color": "#0000FF",
+                "sort_order": 2,
+                "is_system": False,
+                "is_archived": False,
+                "deleted_at": None,
+                "version": 1,
+            },
+            {
+                "id": "44444444-4444-4444-4444-444444444444",
+                "user_id": "u1",
+                "name": "Crypto",
+                "color": "#FFA500",
+                "sort_order": 99,
+                "is_system": False,
+                "is_archived": True,
+                "deleted_at": None,
+                "version": 1,
+            },
+        ]
+        for row in rows:
+            _insert_category(conn, row)
+        cache_state.write_identity(
+            conn, user_id="u1", client_id=str(cfg.client_id), engine_url=cfg.engine_url
+        )
+        cache_state.write_token(conn, "tok-populated")
+    finally:
+        conn.close()
+    yield
+
+
 @respx.mock
-def test_list_happy(configured):
+def test_list_engine_path_with_no_cache(configured):
     route = respx.get("https://api.example.com/v1/categories").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["categories", "list", "--include-archived"])
+    result = runner.invoke(cli_app, ["--no-cache", "categories", "list", "--include-archived"])
     assert result.exit_code == 0, result.output
     assert "Food" in result.output
 
@@ -68,8 +149,7 @@ def test_list_happy(configured):
 
 
 @respx.mock
-def test_list_pagination_hint(configured):
-    """Pagination hint surfaces when total > offset + items in a paginated body."""
+def test_list_pagination_hint_engine_path(configured):
     paginated = {
         "items": [CATEGORY_RESPONSE],
         "total": 5,
@@ -79,33 +159,33 @@ def test_list_pagination_hint(configured):
     respx.get("https://api.example.com/v1/categories").mock(
         return_value=httpx.Response(200, json=paginated)
     )
-    result = runner.invoke(cli_app, ["categories", "list"])
+    result = runner.invoke(cli_app, ["--no-cache", "categories", "list"])
     assert result.exit_code == 0, result.output
     assert "showing 1 of 5" in result.output
 
 
 @respx.mock
-def test_list_json_mode(configured):
+def test_list_json_mode_engine_path(configured):
     respx.get("https://api.example.com/v1/categories").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["categories", "list", "--json"])
+    result = runner.invoke(cli_app, ["--no-cache", "categories", "list", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.output) == LIST_RESPONSE
 
 
 @respx.mock
-def test_get_happy(configured):
+def test_get_happy_engine_path(configured):
     respx.get("https://api.example.com/v1/categories/abc").mock(
         return_value=httpx.Response(200, json=CATEGORY_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["categories", "get", "abc"])
+    result = runner.invoke(cli_app, ["--no-cache", "categories", "get", "abc"])
     assert result.exit_code == 0, result.output
     assert "Food" in result.output
 
 
 @respx.mock
-def test_get_404(configured):
+def test_get_404_engine_path(configured):
     respx.get("https://api.example.com/v1/categories/missing").mock(
         return_value=httpx.Response(
             404,
@@ -118,9 +198,69 @@ def test_get_404(configured):
             },
         )
     )
-    result = runner.invoke(cli_app, ["categories", "get", "missing"])
+    result = runner.invoke(cli_app, ["--no-cache", "categories", "get", "missing"])
     assert result.exit_code == 1
     assert "NOT_FOUND" in result.output
+
+
+def test_list_replica_path(cache_populated):
+    with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:
+        cat_route = router.get("/v1/categories")
+        result = runner.invoke(cli_app, ["categories", "list"])
+    assert result.exit_code == 0, result.output
+    assert "Food" in result.output
+    assert "Transport" in result.output
+    assert "Crypto" not in result.output  # archived excluded
+    assert not cat_route.called
+
+
+def test_list_replica_include_archived(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["categories", "list", "--include-archived"])
+    assert result.exit_code == 0, result.output
+    assert "Crypto" in result.output
+
+
+def test_list_replica_paginated_shape(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["categories", "list", "--limit", "1", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["total"] == 2  # only 2 active (Crypto archived)
+    assert payload["limit"] == 1
+    assert payload["offset"] == 0
+    assert len(payload["items"]) == 1
+
+
+def test_get_replica_path(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(
+            cli_app, ["categories", "get", "22222222-2222-2222-2222-222222222222"]
+        )
+    assert result.exit_code == 0, result.output
+    assert "Food" in result.output
+
+
+def test_get_replica_not_found(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(
+            cli_app, ["categories", "get", "00000000-0000-0000-0000-000000000000"]
+        )
+    assert result.exit_code == 1
+    assert "NOT_FOUND" in result.output
+
+
+@respx.mock
+def test_list_auto_cold_start_when_cache_empty(configured):
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload([CATEGORY_RESPONSE]))
+    )
+    cat_route = respx.get("https://api.example.com/v1/categories")
+    result = runner.invoke(cli_app, ["categories", "list"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
+    assert not cat_route.called
+    assert "Food" in result.output
 
 
 @respx.mock

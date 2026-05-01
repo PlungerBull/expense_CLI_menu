@@ -217,11 +217,17 @@ SQLite layer, schema, WAL setup, cold start, delta sync, tombstone application, 
 
 **Commit:** `feat: local SQLite replica foundation (Step 7b.1)`
 
-#### Step 7b.2 — Read consumption + auto cold-start
+#### Step 7b.2 — Read consumption + auto cold-start (split into 7b.2.1 / 7b.2.2 / 7b.2.3)
 
-For each of the 6 cacheable resources (accounts, categories, hashtags, transactions, inbox, reconciliations), switch `list` and `get` to a replica-backed default path. `--no-cache` (existing flag from 7b.1) forces an engine round-trip. Auto cold-start when a read hits an empty cache. Pagination + filter logic moves client-side over cached rows. `dashboard`, `reports/*`, `log`, `whoami`, `ping` stay engine-only (FX drift / not in `/sync`).
+Split by resource complexity so the auto-cold-start UX and `--no-cache` engine fallback pattern bake on cheap cases first.
 
-**Commit:** `feat: replica-backed list/get + auto cold-start (Step 7b.2)`
+**Step 7b.2.1 — Simple resources + auto cold-start.** `list`/`get` for accounts, categories, hashtags switch to replica-backed default. Filters are pure SQL (booleans only). Establishes the auto-cold-start UX (stderr notice on first-time empty cache) and the `--no-cache` engine fallback pattern. Accounts cached read returns `current_balance_home_cents: null` per §3b drift policy — users wanting current home balances run `expense dashboard` or pass `--no-cache`.
+
+**Commit:** `feat: replica-backed reads for simple resources + auto cold-start (Step 7b.2.1)`
+
+**Step 7b.2.2 — Inbox + reconciliations.** `inbox list/get` and `reconciliations list/get` switch to replica-backed default. Inbox `ready` filter replicated as multi-condition SQL predicate (engine: title, amount, date, account, category all set + date ≤ now); `overdue` is `date < now()`. `reconciliations get` embeds paginated transactions over the transactions cache (sort `date DESC, created_at DESC`).
+
+**Step 7b.2.3 — Transactions.** `transactions list/get`. 8 filters: account_id, category_id, hashtag_id, reconciliation_id, date_from, date_to, cleared, search. Most map to indexed columns. `hashtag_id` uses SQLite `json_each` for JSON containment over the embedded `hashtag_ids` array. `search` is `LIKE '%term%'` against title + description (case-insensitive in SQLite by default for ASCII, matches engine's PostgreSQL `ILIKE`).
 
 #### Step 7b.3 — Write-path refresh
 
