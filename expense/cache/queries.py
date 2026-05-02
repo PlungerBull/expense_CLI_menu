@@ -161,3 +161,158 @@ def get_hashtag(hashtag_id: str) -> dict:
     if row is None:
         raise _not_found("Hashtag", hashtag_id)
     return _row_to_dict(row["body"])
+
+
+_READY_PREDICATE = """\
+i.deleted_at IS NULL
+AND json_extract(i.body, '$.title') IS NOT NULL
+AND json_extract(i.body, '$.title') != 'UNTITLED'
+AND json_extract(i.body, '$.amount_cents') IS NOT NULL
+AND json_extract(i.body, '$.amount_cents') != 0
+AND i.date IS NOT NULL
+AND date(i.date) <= date('now')
+AND i.account_id IS NOT NULL
+AND i.category_id IS NOT NULL
+AND a.id IS NOT NULL AND a.deleted_at IS NULL AND a.is_archived = 0
+AND c.id IS NOT NULL AND c.deleted_at IS NULL AND c.is_archived = 0\
+"""
+
+
+def list_inbox(
+    *,
+    ready: bool = False,
+    overdue: bool = False,
+    include_deleted: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> dict:
+    """GET /v1/inbox equivalent. Paginated wrapper.
+
+    `ready` replicates the engine's full predicate (title set + non-UNTITLED,
+    amount set + non-zero, date <= today, account & category present and active).
+    """
+    eff_limit = limit if isinstance(limit, int) and limit > 0 else 100
+    eff_offset = offset if isinstance(offset, int) and offset >= 0 else 0
+
+    where_parts: list[str] = []
+    if ready:
+        where_parts.append(_READY_PREDICATE)
+    else:
+        if not include_deleted:
+            where_parts.append("i.deleted_at IS NULL")
+        if overdue:
+            where_parts.append("i.date IS NOT NULL AND date(i.date) < date('now')")
+
+    where_sql = ""
+    if where_parts:
+        where_sql = "WHERE " + " AND ".join(f"({c})" for c in where_parts)
+
+    conn = db.connect()
+    try:
+        join_sql = (
+            "FROM inbox i "
+            "LEFT JOIN accounts a ON a.id = i.account_id "
+            "LEFT JOIN categories c ON c.id = i.category_id "
+        )
+        total = conn.execute(
+            f"SELECT count(*) {join_sql}{where_sql}",
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT i.body {join_sql}{where_sql} "
+            "ORDER BY i.date DESC, i.id ASC LIMIT ? OFFSET ?",
+            (eff_limit, eff_offset),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return {
+        "total": total,
+        "limit": eff_limit,
+        "offset": eff_offset,
+        "items": [_row_to_dict(r["body"]) for r in rows],
+    }
+
+
+def get_inbox(inbox_id: str) -> dict:
+    conn = db.connect()
+    try:
+        row = conn.execute("SELECT body FROM inbox WHERE id = ?", (inbox_id,)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise _not_found("Inbox item", inbox_id)
+    return _row_to_dict(row["body"])
+
+
+def list_reconciliations(
+    *,
+    account_id: str | None = None,
+    include_deleted: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> dict:
+    where: list[str] = []
+    params: tuple = ()
+    if account_id is not None:
+        where.append("account_id = ?")
+        params = (account_id,)
+    if not include_deleted:
+        where.append("deleted_at IS NULL")
+    return _list_paginated(
+        "reconciliations",
+        where_clauses=where,
+        params=params,
+        order_by="ORDER BY COALESCE(sort_order, 999999) ASC, id ASC",
+        limit=limit,
+        offset=offset,
+    )
+
+
+def get_reconciliation(
+    reconciliation_id: str,
+    *,
+    embedded_limit: int | None = None,
+    embedded_offset: int | None = None,
+) -> dict:
+    """Returns the reconciliation row plus paginated embedded transactions.
+
+    Mimics the engine's ReconciliationDetailResponse: the row's fields plus
+    `transactions`, `transactions_total`, `transactions_limit`,
+    `transactions_offset`, `transactions_truncated`.
+    """
+    eff_limit = embedded_limit if isinstance(embedded_limit, int) and embedded_limit > 0 else 100
+    eff_offset = embedded_offset if isinstance(embedded_offset, int) and embedded_offset >= 0 else 0
+
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            "SELECT body FROM reconciliations WHERE id = ?", (reconciliation_id,)
+        ).fetchone()
+        if row is None:
+            raise _not_found("Reconciliation", reconciliation_id)
+        recon_body = _row_to_dict(row["body"])
+
+        total = conn.execute(
+            "SELECT count(*) FROM transactions "
+            "WHERE reconciliation_id = ? AND deleted_at IS NULL",
+            (reconciliation_id,),
+        ).fetchone()[0]
+        tx_rows = conn.execute(
+            "SELECT body FROM transactions "
+            "WHERE reconciliation_id = ? AND deleted_at IS NULL "
+            "ORDER BY date DESC, json_extract(body, '$.created_at') DESC "
+            "LIMIT ? OFFSET ?",
+            (reconciliation_id, eff_limit, eff_offset),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    items = [_row_to_dict(r["body"]) for r in tx_rows]
+    return {
+        **recon_body,
+        "transactions": items,
+        "transactions_total": total,
+        "transactions_limit": eff_limit,
+        "transactions_offset": eff_offset,
+        "transactions_truncated": (eff_offset + len(items)) < total,
+    }

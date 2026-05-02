@@ -654,3 +654,380 @@ def test_ensure_synced_cold_starts_empty_cache(cache_path, cfg, capsys):
     assert sync_route.called
     captured = capsys.readouterr()
     assert "First-run sync" in captured.err
+
+
+def _seed_inbox(conn, rows: list[dict]) -> None:
+    for row in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO inbox "
+            "(id, user_id, account_id, category_id, status, date, deleted_at, version, body) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["id"],
+                row.get("user_id"),
+                row.get("account_id"),
+                row.get("category_id"),
+                row.get("status"),
+                row.get("date"),
+                row.get("deleted_at"),
+                row.get("version"),
+                json.dumps(row),
+            ),
+        )
+
+
+def _seed_reconciliations(conn, rows: list[dict]) -> None:
+    for row in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO reconciliations "
+            "(id, user_id, account_id, status, sort_order, date_end, deleted_at, version, body) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["id"],
+                row.get("user_id"),
+                row.get("account_id"),
+                row.get("status"),
+                row.get("sort_order"),
+                row.get("date_end"),
+                row.get("deleted_at"),
+                row.get("version"),
+                json.dumps(row),
+            ),
+        )
+
+
+def _seed_transactions(conn, rows: list[dict]) -> None:
+    for row in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO transactions "
+            "(id, user_id, account_id, category_id, reconciliation_id, parent_transaction_id, "
+            "transfer_transaction_id, inbox_id, date, deleted_at, version, updated_at, body) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["id"],
+                row.get("user_id"),
+                row.get("account_id"),
+                row.get("category_id"),
+                row.get("reconciliation_id"),
+                row.get("parent_transaction_id"),
+                row.get("transfer_transaction_id"),
+                row.get("inbox_id"),
+                row.get("date"),
+                row.get("deleted_at"),
+                row.get("version"),
+                row.get("updated_at"),
+                json.dumps(row),
+            ),
+        )
+
+
+def test_list_inbox_default_excludes_deleted(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_inbox(
+            conn,
+            [
+                {
+                    "id": "i1",
+                    "user_id": "u1",
+                    "title": "active",
+                    "amount_cents": 100,
+                    "date": "2026-04-25",
+                    "version": 1,
+                },
+                {
+                    "id": "i2",
+                    "user_id": "u1",
+                    "title": "deleted",
+                    "amount_cents": 200,
+                    "date": "2026-04-25",
+                    "deleted_at": "2026-04-26",
+                    "version": 1,
+                },
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_inbox()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == "i1"
+
+
+def test_list_inbox_overdue_filter(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_inbox(
+            conn,
+            [
+                {
+                    "id": "future",
+                    "user_id": "u1",
+                    "title": "x",
+                    "amount_cents": 1,
+                    "date": "2099-01-01",
+                    "version": 1,
+                },
+                {
+                    "id": "past",
+                    "user_id": "u1",
+                    "title": "x",
+                    "amount_cents": 1,
+                    "date": "2020-01-01",
+                    "version": 1,
+                },
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_inbox(overdue=True)
+    ids = [r["id"] for r in body["items"]]
+    assert "past" in ids
+    assert "future" not in ids
+
+
+def test_list_inbox_ready_filter_full_predicate(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_accounts(
+            conn,
+            [
+                {"id": "active-acct", "user_id": "u1", "name": "A", "sort_order": 1, "version": 1},
+                {
+                    "id": "archived-acct",
+                    "user_id": "u1",
+                    "name": "Old",
+                    "is_archived": True,
+                    "sort_order": 2,
+                    "version": 1,
+                },
+            ],
+        )
+        _seed_categories(
+            conn,
+            [
+                {"id": "active-cat", "user_id": "u1", "name": "C", "sort_order": 1, "version": 1},
+            ],
+        )
+        _seed_inbox(
+            conn,
+            [
+                {
+                    "id": "ok",
+                    "user_id": "u1",
+                    "title": "lunch",
+                    "amount_cents": 100,
+                    "date": "2026-04-25",
+                    "account_id": "active-acct",
+                    "category_id": "active-cat",
+                    "version": 1,
+                },
+                {
+                    "id": "untitled",
+                    "user_id": "u1",
+                    "title": "UNTITLED",
+                    "amount_cents": 100,
+                    "date": "2026-04-25",
+                    "account_id": "active-acct",
+                    "category_id": "active-cat",
+                    "version": 1,
+                },
+                {
+                    "id": "no-amount",
+                    "user_id": "u1",
+                    "title": "x",
+                    "amount_cents": 0,
+                    "date": "2026-04-25",
+                    "account_id": "active-acct",
+                    "category_id": "active-cat",
+                    "version": 1,
+                },
+                {
+                    "id": "future",
+                    "user_id": "u1",
+                    "title": "x",
+                    "amount_cents": 100,
+                    "date": "2099-12-31",
+                    "account_id": "active-acct",
+                    "category_id": "active-cat",
+                    "version": 1,
+                },
+                {
+                    "id": "no-acct",
+                    "user_id": "u1",
+                    "title": "x",
+                    "amount_cents": 100,
+                    "date": "2026-04-25",
+                    "account_id": None,
+                    "category_id": "active-cat",
+                    "version": 1,
+                },
+                {
+                    "id": "archived-acct-ref",
+                    "user_id": "u1",
+                    "title": "x",
+                    "amount_cents": 100,
+                    "date": "2026-04-25",
+                    "account_id": "archived-acct",
+                    "category_id": "active-cat",
+                    "version": 1,
+                },
+                {
+                    "id": "missing-cat",
+                    "user_id": "u1",
+                    "title": "x",
+                    "amount_cents": 100,
+                    "date": "2026-04-25",
+                    "account_id": "active-acct",
+                    "category_id": "ghost",
+                    "version": 1,
+                },
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_inbox(ready=True)
+    ids = [r["id"] for r in body["items"]]
+    assert "ok" in ids
+    assert "untitled" not in ids
+    assert "no-amount" not in ids
+    assert "future" not in ids
+    assert "no-acct" not in ids
+    assert "archived-acct-ref" not in ids
+    assert "missing-cat" not in ids
+
+
+def test_get_inbox_hit_and_miss(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_inbox(
+            conn,
+            [
+                {
+                    "id": "ib1",
+                    "user_id": "u1",
+                    "title": "x",
+                    "amount_cents": 1,
+                    "date": "2026-04-25",
+                    "version": 1,
+                }
+            ],
+        )
+    finally:
+        conn.close()
+    assert cache.get_inbox("ib1")["title"] == "x"
+    with pytest.raises(EngineError) as exc:
+        cache.get_inbox("missing")
+    assert exc.value.code == "NOT_FOUND"
+
+
+def test_list_reconciliations_account_filter(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_reconciliations(
+            conn,
+            [
+                {"id": "r1", "user_id": "u1", "account_id": "a1", "sort_order": 1, "version": 1},
+                {"id": "r2", "user_id": "u1", "account_id": "a1", "sort_order": 2, "version": 1},
+                {"id": "r3", "user_id": "u1", "account_id": "a2", "sort_order": 1, "version": 1},
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_reconciliations(account_id="a1")
+    assert body["total"] == 2
+    assert [i["id"] for i in body["items"]] == ["r1", "r2"]
+
+
+def test_get_reconciliation_with_embedded_transactions(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_reconciliations(
+            conn,
+            [
+                {
+                    "id": "r1",
+                    "user_id": "u1",
+                    "account_id": "a1",
+                    "sort_order": 1,
+                    "version": 1,
+                    "name": "April",
+                }
+            ],
+        )
+        _seed_transactions(
+            conn,
+            [
+                {
+                    "id": "t1",
+                    "user_id": "u1",
+                    "reconciliation_id": "r1",
+                    "date": "2026-04-15",
+                    "version": 1,
+                    "updated_at": "2026-04-15",
+                    "created_at": "2026-04-15T12:00:00Z",
+                },
+                {
+                    "id": "t2",
+                    "user_id": "u1",
+                    "reconciliation_id": "r1",
+                    "date": "2026-04-14",
+                    "version": 1,
+                    "updated_at": "2026-04-14",
+                    "created_at": "2026-04-14T12:00:00Z",
+                },
+                {
+                    "id": "t-other",
+                    "user_id": "u1",
+                    "reconciliation_id": "r2",
+                    "date": "2026-04-15",
+                    "version": 1,
+                    "updated_at": "2026-04-15",
+                    "created_at": "2026-04-15T12:00:00Z",
+                },
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.get_reconciliation("r1")
+    assert body["id"] == "r1"
+    assert body["transactions_total"] == 2
+    assert [t["id"] for t in body["transactions"]] == ["t1", "t2"]
+    assert body["transactions_truncated"] is False
+
+
+def test_get_reconciliation_pagination(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_reconciliations(
+            conn,
+            [{"id": "r1", "user_id": "u1", "account_id": "a1", "sort_order": 1, "version": 1}],
+        )
+        _seed_transactions(
+            conn,
+            [
+                {
+                    "id": f"t{i}",
+                    "user_id": "u1",
+                    "reconciliation_id": "r1",
+                    "date": f"2026-04-{i:02d}",
+                    "version": 1,
+                    "updated_at": f"2026-04-{i:02d}",
+                    "created_at": f"2026-04-{i:02d}T12:00:00Z",
+                }
+                for i in range(1, 6)
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.get_reconciliation("r1", embedded_limit=2, embedded_offset=0)
+    assert body["transactions_total"] == 5
+    assert body["transactions_limit"] == 2
+    assert body["transactions_offset"] == 0
+    assert len(body["transactions"]) == 2
+    assert body["transactions_truncated"] is True
+
+
+def test_get_reconciliation_not_found(cache_path):
+    with pytest.raises(EngineError) as exc:
+        cache.get_reconciliation("missing")
+    assert exc.value.code == "NOT_FOUND"

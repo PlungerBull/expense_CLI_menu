@@ -55,7 +55,16 @@ RESOURCE_TABLES: dict[str, tuple[str, ...]] = {
         "version",
         "updated_at",
     ),
-    "inbox": ("id", "user_id", "account_id", "status", "date", "deleted_at", "version"),
+    "inbox": (
+        "id",
+        "user_id",
+        "account_id",
+        "category_id",
+        "status",
+        "date",
+        "deleted_at",
+        "version",
+    ),
     "reconciliations": (
         "id",
         "user_id",

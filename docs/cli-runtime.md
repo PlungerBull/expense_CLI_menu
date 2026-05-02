@@ -13,7 +13,7 @@ The replica is being built in three phases:
 - **7a (shipped)** — stateless `expense sync --full` only. No cache.
 - **7b.1 (shipped)** — SQLite layer, delta sync, cold start, tombstones, `sync_token` persistence. Cache exists; `expense sync` fills/refreshes it.
 - **7b.2.1 (shipped)** — replica-backed `list`/`get` for accounts, categories, hashtags. Auto cold-start when a read hits an empty cache. `--no-cache` is now meaningful on these commands.
-- **7b.2.2 (pending)** — replica-backed reads for inbox + reconciliations.
+- **7b.2.2 (shipped)** — replica-backed reads for inbox + reconciliations. Inbox `--ready` filter fully replicated as SQL JOIN against cached accounts/categories. `reconciliations get` embeds paginated transactions from the cached transactions table.
 - **7b.2.3 (pending)** — replica-backed reads for transactions (8 filters incl. hashtag JSON containment + ILIKE search).
 - **7b.3 (pending)** — write-path refresh (auto delta sync after every successful write).
 
@@ -28,7 +28,7 @@ The CLI maps onto these two modes through different invocation forms.
 
 ## Phasing
 
-| Invocation | Step 7b.2.1 (today) | Step 7b.2.2+ (more reads land) |
+| Invocation | Step 7b.2.2 (today) | Step 7b.2.3+ (transactions land) |
 |---|---|---|
 | `expense sync` (bare) | Delta sync against cache; cold-starts on first run | Same |
 | `expense sync --full` | Cold start: wipe + full pull + rebuild cache | Same |
@@ -37,10 +37,11 @@ The CLI maps onto these two modes through different invocation forms.
 | `expense accounts list/get` | **Replica-backed** by default; `--no-cache` round-trips engine | Same |
 | `expense categories list/get` | **Replica-backed** | Same |
 | `expense hashtags list/get` | **Replica-backed** | Same |
-| `expense inbox list/get` | Engine round-trip | **Replica-backed** in 7b.2.2 |
-| `expense reconciliations list/get` | Engine round-trip | **Replica-backed** in 7b.2.2 |
+| `expense inbox list/get` | **Replica-backed** | Same |
+| `expense reconcile list/get` | **Replica-backed** (`get` embeds paginated cached transactions) | Same |
 | `expense transactions list/get` | Engine round-trip | **Replica-backed** in 7b.2.3 |
 | `expense dashboard`, `reports/*`, `log`, `whoami`, `ping` | Engine-only | Engine-only (FX drift / not in `/sync`) |
+| `expense reconcile move/reorder` | Engine-direct internal reads (write-path workflow) | Same |
 
 ## Write semantics
 

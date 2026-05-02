@@ -8,14 +8,20 @@ import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
+from expense.cache import db as cache_db
+from expense.cache import state as cache_state
 from expense.commands.inbox_cmd import app as inbox_app
+from expense.context import AppContext
 
 cli_app = typer.Typer()
 
 
 @cli_app.callback()
-def _root() -> None:
-    pass
+def _root(
+    ctx: typer.Context,
+    no_cache: bool = typer.Option(False, "--no-cache", envvar="EXPENSE_STATELESS"),
+) -> None:
+    ctx.obj = AppContext(no_cache=no_cache)
 
 
 cli_app.add_typer(inbox_app, name="inbox")
@@ -57,7 +63,9 @@ LIST_RESPONSE = {
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
     config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
     monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
     config_module.save(
         config_module.Config(
             engine_url="https://api.example.com",
@@ -68,12 +76,174 @@ def configured(tmp_path, monkeypatch):
     yield
 
 
+def _insert_inbox(conn, row: dict) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO inbox "
+        "(id, user_id, account_id, category_id, status, date, deleted_at, version, body) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            row["id"],
+            row.get("user_id"),
+            row.get("account_id"),
+            row.get("category_id"),
+            row.get("status"),
+            row.get("date"),
+            row.get("deleted_at"),
+            row.get("version"),
+            json.dumps(row),
+        ),
+    )
+
+
+def _insert_account(conn, row: dict) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO accounts "
+        "(id, user_id, is_archived, is_person, deleted_at, sort_order, version, body) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            row["id"],
+            row.get("user_id"),
+            1 if row.get("is_archived") else 0,
+            1 if row.get("is_person") else 0,
+            row.get("deleted_at"),
+            row.get("sort_order"),
+            row.get("version"),
+            json.dumps(row),
+        ),
+    )
+
+
+def _insert_category(conn, row: dict) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO categories "
+        "(id, user_id, is_archived, is_system, deleted_at, sort_order, version, body) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            row["id"],
+            row.get("user_id"),
+            1 if row.get("is_archived") else 0,
+            1 if row.get("is_system") else 0,
+            row.get("deleted_at"),
+            row.get("sort_order"),
+            row.get("version"),
+            json.dumps(row),
+        ),
+    )
+
+
+@pytest.fixture
+def cache_populated(configured):
+    cfg = config_module.ensure_loaded()
+    conn = cache_db.connect()
+    try:
+        _insert_account(
+            conn,
+            {"id": "acct-1", "user_id": "u1", "name": "Active", "sort_order": 1, "version": 1},
+        )
+        _insert_account(
+            conn,
+            {
+                "id": "acct-archived",
+                "user_id": "u1",
+                "name": "Old",
+                "is_archived": True,
+                "sort_order": 2,
+                "version": 1,
+            },
+        )
+        _insert_category(
+            conn,
+            {"id": "cat-1", "user_id": "u1", "name": "Food", "sort_order": 1, "version": 1},
+        )
+
+        ready_row = {
+            **INBOX_RESPONSE,
+            "id": "ib-ready",
+            "title": "lunch",
+            "amount_cents": 2500,
+            "date": "2026-04-25",
+            "account_id": "acct-1",
+            "category_id": "cat-1",
+            "user_id": "u1",
+        }
+        _insert_inbox(conn, ready_row)
+
+        not_ready_no_account = {
+            **INBOX_RESPONSE,
+            "id": "ib-no-account",
+            "title": "untitled draft",
+            "amount_cents": 1000,
+            "date": "2026-04-25",
+            "account_id": None,
+            "category_id": "cat-1",
+            "user_id": "u1",
+        }
+        _insert_inbox(conn, not_ready_no_account)
+
+        not_ready_archived_account = {
+            **INBOX_RESPONSE,
+            "id": "ib-archived-acct",
+            "title": "stale",
+            "amount_cents": 500,
+            "date": "2026-04-25",
+            "account_id": "acct-archived",
+            "category_id": "cat-1",
+            "user_id": "u1",
+        }
+        _insert_inbox(conn, not_ready_archived_account)
+
+        future_row = {
+            **INBOX_RESPONSE,
+            "id": "ib-future",
+            "title": "future",
+            "amount_cents": 100,
+            "date": "2099-12-31",
+            "account_id": "acct-1",
+            "category_id": "cat-1",
+            "user_id": "u1",
+        }
+        _insert_inbox(conn, future_row)
+
+        overdue_row = {
+            **INBOX_RESPONSE,
+            "id": "ib-overdue",
+            "title": "old draft",
+            "amount_cents": 800,
+            "date": "2020-01-01",
+            "account_id": "acct-1",
+            "category_id": "cat-1",
+            "user_id": "u1",
+        }
+        _insert_inbox(conn, overdue_row)
+
+        cache_state.write_identity(
+            conn, user_id="u1", client_id=str(cfg.client_id), engine_url=cfg.engine_url
+        )
+        cache_state.write_token(conn, "tok-populated")
+    finally:
+        conn.close()
+    yield
+
+
+def _sync_payload(inbox_rows: list[dict]) -> dict:
+    return {
+        "sync_token": "tok-1",
+        "accounts": [],
+        "categories": [],
+        "hashtags": [],
+        "inbox": inbox_rows,
+        "transactions": [],
+        "reconciliations": [],
+        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
+    }
+
+
 @respx.mock
 def test_list_happy(configured):
     route = respx.get("https://api.example.com/v1/inbox").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["inbox", "list", "--ready"])
+    result = runner.invoke(cli_app, ["--no-cache", "inbox", "list", "--ready"])
     assert result.exit_code == 0, result.output
     assert "lunch" in result.output
 
@@ -86,7 +256,7 @@ def test_list_json_mode(configured):
     respx.get("https://api.example.com/v1/inbox").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["inbox", "list", "--json"])
+    result = runner.invoke(cli_app, ["--no-cache", "inbox", "list", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.output) == LIST_RESPONSE
 
@@ -96,7 +266,7 @@ def test_list_include_deleted_param(configured):
     route = respx.get("https://api.example.com/v1/inbox").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["inbox", "list", "--include-deleted"])
+    result = runner.invoke(cli_app, ["--no-cache", "inbox", "list", "--include-deleted"])
     assert result.exit_code == 0, result.output
 
     request = route.calls.last.request
@@ -108,7 +278,7 @@ def test_get_happy(configured):
     respx.get("https://api.example.com/v1/inbox/abc").mock(
         return_value=httpx.Response(200, json=INBOX_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["inbox", "get", "abc"])
+    result = runner.invoke(cli_app, ["--no-cache", "inbox", "get", "abc"])
     assert result.exit_code == 0, result.output
     assert "lunch" in result.output
 
@@ -127,7 +297,7 @@ def test_get_404(configured):
             },
         )
     )
-    result = runner.invoke(cli_app, ["inbox", "get", "missing"])
+    result = runner.invoke(cli_app, ["--no-cache", "inbox", "get", "missing"])
     assert result.exit_code == 1
     assert "NOT_FOUND" in result.output
 
@@ -270,3 +440,63 @@ def test_promote_422_prints_fix_hint(configured):
     assert "VALIDATION_ERROR" in result.output
     assert "title" in result.output
     assert "account_id" in result.output
+
+
+def test_list_replica_path(cache_populated):
+    with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:
+        inbox_route = router.get("/v1/inbox")
+        result = runner.invoke(cli_app, ["inbox", "list"])
+    assert result.exit_code == 0, result.output
+    assert "lunch" in result.output
+    assert not inbox_route.called
+
+
+def test_list_replica_ready_filter(cache_populated):
+    """--ready replicates engine predicate: title set + non-UNTITLED, amount nonzero,
+    date <= today, account+category present and active."""
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["inbox", "list", "--ready", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    ids = [r["id"] for r in payload["items"]]
+    assert "ib-ready" in ids
+    assert "ib-overdue" in ids  # also satisfies the predicate (date in past, all fields)
+    assert "ib-no-account" not in ids
+    assert "ib-archived-acct" not in ids
+    assert "ib-future" not in ids
+
+
+def test_list_replica_overdue_filter(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["inbox", "list", "--overdue", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    ids = [r["id"] for r in payload["items"]]
+    assert "ib-overdue" in ids
+    assert "ib-future" not in ids
+
+
+def test_get_replica_path(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["inbox", "get", "ib-ready"])
+    assert result.exit_code == 0, result.output
+    assert "lunch" in result.output
+
+
+def test_get_replica_not_found(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["inbox", "get", "missing"])
+    assert result.exit_code == 1
+    assert "NOT_FOUND" in result.output
+
+
+@respx.mock
+def test_list_auto_cold_start_when_cache_empty(configured):
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload([INBOX_RESPONSE]))
+    )
+    inbox_route = respx.get("https://api.example.com/v1/inbox")
+    result = runner.invoke(cli_app, ["inbox", "list"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
+    assert not inbox_route.called

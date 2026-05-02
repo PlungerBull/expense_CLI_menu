@@ -10,7 +10,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def cache_path() -> Path:
@@ -124,16 +124,18 @@ def _bootstrap_schema(conn: sqlite3.Connection) -> None:
             id           TEXT PRIMARY KEY,
             user_id      TEXT NOT NULL,
             account_id   TEXT,
+            category_id  TEXT,
             status       INTEGER,
             date         TEXT,
             deleted_at   TEXT,
             version      INTEGER,
             body         TEXT NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_inbox_user     ON inbox(user_id);
-        CREATE INDEX IF NOT EXISTS idx_inbox_account  ON inbox(account_id);
-        CREATE INDEX IF NOT EXISTS idx_inbox_status   ON inbox(status);
-        CREATE INDEX IF NOT EXISTS idx_inbox_date     ON inbox(date);
+        CREATE INDEX IF NOT EXISTS idx_inbox_user      ON inbox(user_id);
+        CREATE INDEX IF NOT EXISTS idx_inbox_account   ON inbox(account_id);
+        CREATE INDEX IF NOT EXISTS idx_inbox_category  ON inbox(category_id);
+        CREATE INDEX IF NOT EXISTS idx_inbox_status    ON inbox(status);
+        CREATE INDEX IF NOT EXISTS idx_inbox_date      ON inbox(date);
 
         CREATE TABLE IF NOT EXISTS reconciliations (
             id           TEXT PRIMARY KEY,

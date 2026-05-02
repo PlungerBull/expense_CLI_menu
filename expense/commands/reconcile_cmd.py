@@ -4,6 +4,7 @@ from uuid import uuid4
 import typer
 
 from expense import _editor
+from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
@@ -11,7 +12,7 @@ from expense.commands._resource import (
     require_yes,
     run_toggle,
 )
-from expense.context import get_verbose
+from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
@@ -175,25 +176,38 @@ def list_(
     offset: int | None = typer.Option(None, "--offset"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/reconciliations.
+    """GET /v1/reconciliations. Reads from the local replica by default.
+
+    Pass --no-cache (root flag) to round-trip the engine.
 
     Example: expense reconcile list --account chase-checking
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
 
-    params: dict = {}
-    if account is not None:
-        params["account_id"] = account
-    if include_deleted:
-        params["include_deleted"] = "true"
-    if limit is not None:
-        params["limit"] = str(limit)
-    if offset is not None:
-        params["offset"] = str(offset)
+    if no_cache:
+        params: dict = {}
+        if account is not None:
+            params["account_id"] = account
+        if include_deleted:
+            params["include_deleted"] = "true"
+        if limit is not None:
+            params["limit"] = str(limit)
+        if offset is not None:
+            params["offset"] = str(offset)
 
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.get(f"/{_RESOURCE}", params=params or None)
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            body = client.get(f"/{_RESOURCE}", params=params or None)
+    else:
+        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+            cache_pkg.ensure_synced(client, cfg)
+        body = cache_pkg.list_reconciliations(
+            account_id=account,
+            include_deleted=include_deleted,
+            limit=limit,
+            offset=offset,
+        )
 
     _render_reconciliation_list(body, json_mode=json_output)
 
@@ -211,21 +225,28 @@ def get(
     offset: int | None = typer.Option(None, "--offset"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/reconciliations/{id}.
+    """GET /v1/reconciliations/{id}. Reads from the local replica by default.
+
+    Pass --no-cache (root flag) to round-trip the engine.
 
     Example: expense reconcile get <id> --limit 100
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
 
-    params: dict = {}
-    if limit is not None:
-        params["limit"] = str(limit)
-    if offset is not None:
-        params["offset"] = str(offset)
-
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.get(f"/{_RESOURCE}/{id_}", params=params or None)
+    if no_cache:
+        params: dict = {}
+        if limit is not None:
+            params["limit"] = str(limit)
+        if offset is not None:
+            params["offset"] = str(offset)
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            body = client.get(f"/{_RESOURCE}/{id_}", params=params or None)
+    else:
+        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+            cache_pkg.ensure_synced(client, cfg)
+        body = cache_pkg.get_reconciliation(id_, embedded_limit=limit, embedded_offset=offset)
 
     _render_reconciliation_detail(body, json_mode=json_output)
 

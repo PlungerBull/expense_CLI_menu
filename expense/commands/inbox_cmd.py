@@ -3,9 +3,10 @@ from uuid import uuid4
 
 import typer
 
+from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import build_update_payload, require_yes
-from expense.context import get_verbose
+from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
@@ -55,29 +56,43 @@ def list_(
     debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/inbox.
+    """GET /v1/inbox. Reads from the local replica by default.
+
+    Pass --no-cache (root flag) to round-trip the engine.
 
     Example: expense inbox list --ready
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
 
-    params: dict = {}
-    if ready:
-        params["ready"] = "true"
-    if include_deleted:
-        params["include_deleted"] = "true"
-    if overdue:
-        params["overdue"] = "true"
-    if limit is not None:
-        params["limit"] = limit
-    if offset is not None:
-        params["offset"] = offset
-    if debit_as_negative:
-        params["debit_as_negative"] = "true"
+    if no_cache:
+        params: dict = {}
+        if ready:
+            params["ready"] = "true"
+        if include_deleted:
+            params["include_deleted"] = "true"
+        if overdue:
+            params["overdue"] = "true"
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        if debit_as_negative:
+            params["debit_as_negative"] = "true"
 
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.get(f"/{_RESOURCE}", params=params or None)
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            body = client.get(f"/{_RESOURCE}", params=params or None)
+    else:
+        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+            cache_pkg.ensure_synced(client, cfg)
+        body = cache_pkg.list_inbox(
+            ready=ready,
+            overdue=overdue,
+            include_deleted=include_deleted,
+            limit=limit,
+            offset=offset,
+        )
 
     _render_inbox_list(body, json_mode=json_output)
 
@@ -90,19 +105,26 @@ def get(
     debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/inbox/{id}.
+    """GET /v1/inbox/{id}. Reads from the local replica by default.
+
+    Pass --no-cache (root flag) to round-trip the engine.
 
     Example: expense inbox get <inbox-id>
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
 
-    params: dict = {}
-    if debit_as_negative:
-        params["debit_as_negative"] = "true"
-
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.get(f"/{_RESOURCE}/{id_}", params=params or None)
+    if no_cache:
+        params: dict = {}
+        if debit_as_negative:
+            params["debit_as_negative"] = "true"
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            body = client.get(f"/{_RESOURCE}/{id_}", params=params or None)
+    else:
+        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+            cache_pkg.ensure_synced(client, cfg)
+        body = cache_pkg.get_inbox(id_)
 
     _render_inbox(body, json_mode=json_output)
 

@@ -221,11 +221,13 @@ SQLite layer, schema, WAL setup, cold start, delta sync, tombstone application, 
 
 Split by resource complexity so the auto-cold-start UX and `--no-cache` engine fallback pattern bake on cheap cases first.
 
-**Step 7b.2.1 — Simple resources + auto cold-start.** `list`/`get` for accounts, categories, hashtags switch to replica-backed default. Filters are pure SQL (booleans only). Establishes the auto-cold-start UX (stderr notice on first-time empty cache) and the `--no-cache` engine fallback pattern. Accounts cached read returns `current_balance_home_cents: null` per §3b drift policy — users wanting current home balances run `expense dashboard` or pass `--no-cache`.
+**Step 7b.2.1 (shipped) — Simple resources + auto cold-start.** `list`/`get` for accounts, categories, hashtags switched to replica-backed default. Filters are pure SQL (booleans only). Established the auto-cold-start UX (stderr notice on first-time empty cache) and the `--no-cache` engine fallback pattern. Accounts cached read returns `current_balance_home_cents: null` per §3b drift policy — users wanting current home balances run `expense dashboard` or pass `--no-cache`.
 
 **Commit:** `feat: replica-backed reads for simple resources + auto cold-start (Step 7b.2.1)`
 
-**Step 7b.2.2 — Inbox + reconciliations.** `inbox list/get` and `reconciliations list/get` switch to replica-backed default. Inbox `ready` filter replicated as multi-condition SQL predicate (engine: title, amount, date, account, category all set + date ≤ now); `overdue` is `date < now()`. `reconciliations get` embeds paginated transactions over the transactions cache (sort `date DESC, created_at DESC`).
+**Step 7b.2.2 (shipped) — Inbox + reconciliations.** `inbox list/get` and `reconcile list/get` switched to replica-backed default. Inbox `ready` filter fully replicated as SQL JOIN against cached accounts/categories (engine: title set + non-UNTITLED, amount nonzero, date ≤ today, account & category present and active); `overdue` is `date < today`. `reconcile get` embeds paginated transactions from the transactions cache (sort `date DESC, created_at DESC`). Schema bump to v2 (added indexed `category_id` to inbox table) — existing 7b.2.1 caches auto-wipe + cold-start on first sync. `reconcile move`/`reorder` internal read loops stay engine-direct (write-path workflows).
+
+**Commit:** `feat: replica-backed reads for inbox + reconciliations (Step 7b.2.2)`
 
 **Step 7b.2.3 — Transactions.** `transactions list/get`. 8 filters: account_id, category_id, hashtag_id, reconciliation_id, date_from, date_to, cleared, search. Most map to indexed columns. `hashtag_id` uses SQLite `json_each` for JSON containment over the embedded `hashtag_ids` array. `search` is `LIKE '%term%'` against title + description (case-insensitive in SQLite by default for ASCII, matches engine's PostgreSQL `ILIKE`).
 
