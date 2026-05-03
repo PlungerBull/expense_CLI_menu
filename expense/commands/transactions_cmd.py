@@ -4,13 +4,14 @@ from uuid import uuid4
 
 import typer
 
+from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
     render_pagination_hint,
     require_yes,
 )
-from expense.context import get_verbose
+from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
@@ -111,41 +112,61 @@ def list_(
     debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/transactions.
+    """GET /v1/transactions. Reads from the local replica by default.
+
+    Pass --no-cache (root flag) to round-trip the engine. Cached responses
+    omit `hashtag_ids` (matches engine list shape; that field is /sync-only).
 
     Example: expense transactions list --account-id <id> --from 2026-04-01 --to 2026-04-30
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
 
-    params: dict = {}
-    if account is not None:
-        params["account_id"] = account
-    if category is not None:
-        params["category_id"] = category
-    if hashtag is not None:
-        params["hashtag_id"] = hashtag
-    if reconciliation is not None:
-        params["reconciliation_id"] = reconciliation
-    if date_from is not None:
-        params["date_from"] = date_from
-    if date_to is not None:
-        params["date_to"] = date_to
-    if cleared is not None:
-        params["cleared"] = "true" if cleared else "false"
-    if search is not None:
-        params["search"] = search
-    if limit is not None:
-        params["limit"] = limit
-    if offset is not None:
-        params["offset"] = offset
-    if include_deleted:
-        params["include_deleted"] = "true"
-    if debit_as_negative:
-        params["debit_as_negative"] = "true"
+    if no_cache:
+        params: dict = {}
+        if account is not None:
+            params["account_id"] = account
+        if category is not None:
+            params["category_id"] = category
+        if hashtag is not None:
+            params["hashtag_id"] = hashtag
+        if reconciliation is not None:
+            params["reconciliation_id"] = reconciliation
+        if date_from is not None:
+            params["date_from"] = date_from
+        if date_to is not None:
+            params["date_to"] = date_to
+        if cleared is not None:
+            params["cleared"] = "true" if cleared else "false"
+        if search is not None:
+            params["search"] = search
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        if include_deleted:
+            params["include_deleted"] = "true"
+        if debit_as_negative:
+            params["debit_as_negative"] = "true"
 
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.get(f"/{_RESOURCE}", params=params or None)
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            body = client.get(f"/{_RESOURCE}", params=params or None)
+    else:
+        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+            cache_pkg.ensure_synced(client, cfg)
+        body = cache_pkg.list_transactions(
+            account_id=account,
+            category_id=category,
+            hashtag_id=hashtag,
+            reconciliation_id=reconciliation,
+            date_from=date_from,
+            date_to=date_to,
+            cleared=cleared,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
 
     _render_transaction_list(body, json_mode=json_output)
 
@@ -158,7 +179,10 @@ def get(
     debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """GET /v1/transactions/{id}.
+    """GET /v1/transactions/{id}. Reads from the local replica by default.
+
+    Pass --no-cache (root flag) to round-trip the engine. Cached responses
+    omit `hashtag_ids` (matches engine get shape).
 
     Activity-log entries for a transaction will be reachable via
     'expense activity list --resource-type expense_transactions --resource-id <id>'
@@ -168,13 +192,18 @@ def get(
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
 
-    params: dict = {}
-    if debit_as_negative:
-        params["debit_as_negative"] = "true"
-
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.get(f"/{_RESOURCE}/{id_}", params=params or None)
+    if no_cache:
+        params: dict = {}
+        if debit_as_negative:
+            params["debit_as_negative"] = "true"
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            body = client.get(f"/{_RESOURCE}/{id_}", params=params or None)
+    else:
+        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+            cache_pkg.ensure_synced(client, cfg)
+        body = cache_pkg.get_transaction(id_)
 
     _render_transaction(body, json_mode=json_output)
 

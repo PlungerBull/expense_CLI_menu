@@ -268,6 +268,110 @@ def list_reconciliations(
     )
 
 
+def _strip_hashtag_ids(body: dict) -> dict:
+    """Engine `/v1/transactions` and `/v1/transactions/{id}` don't include
+    `hashtag_ids` (per §3a it's wire-format-only for /sync). Strip it from
+    cached responses for byte parity."""
+    if "hashtag_ids" not in body:
+        return body
+    out = dict(body)
+    out.pop("hashtag_ids", None)
+    return out
+
+
+def list_transactions(
+    *,
+    account_id: str | None = None,
+    category_id: str | None = None,
+    hashtag_id: str | None = None,
+    reconciliation_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    cleared: bool | None = None,
+    search: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> dict:
+    """GET /v1/transactions equivalent. Paginated wrapper.
+
+    `hashtag_id` uses SQLite `json_each(body, '$.hashtag_ids')` for containment.
+    `search` uses `LIKE ? COLLATE NOCASE` against title + description.
+    Returned items have `hashtag_ids` stripped to match engine response shape.
+    """
+    eff_limit = limit if isinstance(limit, int) and limit > 0 else 100
+    eff_offset = offset if isinstance(offset, int) and offset >= 0 else 0
+
+    where: list[str] = ["t.deleted_at IS NULL"]
+    params: list = []
+
+    if account_id is not None:
+        where.append("t.account_id = ?")
+        params.append(account_id)
+    if category_id is not None:
+        where.append("t.category_id = ?")
+        params.append(category_id)
+    if reconciliation_id is not None:
+        where.append("t.reconciliation_id = ?")
+        params.append(reconciliation_id)
+    if date_from is not None:
+        where.append("t.date >= ?")
+        params.append(date_from)
+    if date_to is not None:
+        where.append("t.date <= ?")
+        params.append(date_to)
+    if cleared is not None:
+        where.append("json_extract(t.body, '$.cleared') = ?")
+        params.append(1 if cleared else 0)
+    if hashtag_id is not None:
+        where.append(
+            "EXISTS (SELECT 1 FROM json_each(t.body, '$.hashtag_ids') h " "WHERE h.value = ?)"
+        )
+        params.append(hashtag_id)
+    if search:
+        like = f"%{search}%"
+        where.append(
+            "(json_extract(t.body, '$.title') LIKE ? COLLATE NOCASE "
+            "OR json_extract(t.body, '$.description') LIKE ? COLLATE NOCASE)"
+        )
+        params.extend([like, like])
+
+    where_sql = "WHERE " + " AND ".join(where)
+    order_sql = "ORDER BY t.date DESC, json_extract(t.body, '$.created_at') DESC"
+
+    conn = db.connect()
+    try:
+        total = conn.execute(
+            f"SELECT count(*) FROM transactions t {where_sql}",
+            tuple(params),
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT t.body FROM transactions t {where_sql} {order_sql} LIMIT ? OFFSET ?",
+            tuple(params) + (eff_limit, eff_offset),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return {
+        "total": total,
+        "limit": eff_limit,
+        "offset": eff_offset,
+        "items": [_strip_hashtag_ids(_row_to_dict(r["body"])) for r in rows],
+    }
+
+
+def get_transaction(transaction_id: str) -> dict:
+    conn = db.connect()
+    try:
+        row = conn.execute(
+            "SELECT body FROM transactions WHERE id = ?", (transaction_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise _not_found("Transaction", transaction_id)
+    return _strip_hashtag_ids(_row_to_dict(row["body"]))
+
+
 def get_reconciliation(
     reconciliation_id: str,
     *,

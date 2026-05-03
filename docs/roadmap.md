@@ -229,7 +229,11 @@ Split by resource complexity so the auto-cold-start UX and `--no-cache` engine f
 
 **Commit:** `feat: replica-backed reads for inbox + reconciliations (Step 7b.2.2)`
 
-**Step 7b.2.3 — Transactions.** `transactions list/get`. 8 filters: account_id, category_id, hashtag_id, reconciliation_id, date_from, date_to, cleared, search. Most map to indexed columns. `hashtag_id` uses SQLite `json_each` for JSON containment over the embedded `hashtag_ids` array. `search` is `LIKE '%term%'` against title + description (case-insensitive in SQLite by default for ASCII, matches engine's PostgreSQL `ILIKE`).
+**Step 7b.2.3 (shipped) — Transactions.** `transactions list/get` switched to replica-backed default. 8 filters: account_id, category_id, hashtag_id, reconciliation_id, date_from, date_to, cleared, search. `hashtag_id` uses SQLite `json_each(body, '$.hashtag_ids')` containment subquery; `search` uses `LIKE … COLLATE NOCASE` against `json_extract(body, '$.title')` and `'$.description'` (ASCII-equivalent to engine's `ILIKE`; non-ASCII caveat documented in cli-runtime.md). `hashtag_ids` stripped from cached `list`/`get` output to match engine response shape per §3a. No schema bump — every filterable indexed column already in place from 7b.1.
+
+**Commit:** `feat: replica-backed reads for transactions (Step 7b.2.3)`
+
+After 7b.2.3 ships, all 6 cacheable resources have replica-backed reads. The only remaining 7b sub-phase is **7b.3 — write-path refresh** (auto delta-sync after every successful write).
 
 #### Step 7b.3 — Write-path refresh
 

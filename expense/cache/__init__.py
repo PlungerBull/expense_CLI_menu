@@ -12,11 +12,13 @@ from expense.cache.queries import (
     get_hashtag,
     get_inbox,
     get_reconciliation,
+    get_transaction,
     list_accounts,
     list_categories,
     list_hashtags,
     list_inbox,
     list_reconciliations,
+    list_transactions,
 )
 from expense.cache.state import CacheState, is_healthy, read, write_identity, write_token
 from expense.cache.sync import (
@@ -44,12 +46,14 @@ __all__ = [
     "get_hashtag",
     "get_inbox",
     "get_reconciliation",
+    "get_transaction",
     "is_healthy",
     "list_accounts",
     "list_categories",
     "list_hashtags",
     "list_inbox",
     "list_reconciliations",
+    "list_transactions",
     "read",
     "wipe",
     "write_identity",

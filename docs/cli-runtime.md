@@ -14,7 +14,7 @@ The replica is being built in three phases:
 - **7b.1 (shipped)** — SQLite layer, delta sync, cold start, tombstones, `sync_token` persistence. Cache exists; `expense sync` fills/refreshes it.
 - **7b.2.1 (shipped)** — replica-backed `list`/`get` for accounts, categories, hashtags. Auto cold-start when a read hits an empty cache. `--no-cache` is now meaningful on these commands.
 - **7b.2.2 (shipped)** — replica-backed reads for inbox + reconciliations. Inbox `--ready` filter fully replicated as SQL JOIN against cached accounts/categories. `reconciliations get` embeds paginated transactions from the cached transactions table.
-- **7b.2.3 (pending)** — replica-backed reads for transactions (8 filters incl. hashtag JSON containment + ILIKE search).
+- **7b.2.3 (shipped)** — replica-backed reads for transactions. 8 filters incl. `--hashtag-id` (SQLite `json_each` containment) and `--search` (`LIKE … COLLATE NOCASE`, ASCII-equivalent to engine `ILIKE`). `hashtag_ids` is stripped from cached `list`/`get` output to match engine response shape.
 - **7b.3 (pending)** — write-path refresh (auto delta sync after every successful write).
 
 ## Sync model
@@ -28,7 +28,7 @@ The CLI maps onto these two modes through different invocation forms.
 
 ## Phasing
 
-| Invocation | Step 7b.2.2 (today) | Step 7b.2.3+ (transactions land) |
+| Invocation | Step 7b.2.3 (today) | Step 7b.3 (write-path refresh) |
 |---|---|---|
 | `expense sync` (bare) | Delta sync against cache; cold-starts on first run | Same |
 | `expense sync --full` | Cold start: wipe + full pull + rebuild cache | Same |
@@ -39,9 +39,10 @@ The CLI maps onto these two modes through different invocation forms.
 | `expense hashtags list/get` | **Replica-backed** | Same |
 | `expense inbox list/get` | **Replica-backed** | Same |
 | `expense reconcile list/get` | **Replica-backed** (`get` embeds paginated cached transactions) | Same |
-| `expense transactions list/get` | Engine round-trip | **Replica-backed** in 7b.2.3 |
+| `expense transactions list/get` | **Replica-backed** (8 filters incl. `--hashtag-id`, `--search`; `hashtag_ids` stripped from output) | Same |
 | `expense dashboard`, `reports/*`, `log`, `whoami`, `ping` | Engine-only | Engine-only (FX drift / not in `/sync`) |
 | `expense reconcile move/reorder` | Engine-direct internal reads (write-path workflow) | Same |
+| Writes (`create`/`update`/`delete`/`complete`/etc.) | Engine-direct; cache stale until next manual `expense sync` | **Auto-refresh cache** via post-write delta sync in 7b.3 |
 
 ## Write semantics
 
@@ -80,6 +81,10 @@ In stateless mode (Step 7b's `--no-cache`), the engine response with `sync_token
 **Cache disposal.** `expense config clear` doesn't auto-wipe the cache today (out of scope for 7b.1). Users wanting a clean slate can `rm ~/.expense-cache.sqlite3` and re-run `expense sync --full`. The cache also auto-wipes when the engine returns an unknown-token 422 (see "Cold start" above).
 
 **Never repair from partial local state.** Any inconsistency → cold start. The replica is disposable by design ([§3b](../../expense_world_engine/docs/api-design-principles.md)); recovery is always a full re-pull, never a stitched repair.
+
+**Transaction wire-shape: `hashtag_ids` is stripped from cached `list`/`get` output.** Per [§3a](../../expense_world_engine/docs/api-design-principles.md), `hashtag_ids` is wire-format-only for `/sync`; the engine's `GET /v1/transactions` and `GET /v1/transactions/{id}` endpoints don't return it. The cache stores the array (so `--hashtag-id` filtering works via `json_each`) but strips it from emitted responses for byte parity with engine list/get.
+
+**`--search` ASCII caveat.** SQLite's `LIKE … COLLATE NOCASE` is case-insensitive for ASCII inputs but not for full Unicode. The engine uses PostgreSQL `ILIKE` which is locale-aware. For ASCII titles/descriptions (the realistic case) results match between cached and engine paths; for non-ASCII, results may differ. If precise non-ASCII case-insensitivity matters, pass `--no-cache`.
 
 ## Home-currency drift warning
 

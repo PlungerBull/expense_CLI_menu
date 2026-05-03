@@ -1031,3 +1031,239 @@ def test_get_reconciliation_not_found(cache_path):
     with pytest.raises(EngineError) as exc:
         cache.get_reconciliation("missing")
     assert exc.value.code == "NOT_FOUND"
+
+
+def _tx_row(**overrides) -> dict:
+    base = {
+        "user_id": "u1",
+        "title": "Lunch",
+        "description": "burrito place",
+        "amount_cents": -1200,
+        "amount_home_cents": -1200,
+        "account_id": "a1",
+        "category_id": "c1",
+        "reconciliation_id": None,
+        "parent_transaction_id": None,
+        "transfer_transaction_id": None,
+        "inbox_id": None,
+        "date": "2026-04-25",
+        "deleted_at": None,
+        "version": 1,
+        "updated_at": "2026-04-25T10:00:00Z",
+        "created_at": "2026-04-25T10:00:00Z",
+        "cleared": False,
+        "hashtag_ids": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def _seed_transactions_local(conn, rows: list[dict]) -> None:
+    for row in rows:
+        conn.execute(
+            "INSERT OR REPLACE INTO transactions "
+            "(id, user_id, account_id, category_id, reconciliation_id, parent_transaction_id, "
+            "transfer_transaction_id, inbox_id, date, deleted_at, version, updated_at, body) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["id"],
+                row.get("user_id"),
+                row.get("account_id"),
+                row.get("category_id"),
+                row.get("reconciliation_id"),
+                row.get("parent_transaction_id"),
+                row.get("transfer_transaction_id"),
+                row.get("inbox_id"),
+                row.get("date"),
+                row.get("deleted_at"),
+                row.get("version"),
+                row.get("updated_at"),
+                json.dumps(row),
+            ),
+        )
+
+
+def test_list_transactions_orders_date_desc(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [
+                _tx_row(id="t1", date="2026-04-23"),
+                _tx_row(id="t2", date="2026-04-25"),
+                _tx_row(id="t3", date="2026-04-24"),
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_transactions()
+    assert body["total"] == 3
+    assert [r["id"] for r in body["items"]] == ["t2", "t3", "t1"]
+
+
+def test_list_transactions_strips_hashtag_ids(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [_tx_row(id="t1", hashtag_ids=["h1", "h2"])],
+        )
+    finally:
+        conn.close()
+    body = cache.list_transactions()
+    assert "hashtag_ids" not in body["items"][0]
+
+
+def test_list_transactions_account_filter(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [
+                _tx_row(id="t1", account_id="a1"),
+                _tx_row(id="t2", account_id="a2"),
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_transactions(account_id="a1")
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == "t1"
+
+
+def test_list_transactions_date_range(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [
+                _tx_row(id="t1", date="2026-03-15"),
+                _tx_row(id="t2", date="2026-04-15"),
+                _tx_row(id="t3", date="2026-05-15"),
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_transactions(date_from="2026-04-01", date_to="2026-04-30")
+    ids = [r["id"] for r in body["items"]]
+    assert ids == ["t2"]
+
+
+def test_list_transactions_cleared_filter(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [
+                _tx_row(id="t1", cleared=True),
+                _tx_row(id="t2", cleared=False),
+            ],
+        )
+    finally:
+        conn.close()
+    assert [r["id"] for r in cache.list_transactions(cleared=True)["items"]] == ["t1"]
+    assert [r["id"] for r in cache.list_transactions(cleared=False)["items"]] == ["t2"]
+
+
+def test_list_transactions_hashtag_filter_uses_json_each(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [
+                _tx_row(id="t1", hashtag_ids=["h1", "h2"]),
+                _tx_row(id="t2", hashtag_ids=["h2"]),
+                _tx_row(id="t3", hashtag_ids=[]),
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_transactions(hashtag_id="h1")
+    ids = [r["id"] for r in body["items"]]
+    assert ids == ["t1"]
+    body2 = cache.list_transactions(hashtag_id="h2")
+    assert sorted(r["id"] for r in body2["items"]) == ["t1", "t2"]
+
+
+def test_list_transactions_search_case_insensitive(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [
+                _tx_row(id="t1", title="Coffee shop", description="downtown"),
+                _tx_row(id="t2", title="Lunch", description="WITH coworker"),
+                _tx_row(id="t3", title="Dinner", description="quiet evening"),
+            ],
+        )
+    finally:
+        conn.close()
+    assert [r["id"] for r in cache.list_transactions(search="COFFEE")["items"]] == ["t1"]
+    assert [r["id"] for r in cache.list_transactions(search="coworker")["items"]] == ["t2"]
+
+
+def test_list_transactions_combined_filters(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [
+                _tx_row(id="t1", account_id="a1", date="2026-04-15", cleared=True),
+                _tx_row(id="t2", account_id="a1", date="2026-04-20", cleared=False),
+                _tx_row(id="t3", account_id="a2", date="2026-04-15", cleared=True),
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_transactions(account_id="a1", cleared=True)
+    assert [r["id"] for r in body["items"]] == ["t1"]
+
+
+def test_list_transactions_pagination(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [_tx_row(id=f"t{i}", date=f"2026-04-{i:02d}") for i in range(1, 6)],
+        )
+    finally:
+        conn.close()
+    body = cache.list_transactions(limit=2, offset=0)
+    assert body["total"] == 5
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert len(body["items"]) == 2
+
+
+def test_list_transactions_excludes_deleted(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(
+            conn,
+            [
+                _tx_row(id="t1"),
+                _tx_row(id="t2", deleted_at="2026-04-26"),
+            ],
+        )
+    finally:
+        conn.close()
+    ids = [r["id"] for r in cache.list_transactions()["items"]]
+    assert "t1" in ids
+    assert "t2" not in ids
+
+
+def test_get_transaction_strips_hashtag_ids(cache_path):
+    conn = cache.connect()
+    try:
+        _seed_transactions_local(conn, [_tx_row(id="t1", hashtag_ids=["h1"])])
+    finally:
+        conn.close()
+    body = cache.get_transaction("t1")
+    assert "hashtag_ids" not in body
+    assert body["id"] == "t1"
+
+
+def test_get_transaction_not_found(cache_path):
+    with pytest.raises(EngineError) as exc:
+        cache.get_transaction("missing")
+    assert exc.value.code == "NOT_FOUND"

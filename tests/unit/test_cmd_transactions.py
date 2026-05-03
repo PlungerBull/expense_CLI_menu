@@ -8,14 +8,20 @@ import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
+from expense.cache import db as cache_db
+from expense.cache import state as cache_state
 from expense.commands.transactions_cmd import app as transactions_app
+from expense.context import AppContext
 
 cli_app = typer.Typer()
 
 
 @cli_app.callback()
-def _root() -> None:
-    pass
+def _root(
+    ctx: typer.Context,
+    no_cache: bool = typer.Option(False, "--no-cache", envvar="EXPENSE_STATELESS"),
+) -> None:
+    ctx.obj = AppContext(no_cache=no_cache)
 
 
 cli_app.add_typer(transactions_app, name="transactions")
@@ -58,7 +64,9 @@ LIST_RESPONSE = {
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
     config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
     monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
     config_module.save(
         config_module.Config(
             engine_url="https://api.example.com",
@@ -67,6 +75,94 @@ def configured(tmp_path, monkeypatch):
         )
     )
     yield
+
+
+def _insert_transaction(conn, row: dict) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO transactions "
+        "(id, user_id, account_id, category_id, reconciliation_id, parent_transaction_id, "
+        "transfer_transaction_id, inbox_id, date, deleted_at, version, updated_at, body) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            row["id"],
+            row.get("user_id"),
+            row.get("account_id"),
+            row.get("category_id"),
+            row.get("reconciliation_id"),
+            row.get("parent_transaction_id"),
+            row.get("transfer_transaction_id"),
+            row.get("inbox_id"),
+            row.get("date"),
+            row.get("deleted_at"),
+            row.get("version"),
+            row.get("updated_at"),
+            json.dumps(row),
+        ),
+    )
+
+
+@pytest.fixture
+def cache_populated(configured):
+    cfg = config_module.ensure_loaded()
+    conn = cache_db.connect()
+    try:
+        rows = [
+            {
+                **TRANSACTION_RESPONSE,
+                "id": "tx-coffee",
+                "title": "Coffee shop",
+                "description": "downtown",
+                "user_id": "u1",
+                "date": "2026-04-25",
+                "account_id": "acct-1",
+                "hashtag_ids": ["h1"],
+                "cleared": True,
+            },
+            {
+                **TRANSACTION_RESPONSE,
+                "id": "tx-lunch",
+                "title": "Lunch",
+                "description": "with COWORKER",
+                "user_id": "u1",
+                "date": "2026-04-24",
+                "account_id": "acct-1",
+                "hashtag_ids": ["h2"],
+                "cleared": False,
+            },
+            {
+                **TRANSACTION_RESPONSE,
+                "id": "tx-cab",
+                "title": "Cab",
+                "description": None,
+                "user_id": "u1",
+                "date": "2026-04-23",
+                "account_id": "acct-2",
+                "hashtag_ids": [],
+                "cleared": False,
+            },
+        ]
+        for row in rows:
+            _insert_transaction(conn, row)
+        cache_state.write_identity(
+            conn, user_id="u1", client_id=str(cfg.client_id), engine_url=cfg.engine_url
+        )
+        cache_state.write_token(conn, "tok-populated")
+    finally:
+        conn.close()
+    yield
+
+
+def _sync_payload(tx_rows: list[dict]) -> dict:
+    return {
+        "sync_token": "tok-1",
+        "accounts": [],
+        "categories": [],
+        "hashtags": [],
+        "inbox": [],
+        "transactions": tx_rows,
+        "reconciliations": [],
+        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +175,7 @@ def test_list_happy(configured):
     route = respx.get("https://api.example.com/v1/transactions").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["transactions", "list"])
+    result = runner.invoke(cli_app, ["--no-cache", "transactions", "list"])
     assert result.exit_code == 0, result.output
     assert "coffee" in result.output
     assert dict(route.calls.last.request.url.params) == {}
@@ -93,6 +189,7 @@ def test_list_all_filters_pass_through(configured):
     result = runner.invoke(
         cli_app,
         [
+            "--no-cache",
             "transactions",
             "list",
             "--account-id",
@@ -142,7 +239,7 @@ def test_list_no_cleared_sends_false(configured):
     route = respx.get("https://api.example.com/v1/transactions").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["transactions", "list", "--no-cleared"])
+    result = runner.invoke(cli_app, ["--no-cache", "transactions", "list", "--no-cleared"])
     assert result.exit_code == 0, result.output
     assert route.calls.last.request.url.params.get("cleared") == "false"
 
@@ -158,7 +255,7 @@ def test_list_pagination_hint_when_truncated(configured):
     respx.get("https://api.example.com/v1/transactions").mock(
         return_value=httpx.Response(200, json=paged)
     )
-    result = runner.invoke(cli_app, ["transactions", "list", "--limit", "2"])
+    result = runner.invoke(cli_app, ["--no-cache", "transactions", "list", "--limit", "2"])
     assert result.exit_code == 0, result.output
     assert "showing 2 of 17" in result.output
     assert "--offset 2 --limit 2" in result.output
@@ -169,7 +266,7 @@ def test_list_json_pass_through(configured):
     respx.get("https://api.example.com/v1/transactions").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["transactions", "list", "--json"])
+    result = runner.invoke(cli_app, ["--no-cache", "transactions", "list", "--json"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.output) == LIST_RESPONSE
 
@@ -184,7 +281,7 @@ def test_get_happy(configured):
     respx.get("https://api.example.com/v1/transactions/abc").mock(
         return_value=httpx.Response(200, json=TRANSACTION_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["transactions", "get", "abc"])
+    result = runner.invoke(cli_app, ["--no-cache", "transactions", "get", "abc"])
     assert result.exit_code == 0, result.output
     assert "coffee" in result.output
 
@@ -194,7 +291,9 @@ def test_get_debit_as_negative(configured):
     route = respx.get("https://api.example.com/v1/transactions/abc").mock(
         return_value=httpx.Response(200, json=TRANSACTION_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["transactions", "get", "abc", "--debit-as-negative"])
+    result = runner.invoke(
+        cli_app, ["--no-cache", "transactions", "get", "abc", "--debit-as-negative"]
+    )
     assert result.exit_code == 0, result.output
     assert route.calls.last.request.url.params.get("debit_as_negative") == "true"
 
@@ -213,7 +312,7 @@ def test_get_404(configured):
             },
         )
     )
-    result = runner.invoke(cli_app, ["transactions", "get", "missing"])
+    result = runner.invoke(cli_app, ["--no-cache", "transactions", "get", "missing"])
     assert result.exit_code == 1
     assert "NOT_FOUND" in result.output
 
@@ -469,3 +568,113 @@ def test_batch_empty_array_errors(configured):
     result = runner.invoke(cli_app, ["transactions", "batch"], input="[]")
     assert result.exit_code == 1
     assert "non-empty JSON array" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Replica-path tests (Step 7b.2.3)
+# ---------------------------------------------------------------------------
+
+
+def test_list_replica_path(cache_populated):
+    with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:
+        tx_route = router.get("/v1/transactions")
+        result = runner.invoke(cli_app, ["transactions", "list"])
+    assert result.exit_code == 0, result.output
+    assert "Coffee shop" in result.output
+    assert "Lunch" in result.output
+    assert "Cab" in result.output
+    assert not tx_route.called
+
+
+def test_list_replica_account_filter(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(
+            cli_app, ["transactions", "list", "--account-id", "acct-1", "--json"]
+        )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    ids = [r["id"] for r in payload["items"]]
+    assert sorted(ids) == ["tx-coffee", "tx-lunch"]
+
+
+def test_list_replica_hashtag_filter(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["transactions", "list", "--hashtag-id", "h1", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert [r["id"] for r in payload["items"]] == ["tx-coffee"]
+
+
+def test_list_replica_search_case_insensitive(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["transactions", "list", "--search", "COWORKER", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert [r["id"] for r in payload["items"]] == ["tx-lunch"]
+
+
+def test_list_replica_date_range(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(
+            cli_app,
+            [
+                "transactions",
+                "list",
+                "--from",
+                "2026-04-24",
+                "--to",
+                "2026-04-25",
+                "--json",
+            ],
+        )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    ids = [r["id"] for r in payload["items"]]
+    assert sorted(ids) == ["tx-coffee", "tx-lunch"]
+
+
+def test_list_replica_cleared_filter(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["transactions", "list", "--cleared", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert [r["id"] for r in payload["items"]] == ["tx-coffee"]
+
+
+def test_list_replica_strips_hashtag_ids(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["transactions", "list", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    for item in payload["items"]:
+        assert "hashtag_ids" not in item
+
+
+def test_get_replica_path(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["transactions", "get", "tx-coffee", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["id"] == "tx-coffee"
+    assert "hashtag_ids" not in payload
+
+
+def test_get_replica_not_found(cache_populated):
+    with respx.mock(base_url="https://api.example.com"):
+        result = runner.invoke(cli_app, ["transactions", "get", "nope"])
+    assert result.exit_code == 1
+    assert "NOT_FOUND" in result.output
+
+
+@respx.mock
+def test_list_auto_cold_start_when_cache_empty(configured):
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(
+            200, json=_sync_payload([{**TRANSACTION_RESPONSE, "user_id": "u1"}])
+        )
+    )
+    tx_route = respx.get("https://api.example.com/v1/transactions")
+    result = runner.invoke(cli_app, ["transactions", "list"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
+    assert not tx_route.called
