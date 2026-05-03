@@ -45,11 +45,7 @@ def list_accounts(
     if not include_people:
         where.append("(is_person = 0 OR is_person IS NULL)")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
-    sql = (
-        "SELECT body FROM accounts "
-        f"{clause} "
-        "ORDER BY COALESCE(sort_order, 999999) ASC, id ASC"
-    )
+    sql = f"SELECT body FROM accounts {clause} ORDER BY COALESCE(sort_order, 999999) ASC, id ASC"
     conn = db.connect()
     try:
         return [_row_to_dict(row["body"]) for row in conn.execute(sql)]
@@ -218,8 +214,7 @@ def list_inbox(
             f"SELECT count(*) {join_sql}{where_sql}",
         ).fetchone()[0]
         rows = conn.execute(
-            f"SELECT i.body {join_sql}{where_sql} "
-            "ORDER BY i.date DESC, i.id ASC LIMIT ? OFFSET ?",
+            f"SELECT i.body {join_sql}{where_sql} ORDER BY i.date DESC, i.id ASC LIMIT ? OFFSET ?",
             (eff_limit, eff_offset),
         ).fetchall()
     finally:
@@ -324,7 +319,7 @@ def list_transactions(
         params.append(1 if cleared else 0)
     if hashtag_id is not None:
         where.append(
-            "EXISTS (SELECT 1 FROM json_each(t.body, '$.hashtag_ids') h " "WHERE h.value = ?)"
+            "EXISTS (SELECT 1 FROM json_each(t.body, '$.hashtag_ids') h WHERE h.value = ?)"
         )
         params.append(hashtag_id)
     if search:
@@ -397,8 +392,7 @@ def get_reconciliation(
         recon_body = _row_to_dict(row["body"])
 
         total = conn.execute(
-            "SELECT count(*) FROM transactions "
-            "WHERE reconciliation_id = ? AND deleted_at IS NULL",
+            "SELECT count(*) FROM transactions WHERE reconciliation_id = ? AND deleted_at IS NULL",
             (reconciliation_id,),
         ).fetchone()[0]
         tx_rows = conn.execute(
