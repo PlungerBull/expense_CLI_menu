@@ -3,6 +3,7 @@ import typer
 from expense import __version__
 from expense.commands import (
     accounts_cmd,
+    activity_cmd,
     auth_cmd,
     categories_cmd,
     config_cmd,
@@ -72,6 +73,7 @@ app.add_typer(inbox_cmd.app, name="inbox")
 app.add_typer(transactions_cmd.app, name="transactions")
 app.add_typer(reconcile_cmd.app, name="reconcile")
 app.add_typer(reports_cmd.app, name="reports")
+app.add_typer(activity_cmd.app, name="activity")
 app.command("ping")(ping_cmd.ping)
 app.command("whoami")(auth_cmd.whoami)
 app.command("log")(log_cmd.log)
