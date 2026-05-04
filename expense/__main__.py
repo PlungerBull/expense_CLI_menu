@@ -12,6 +12,7 @@ from expense.commands import (
     inbox_cmd,
     log_cmd,
     ping_cmd,
+    rates_cmd,
     reconcile_cmd,
     reports_cmd,
     sync_cmd,
@@ -74,6 +75,7 @@ app.add_typer(transactions_cmd.app, name="transactions")
 app.add_typer(reconcile_cmd.app, name="reconcile")
 app.add_typer(reports_cmd.app, name="reports")
 app.add_typer(activity_cmd.app, name="activity")
+app.add_typer(rates_cmd.app, name="rates")
 app.command("ping")(ping_cmd.ping)
 app.command("whoami")(auth_cmd.whoami)
 app.command("log")(log_cmd.log)
