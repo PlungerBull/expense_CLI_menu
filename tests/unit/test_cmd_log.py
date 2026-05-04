@@ -298,3 +298,57 @@ def test_log_422_settings_missing_prints_hint(configured):
     assert result.exit_code == 1
     assert "expense auth bootstrap" in result.output
     assert "SETTINGS_MISSING" in result.output
+
+
+@respx.mock
+def test_log_triggers_post_write_sync(tmp_path, monkeypatch):
+    """Step 7b.3: a successful `expense log` fires a follow-up GET /sync."""
+    from expense.cache import db as cache_db
+    from expense.cache import state as cache_state
+
+    config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
+    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
+    cfg = config_module.Config(
+        engine_url="https://api.example.com",
+        token="ewe_pat_test",
+        client_id=uuid4(),
+    )
+    config_module.save(cfg)
+    conn = cache_db.connect()
+    try:
+        cache_state.write_identity(
+            conn,
+            user_id="u_123",
+            client_id=str(cfg.client_id),
+            engine_url=cfg.engine_url,
+        )
+        cache_state.write_token(conn, "tok-populated")
+    finally:
+        conn.close()
+
+    respx.post("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(201, json=TRANSACTION_RESPONSE)
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "sync_token": "tok-after",
+                "accounts": [],
+                "categories": [],
+                "hashtags": [],
+                "inbox": [],
+                "transactions": [],
+                "reconciliations": [],
+                "settings": {"user_id": "u_123", "main_currency": "USD", "version": 1},
+            },
+        )
+    )
+    result = runner.invoke(
+        cli_app,
+        ["log", "--title", "x", "--amount", "-100", "--account-id", "a", "--category-id", "c"],
+    )
+    assert result.exit_code == 0, result.output
+    assert sync_route.called

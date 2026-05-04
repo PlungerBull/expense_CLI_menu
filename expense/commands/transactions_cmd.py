@@ -8,6 +8,7 @@ from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
+    cache_after_write,
     render_pagination_hint,
     require_yes,
 )
@@ -258,6 +259,7 @@ def update(
                 if hint is not None:
                     typer.echo(hint, err=True)
             raise
+        cache_after_write(ctx, client, cfg)
 
     _render_transaction(body, json_mode=json_output)
 
@@ -281,6 +283,7 @@ def delete(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.delete(f"/{_RESOURCE}/{id_}")
+        cache_after_write(ctx, client, cfg)
 
     _render_transaction(body, json_mode=json_output)
     if not json_output:
@@ -321,6 +324,7 @@ def restore(
                     err=True,
                 )
             raise
+        cache_after_write(ctx, client, cfg)
 
     _render_transaction(body, json_mode=json_output)
     if not json_output:
@@ -380,6 +384,7 @@ def batch(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}/batch", json_body={"transactions": items})
+        cache_after_write(ctx, client, cfg)
 
     if not json_output:
         created_items = body.get("created", []) if isinstance(body, dict) else []

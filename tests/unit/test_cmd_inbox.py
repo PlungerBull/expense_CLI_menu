@@ -500,3 +500,20 @@ def test_list_auto_cold_start_when_cache_empty(configured):
     assert result.exit_code == 0, result.output
     assert sync_route.called
     assert not inbox_route.called
+
+
+@respx.mock
+def test_add_triggers_post_write_sync(cache_populated):
+    """Step 7b.3: a successful inbox write fires a follow-up GET /sync."""
+    respx.post("https://api.example.com/v1/inbox").mock(
+        return_value=httpx.Response(201, json=INBOX_RESPONSE)
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload([INBOX_RESPONSE]))
+    )
+    result = runner.invoke(
+        cli_app,
+        ["inbox", "add", "--title", "lunch", "--amount", "-1500"],
+    )
+    assert result.exit_code == 0, result.output
+    assert sync_route.called

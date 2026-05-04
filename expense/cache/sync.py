@@ -246,6 +246,37 @@ def ensure_synced(
     return cold_start(client, cfg)
 
 
+def refresh_after_write(
+    client: ExpenseClient,
+    cfg: Config,
+    *,
+    no_cache: bool,
+    no_sync_after: bool,
+    notice_stream: IO[str] | None = None,
+) -> SyncSummary | None:
+    """Delta-sync the cache after a successful write. Non-fatal on failure.
+
+    Skips when stateless mode is active, when the user opts out for this
+    invocation, or when the cache file does not exist yet (writes must
+    not bootstrap the cache; cold-start is a read-side responsibility).
+    Any sync failure is swallowed with a one-line stderr warning so the
+    write itself remains the user-visible result.
+    """
+    if no_cache or no_sync_after:
+        return None
+    if not db.cache_path().exists():
+        return None
+    stream = notice_stream if notice_stream is not None else sys.stderr
+    try:
+        return delta_sync(client, cfg)
+    except Exception as exc:
+        print(
+            f"Cache refresh failed after write: {exc}. Run 'expense sync' to refresh.",
+            file=stream,
+        )
+        return None
+
+
 def delta_sync(client: ExpenseClient, cfg: Config) -> SyncSummary:
     """Delta-sync the cache. Falls back to cold_start on unhealthy state or 422."""
     pulled_at = datetime.now(UTC)

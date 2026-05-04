@@ -8,10 +8,21 @@ from typing import Any
 import typer
 
 from expense import config as config_module
+from expense.cache import refresh_after_write
 from expense.config import Config
-from expense.context import get_verbose
+from expense.context import get_no_cache, get_no_sync_after, get_verbose
 from expense.errors import EngineError
 from expense.http import ExpenseClient
+
+
+def cache_after_write(ctx: typer.Context, client: ExpenseClient, cfg: Config) -> None:
+    """Post-write cache refresh — reads --no-cache / --no-sync-after off ctx."""
+    refresh_after_write(
+        client,
+        cfg,
+        no_cache=get_no_cache(ctx),
+        no_sync_after=get_no_sync_after(ctx),
+    )
 
 
 def require_yes(yes: bool, prompt_text: str) -> None:
@@ -116,6 +127,7 @@ def run_toggle(
             if hints and err.status in hints:
                 typer.echo(hints[err.status], err=True)
             raise
+        cache_after_write(ctx, client, cfg)
 
     if json_output:
         typer.echo(json.dumps(body, indent=2))

@@ -326,3 +326,17 @@ def test_restore_happy(configured):
     )
     result = runner.invoke(cli_app, ["hashtags", "restore", "abc"])
     assert result.exit_code == 0, result.output
+
+
+@respx.mock
+def test_create_triggers_post_write_sync(cache_populated):
+    """Step 7b.3: a successful write fires a follow-up GET /sync."""
+    respx.post("https://api.example.com/v1/hashtags").mock(
+        return_value=httpx.Response(201, json=HASHTAG_RESPONSE)
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload([HASHTAG_RESPONSE]))
+    )
+    result = runner.invoke(cli_app, ["hashtags", "create", "--name", "lunch"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called

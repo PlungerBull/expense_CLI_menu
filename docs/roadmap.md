@@ -235,9 +235,9 @@ Split by resource complexity so the auto-cold-start UX and `--no-cache` engine f
 
 After 7b.2.3 ships, all 6 cacheable resources have replica-backed reads. The only remaining 7b sub-phase is **7b.3 — write-path refresh** (auto delta-sync after every successful write).
 
-#### Step 7b.3 — Write-path refresh
+#### Step 7b.3 — Write-path refresh (shipped)
 
-After every successful write, automatically run a delta sync to keep the cache consistent. `--no-sync-after` escape hatch on individual writes for batch scripts. Errors during the post-write sync are non-fatal (the write already succeeded).
+After every successful write, the CLI automatically runs a delta sync to keep the cache consistent. Errors during the post-write sync are non-fatal (the write already landed on the engine — the CLI prints a one-line stderr warning and exits 0). `--no-sync-after` (root flag, env `EXPENSE_NO_SYNC_AFTER`) skips the refresh — symmetric with `--no-cache` for reads, and useful when batching writes in a script that runs `expense sync` once at the end. Wired into every write site via a small `cache.refresh_after_write` helper plus `cache_after_write` in `expense.commands._resource` (one-liner in each command body and inside `run_toggle`); the HTTP client itself stays cache-agnostic.
 
 **Commit:** `feat: cache refresh on writes (Step 7b.3)`
 

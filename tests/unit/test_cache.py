@@ -1267,3 +1267,96 @@ def test_get_transaction_not_found(cache_path):
     with pytest.raises(EngineError) as exc:
         cache.get_transaction("missing")
     assert exc.value.code == "NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# refresh_after_write (Step 7b.3)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_refresh_after_write_skips_when_no_cache(cache_path, cfg, capsys):
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+
+    sync_route.reset()
+    with _make_client(cfg) as client:
+        result = cache.refresh_after_write(client, cfg, no_cache=True, no_sync_after=False)
+
+    assert result is None
+    assert not sync_route.called
+
+
+@respx.mock
+def test_refresh_after_write_skips_when_no_sync_after(cache_path, cfg):
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+
+    sync_route.reset()
+    with _make_client(cfg) as client:
+        result = cache.refresh_after_write(client, cfg, no_cache=False, no_sync_after=True)
+
+    assert result is None
+    assert not sync_route.called
+
+
+@respx.mock
+def test_refresh_after_write_skips_when_cache_file_missing(cache_path, cfg):
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    assert not cache_db.cache_path().exists()
+    with _make_client(cfg) as client:
+        result = cache.refresh_after_write(client, cfg, no_cache=False, no_sync_after=False)
+
+    assert result is None
+    assert not sync_route.called
+
+
+@respx.mock
+def test_refresh_after_write_runs_delta_on_healthy_cache(cache_path, cfg):
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+
+    delta = {**SYNC_FULL_RESPONSE, "sync_token": "token-after-write"}
+    for key in cache.RESOURCE_KEYS:
+        delta[key] = []
+    respx.get("https://api.example.com/v1/sync").mock(return_value=httpx.Response(200, json=delta))
+
+    with _make_client(cfg) as client:
+        result = cache.refresh_after_write(client, cfg, no_cache=False, no_sync_after=False)
+
+    assert result is not None
+    assert result.kind == "delta"
+    assert result.sync_token == "token-after-write"
+
+
+@respx.mock
+def test_refresh_after_write_swallows_engine_errors(cache_path, cfg, capsys):
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(
+            500, json={"error": {"code": "INTERNAL", "message": "boom", "fields": None}}
+        )
+    )
+    with _make_client(cfg) as client:
+        result = cache.refresh_after_write(client, cfg, no_cache=False, no_sync_after=False)
+
+    assert result is None
+    captured = capsys.readouterr()
+    assert "Cache refresh failed after write" in captured.err
+    assert "expense sync" in captured.err

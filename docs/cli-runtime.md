@@ -15,7 +15,7 @@ The replica is being built in three phases:
 - **7b.2.1 (shipped)** — replica-backed `list`/`get` for accounts, categories, hashtags. Auto cold-start when a read hits an empty cache. `--no-cache` is now meaningful on these commands.
 - **7b.2.2 (shipped)** — replica-backed reads for inbox + reconciliations. Inbox `--ready` filter fully replicated as SQL JOIN against cached accounts/categories. `reconciliations get` embeds paginated transactions from the cached transactions table.
 - **7b.2.3 (shipped)** — replica-backed reads for transactions. 8 filters incl. `--hashtag-id` (SQLite `json_each` containment) and `--search` (`LIKE … COLLATE NOCASE`, ASCII-equivalent to engine `ILIKE`). `hashtag_ids` is stripped from cached `list`/`get` output to match engine response shape.
-- **7b.3 (pending)** — write-path refresh (auto delta sync after every successful write).
+- **7b.3 (shipped)** — write-path refresh. Every successful write fires a follow-up `GET /sync` to keep the replica current. Errors during the post-write sync are non-fatal (the write already landed). `--no-sync-after` (root flag, env `EXPENSE_NO_SYNC_AFTER`) skips the refresh for batch scripts.
 
 ## Sync model
 
@@ -28,21 +28,21 @@ The CLI maps onto these two modes through different invocation forms.
 
 ## Phasing
 
-| Invocation | Step 7b.2.3 (today) | Step 7b.3 (write-path refresh) |
-|---|---|---|
-| `expense sync` (bare) | Delta sync against cache; cold-starts on first run | Same |
-| `expense sync --full` | Cold start: wipe + full pull + rebuild cache | Same |
-| `expense sync --no-cache` | Stateless full snapshot; cache untouched | Same |
-| `EXPENSE_STATELESS=1 expense sync` | Same as `--no-cache` | Same |
-| `expense accounts list/get` | **Replica-backed** by default; `--no-cache` round-trips engine | Same |
-| `expense categories list/get` | **Replica-backed** | Same |
-| `expense hashtags list/get` | **Replica-backed** | Same |
-| `expense inbox list/get` | **Replica-backed** | Same |
-| `expense reconcile list/get` | **Replica-backed** (`get` embeds paginated cached transactions) | Same |
-| `expense transactions list/get` | **Replica-backed** (8 filters incl. `--hashtag-id`, `--search`; `hashtag_ids` stripped from output) | Same |
-| `expense dashboard`, `reports/*`, `log`, `whoami`, `ping` | Engine-only | Engine-only (FX drift / not in `/sync`) |
-| `expense reconcile move/reorder` | Engine-direct internal reads (write-path workflow) | Same |
-| Writes (`create`/`update`/`delete`/`complete`/etc.) | Engine-direct; cache stale until next manual `expense sync` | **Auto-refresh cache** via post-write delta sync in 7b.3 |
+| Invocation | Behavior (today, Step 7b.3) |
+|---|---|
+| `expense sync` (bare) | Delta sync against cache; cold-starts on first run |
+| `expense sync --full` | Cold start: wipe + full pull + rebuild cache |
+| `expense sync --no-cache` | Stateless full snapshot; cache untouched |
+| `EXPENSE_STATELESS=1 expense sync` | Same as `--no-cache` |
+| `expense accounts list/get` | **Replica-backed** by default; `--no-cache` round-trips engine |
+| `expense categories list/get` | **Replica-backed** |
+| `expense hashtags list/get` | **Replica-backed** |
+| `expense inbox list/get` | **Replica-backed** |
+| `expense reconcile list/get` | **Replica-backed** (`get` embeds paginated cached transactions) |
+| `expense transactions list/get` | **Replica-backed** (8 filters incl. `--hashtag-id`, `--search`; `hashtag_ids` stripped from output) |
+| `expense dashboard`, `reports/*`, `whoami`, `ping` | Engine-only (FX drift / not in `/sync`) |
+| `expense reconcile move/reorder` | Engine-direct internal reads (write-path workflow) |
+| Writes (`create`/`update`/`delete`/`complete`/`log`/etc.) | Engine-direct; **post-write auto delta sync** keeps the cache current. `--no-sync-after` (or `EXPENSE_NO_SYNC_AFTER=1`) skips the refresh for batch scripts. |
 
 ## Write semantics
 
@@ -53,6 +53,8 @@ Writes always go straight to the engine. There is **no offline write queue, no b
 - Network errors fail fast. The CLI prints the error and exits non-zero. A developer at a terminal — or a script in CI — gets synchronous feedback. Silent buffering would corrupt the contract that the next command can rely on the previous command having landed.
 
 The Todoist-style offline write queue is an iOS-only feature (§3b). The CLI does not get one. The web dashboard does not get one. If either client's product story changes, adding a queue is a per-client commitment, not an inherited default.
+
+**Post-write cache refresh.** After every successful write, the CLI fires a delta sync against `GET /v1/sync` to pull the engine's authoritative state for the affected rows into the local replica. This keeps cached reads consistent immediately after a user action — no manual `expense sync` required. Failures during the post-write sync are non-fatal: the write already landed on the engine, the CLI prints a one-line stderr warning (`Cache refresh failed after write: ... Run 'expense sync' to refresh.`) and exits 0. Pass `--no-sync-after` (root flag) or set `EXPENSE_NO_SYNC_AFTER=1` to skip the refresh — useful when a script batches many writes and runs `expense sync` once at the end. The flag is independent of `--no-cache`: with `--no-cache`, no post-write sync runs anyway (stateless mode means the replica is bypassed entirely).
 
 ## `X-Client-Id` lifecycle
 

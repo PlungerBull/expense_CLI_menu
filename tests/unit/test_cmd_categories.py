@@ -423,3 +423,20 @@ def test_restore_409_prints_name_hint(configured):
     assert result.exit_code == 1
     assert "Rename the existing one first" in result.output
     assert "CONFLICT" in result.output
+
+
+@respx.mock
+def test_create_triggers_post_write_sync(cache_populated):
+    """Step 7b.3: a successful write fires a follow-up GET /sync."""
+    respx.post("https://api.example.com/v1/categories").mock(
+        return_value=httpx.Response(201, json=CATEGORY_RESPONSE)
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload([CATEGORY_RESPONSE]))
+    )
+    result = runner.invoke(
+        cli_app,
+        ["categories", "create", "--name", "Food", "--color", "#FF0000"],
+    )
+    assert result.exit_code == 0, result.output
+    assert sync_route.called

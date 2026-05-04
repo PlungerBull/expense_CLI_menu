@@ -20,8 +20,9 @@ cli_app = typer.Typer()
 def _root(
     ctx: typer.Context,
     no_cache: bool = typer.Option(False, "--no-cache", envvar="EXPENSE_STATELESS"),
+    no_sync_after: bool = typer.Option(False, "--no-sync-after", envvar="EXPENSE_NO_SYNC_AFTER"),
 ) -> None:
-    ctx.obj = AppContext(no_cache=no_cache)
+    ctx.obj = AppContext(no_cache=no_cache, no_sync_after=no_sync_after)
 
 
 cli_app.add_typer(accounts_app, name="accounts")
@@ -479,3 +480,82 @@ def test_restore_happy(configured):
     )
     result = runner.invoke(cli_app, ["accounts", "restore", "abc"])
     assert result.exit_code == 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# Step 7b.3: post-write cache refresh
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_create_triggers_post_write_sync(cache_populated):
+    """A successful write fires a follow-up GET /sync to refresh the replica."""
+    respx.post("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(201, json=ACCOUNT_RESPONSE)
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload([ACCOUNT_RESPONSE]))
+    )
+    result = runner.invoke(
+        cli_app,
+        ["accounts", "create", "--name", "BCP Soles", "--currency-code", "PEN"],
+    )
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
+
+
+@respx.mock
+def test_create_with_no_sync_after_skips_sync(cache_populated):
+    """--no-sync-after suppresses the post-write delta sync."""
+    respx.post("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(201, json=ACCOUNT_RESPONSE)
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync")
+    result = runner.invoke(
+        cli_app,
+        [
+            "--no-sync-after",
+            "accounts",
+            "create",
+            "--name",
+            "BCP Soles",
+            "--currency-code",
+            "PEN",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert not sync_route.called
+
+
+@respx.mock
+def test_post_write_sync_failure_is_non_fatal(cache_populated):
+    """A 5xx on the follow-up sync prints a stderr warning and exits 0."""
+    respx.post("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(201, json=ACCOUNT_RESPONSE)
+    )
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(
+            500,
+            json={"error": {"code": "INTERNAL", "message": "boom", "fields": None}},
+        )
+    )
+    result = runner.invoke(
+        cli_app,
+        ["accounts", "create", "--name", "BCP Soles", "--currency-code", "PEN"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Cache refresh failed after write" in result.output
+
+
+@respx.mock
+def test_archive_triggers_post_write_sync_via_run_toggle(cache_populated):
+    """run_toggle (used by archive/unarchive/restore) refreshes the cache too."""
+    respx.post("https://api.example.com/v1/accounts/abc/archive").mock(
+        return_value=httpx.Response(200, json={**ACCOUNT_RESPONSE, "is_archived": True})
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload([ACCOUNT_RESPONSE]))
+    )
+    result = runner.invoke(cli_app, ["accounts", "archive", "abc"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called

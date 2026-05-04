@@ -8,6 +8,7 @@ from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
+    cache_after_write,
     render_pagination_hint,
     require_yes,
     run_toggle,
@@ -321,6 +322,7 @@ def create(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
+        cache_after_write(ctx, client, cfg)
 
     if not json_output:
         typer.echo(f"Created: {new_id}")
@@ -385,6 +387,7 @@ def update(
             elif _is_field_locked_422(err):
                 typer.echo(_FIELD_LOCKED_HINT, err=True)
             raise
+        cache_after_write(ctx, client, cfg)
 
     _render_reconciliation(body, json_mode=json_output)
 
@@ -416,6 +419,7 @@ def delete(
             if err.status == 409:
                 typer.echo(_DELETE_LOCKED_HINT, err=True)
             raise
+        cache_after_write(ctx, client, cfg)
 
     _render_reconciliation(body, json_mode=json_output)
 
@@ -494,6 +498,7 @@ def complete(
                 ):
                     typer.echo(_COMPLETE_EMPTY_HINT, err=True)
             raise
+        cache_after_write(ctx, client, cfg)
 
     if json_output:
         typer.echo(json.dumps(body, indent=2))
@@ -693,6 +698,7 @@ def move(
             f"/accounts/{account_id}/reconciliations/order",
             json_body={"ordered_ids": new_order},
         )
+        cache_after_write(ctx, client, cfg)
 
     _render_reorder_response(body, json_mode=json_output)
 
@@ -833,5 +839,6 @@ def reorder(
             f"/accounts/{account_id}/reconciliations/order",
             json_body={"ordered_ids": new_order},
         )
+        cache_after_write(ctx, client, cfg)
 
     _render_reorder_response(body, json_mode=False)

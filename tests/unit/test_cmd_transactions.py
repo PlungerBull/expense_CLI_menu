@@ -678,3 +678,19 @@ def test_list_auto_cold_start_when_cache_empty(configured):
     assert result.exit_code == 0, result.output
     assert sync_route.called
     assert not tx_route.called
+
+
+@respx.mock
+def test_update_triggers_post_write_sync(cache_populated):
+    """Step 7b.3: a successful transactions write fires a follow-up GET /sync."""
+    respx.put("https://api.example.com/v1/transactions/abc").mock(
+        return_value=httpx.Response(200, json=TRANSACTION_RESPONSE)
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(
+            200, json=_sync_payload([{**TRANSACTION_RESPONSE, "user_id": "u1"}])
+        )
+    )
+    result = runner.invoke(cli_app, ["transactions", "update", "abc", "--title", "renamed"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called

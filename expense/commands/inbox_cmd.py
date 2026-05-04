@@ -5,7 +5,7 @@ import typer
 
 from expense import cache as cache_pkg
 from expense import config as config_module
-from expense.commands._resource import build_update_payload, require_yes
+from expense.commands._resource import build_update_payload, cache_after_write, require_yes
 from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -188,6 +188,7 @@ def add(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
+        cache_after_write(ctx, client, cfg)
 
     if not json_output:
         typer.echo(f"Created: {new_id}")
@@ -231,6 +232,7 @@ def update(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.put(f"/{_RESOURCE}/{id_}", json_body=payload)
+        cache_after_write(ctx, client, cfg)
 
     _render_inbox(body, json_mode=json_output)
 
@@ -254,6 +256,7 @@ def delete(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.delete(f"/{_RESOURCE}/{id_}")
+        cache_after_write(ctx, client, cfg)
 
     _render_inbox(body, json_mode=json_output)
 
@@ -283,6 +286,7 @@ def restore(
                     err=True,
                 )
             raise
+        cache_after_write(ctx, client, cfg)
 
     _render_inbox(body, json_mode=json_output)
 
@@ -315,6 +319,7 @@ def promote(
                     err=True,
                 )
             raise
+        cache_after_write(ctx, client, cfg)
 
     if not json_output:
         typer.echo(f"Created transaction: {new_transaction_id}")

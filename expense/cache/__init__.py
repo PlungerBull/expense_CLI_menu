@@ -28,6 +28,7 @@ from expense.cache.sync import (
     cold_start,
     delta_sync,
     ensure_synced,
+    refresh_after_write,
 )
 
 __all__ = [
@@ -55,6 +56,7 @@ __all__ = [
     "list_reconciliations",
     "list_transactions",
     "read",
+    "refresh_after_write",
     "wipe",
     "write_identity",
     "write_token",

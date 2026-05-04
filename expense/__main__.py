@@ -43,9 +43,18 @@ def main(
             "Stateless mode for CSV imports, CI, scripts."
         ),
     ),
+    no_sync_after: bool = typer.Option(
+        False,
+        "--no-sync-after",
+        envvar="EXPENSE_NO_SYNC_AFTER",
+        help=(
+            "Skip the post-write delta sync. Useful when batching many writes "
+            "in a script that runs `expense sync` once at the end."
+        ),
+    ),
 ) -> None:
     """The Hands — expense_world_engine CLI."""
-    ctx.obj = AppContext(verbose=verbose, no_cache=no_cache)
+    ctx.obj = AppContext(verbose=verbose, no_cache=no_cache, no_sync_after=no_sync_after)
 
 
 @app.command()

@@ -64,9 +64,9 @@ Auth token + engine URL live in `~/.expense-config`. Never checked in, never sha
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 7b.2.3: all 6 cacheable resources (accounts, categories, hashtags, inbox, reconciliations, transactions) now have replica-backed `list`/`get`.
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 7b.3: all 6 cacheable resources have replica-backed `list`/`get`, and every successful write fires an automatic post-write delta sync. Step 7b is now complete.
 
-The CLI is **cache-by-default by design** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), with stateless as the explicit escape hatch. Step 7 phases: 7a (stateless milestone, shipped), 7b.1 (replica foundation, shipped), 7b.2.1 / 7b.2.2 / 7b.2.3 (replica reads, all shipped), 7b.3 (write-path refresh, pending).
+The CLI is **cache-by-default by design** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), with stateless as the explicit escape hatch. Step 7 phases: 7a (stateless milestone, shipped), 7b.1 (replica foundation, shipped), 7b.2.1 / 7b.2.2 / 7b.2.3 (replica reads, all shipped), 7b.3 (write-path refresh, shipped).
 
 | Step | Scope | Status |
 |---|---|---|
@@ -84,7 +84,7 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 7b.2.1 | Sync — replica reads for accounts/categories/hashtags + auto cold-start | Done |
 | 7b.2.2 | Sync — replica reads for inbox + reconciliations | Done |
 | 7b.2.3 | Sync — replica reads for transactions | Done |
-| 7b.3 | Sync — write-path refresh | Pending |
+| 7b.3 | Sync — write-path refresh | Done |
 | 8 | Activity + exchange rates | Pending |
 | 9 | CLI complete (gate) | Pending |
 | 9.5 | Interactive shell (`expense menu`) | Pending |
