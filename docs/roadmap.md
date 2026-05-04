@@ -247,14 +247,21 @@ See [cli-runtime.md](cli-runtime.md) for the full runtime semantics across all p
 
 ## Step 8 — Activity + Exchange Rates
 
-*Deliverable: niche read commands for audit trail and rate lookups.*
+*Deliverable: niche read commands for audit trail and rate lookups. Both engine-direct (not on the §3b sync resource list).*
 
-1. `expense activity list [--resource-type] [--resource-id] [--limit] [--cursor]` → `GET /v1/activity`. Paginated per engine spec: render `next_cursor` as a hint in human mode; preserve verbatim in `--json`.
-2. `expense rates get --target <code> [--base USD] [--date YYYY-MM-DD]` → `GET /v1/exchange-rates`.
+Shipped in two sub-steps so each lands as a reviewable unit; they share no code.
 
-Low-value by themselves, but they close the gap to full engine coverage.
+### Step 8.1 — `expense activity list` (shipped)
 
-**Commit:** `feat: activity + exchange-rates read commands`
+`GET /v1/activity` with optional `--resource-type` / `--resource-id` filters and `--limit` / `--offset` pagination. Human renderer maps action codes 1–4 to `CREATED` / `UPDATED` / `DELETED` / `RESTORED` (unknown codes fall through as the integer for forward compatibility) and deliberately omits `before_snapshot` / `after_snapshot` — those are large nested dicts, accessible via `--json`. Pagination hint reuses the existing `render_pagination_hint` helper.
+
+**Commit:** `feat(activity): expense activity list — engine-direct audit log read (Step 8.1)`
+
+### Step 8.2 — `expense rates get` (shipped)
+
+`GET /v1/exchange-rates`. `--target` is required; `--base` and `--date` are omitted client-side when not provided so the engine's defaults (USD, today) apply rather than baking them into the CLI. `RATE_UNAVAILABLE` 422s flow through the standard `@handle_errors` envelope renderer — no command-specific hint, since the engine's `fields.exchange_rate` message is more accurate than anything the CLI could synthesize.
+
+**Commit:** `feat(rates): expense rates get — exchange-rate lookup (Step 8.2)`
 
 ---
 
