@@ -64,7 +64,7 @@ Auth token + engine URL live in `~/.expense-config`. Never checked in, never sha
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 8: every engine endpoint with a CLI surface is now wrapped — Steps 7b (sync) and 8 (activity + exchange rates) both done. Next gate is Step 9 (CLI-complete check).
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 9 (CLI-complete gate closed 2026-05-10): every engine endpoint with a CLI surface is wrapped, surface coverage is regression-armored by [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py), and the freshman flow is wired as a live contract test. Next is Step 9.5 (interactive shell).
 
 The CLI is **cache-by-default by design** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), with stateless as the explicit escape hatch. Step 7 phases: 7a (stateless milestone, shipped), 7b.1 (replica foundation, shipped), 7b.2.1 / 7b.2.2 / 7b.2.3 (replica reads, all shipped), 7b.3 (write-path refresh, shipped).
 
@@ -87,5 +87,5 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 7b.3 | Sync — write-path refresh | Done |
 | 8.1 | Activity log read | Done |
 | 8.2 | Exchange-rate read | Done |
-| 9 | CLI complete (gate) | Pending |
+| 9 | CLI complete (gate) | Done |
 | 9.5 | Interactive shell (`expense menu`) | Pending |

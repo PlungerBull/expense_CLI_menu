@@ -265,15 +265,15 @@ Shipped in two sub-steps so each lands as a reviewable unit; they share no code.
 
 ---
 
-## Step 9 — CLI Complete
+## Step 9 — CLI Complete (Done)
 
-All command groups from [cli-spec.md](cli-spec.md) work end-to-end against the live engine. Run the full check:
+All command groups from [cli-spec.md](cli-spec.md) work end-to-end against the live engine. Gate closed 2026-05-10. Verification:
 
-- Every command has `--help` with an example
-- `--json` works on every read command
-- Errors from the engine surface cleanly (never a bare stack trace)
-- A fresh user goes `expense config set` → `expense auth bootstrap` → `expense dashboard` with no surprises
-- Archive/delete distinction is respected: closed accounts/categories/hashtags appear only with `--include-archived`, deleted ones only with `--include-deleted`
+- **Every command has `--help` with an Example block.** Enforced by [tests/unit/test_command_surface.py](../tests/unit/test_command_surface.py), which walks the Typer tree (~63 leaves) and asserts an `Example:` block in every docstring. Caught 6 gaps during gate work — fixed in a separate commit (`version` + `reconcile update/delete/restore/complete/revert`).
+- **`--json` works on every read command.** Same test asserts `json_output` parameter presence on the read-command allowlist + every `list`/`get` leaf.
+- **Engine errors surface cleanly.** Five live smokes ran clean: bad PAT → 401 with `expense config set` hint; engine unreachable → exit 2 with friendly URL message; missing config → exit 3 with `expense config set` hint; incomplete `inbox promote` → 422 fields table + `expense inbox update` hint; account/category delete with active transactions → 409 with `expense <resource> archive` hint. Zero Python tracebacks across all paths.
+- **A fresh user walks `expense config set` → `auth bootstrap` → `dashboard` with no surprises.** Wired as a live contract test at [tests/contract/test_freshman_flow.py](../tests/contract/test_freshman_flow.py), gated on `PYTEST_LIVE=1` + `EXPENSE_PAT`. Uses `CliRunner` with isolated `EXPENSE_CONFIG` / `EXPENSE_CACHE` paths so it never clobbers the dev install.
+- **Archive/delete distinction respected.** `accounts/categories/hashtags list` accept `--include-archived` + `--include-deleted`; `inbox/transactions list` accept `--include-deleted` only (those resources have no archive state, per engine spec).
 
 Next: Step 9.5 (interactive shell) immediately after this gate, then Post-Step-9 ergonomics (quick-add parser, CSV import, shell completions, color conventions).
 
