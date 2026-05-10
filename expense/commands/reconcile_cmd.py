@@ -356,7 +356,10 @@ def update(
     ),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    """PUT /v1/reconciliations/{id}. Partial update."""
+    """PUT /v1/reconciliations/{id}. Partial update.
+
+    Example: expense reconcile update <id> --name "March 2026" --ending-balance 12500
+    """
     source = _validate_source_choice(source)
     if source == "chained" and beginning_balance is not None:
         raise typer.BadParameter(
@@ -403,6 +406,8 @@ def delete(
     """DELETE /v1/reconciliations/{id}. Soft-delete; cascade-unassigns attached transactions.
 
     Only allowed in draft. Completed reconciliations must be reverted first.
+
+    Example: expense reconcile delete <id> --yes
     """
     require_yes(
         yes,
@@ -445,6 +450,8 @@ def restore(
 
     The restored reconciliation comes back empty — the engine does NOT re-link
     transactions that were unassigned during delete.
+
+    Example: expense reconcile restore <id>
     """
 
     def _render(body: dict) -> None:
@@ -476,6 +483,8 @@ def complete(
     Locks amount_cents/account_id/title/date on every assigned transaction and
     locks the reconciliation's own balance/date fields. 422 if no transactions
     are assigned.
+
+    Example: expense reconcile complete <id>
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
@@ -518,6 +527,8 @@ def revert(
 
     Unlocks all assigned transactions and the reconciliation's own balance/date
     fields. A meaningful audit event — requires --yes.
+
+    Example: expense reconcile revert <id> --yes
     """
     require_yes(
         yes,

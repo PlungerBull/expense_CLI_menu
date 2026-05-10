@@ -61,7 +61,10 @@ def main(
 
 @app.command()
 def version() -> None:
-    """Print the CLI version."""
+    """Print the CLI version.
+
+    Example: expense version
+    """
     typer.echo(__version__)
 
 
