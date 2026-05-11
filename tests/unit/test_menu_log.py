@@ -14,6 +14,7 @@ import respx
 
 from expense import config as config_module
 from expense.menu import prompts
+from expense.menu.groups import _common as menu_common
 from expense.menu.groups import log as menu_log
 
 TRANSACTION_RESPONSE = {
@@ -84,8 +85,8 @@ class _PromptScript:
 
 def _patch_questionary(monkeypatch, script: _PromptScript) -> None:
     """Patch every questionary entry point the flow uses to share one script."""
-    monkeypatch.setattr(menu_log.questionary, "text", script)
-    monkeypatch.setattr(menu_log.questionary, "select", script)
+    monkeypatch.setattr(menu_common.questionary, "text", script)
+    monkeypatch.setattr(menu_common.questionary, "select", script)
     monkeypatch.setattr(prompts.questionary, "select", script)
     monkeypatch.setattr(prompts.questionary, "text", script)
 

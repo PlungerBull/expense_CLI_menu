@@ -11,6 +11,7 @@ from collections.abc import Callable
 import questionary
 import typer
 
+from expense.menu.groups.inbox import run_inbox_menu
 from expense.menu.groups.log import run_log_flow
 
 QUIT = "Quit"
@@ -18,6 +19,7 @@ QUIT = "Quit"
 
 _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Log a transaction": run_log_flow,
+    "Inbox": run_inbox_menu,
 }
 
 

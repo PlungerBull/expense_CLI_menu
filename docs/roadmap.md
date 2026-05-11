@@ -329,7 +329,7 @@ Wires the root-level "Log a transaction" entry to a required→optional fork flo
 
 **Commit:** `feat(menu): Log a transaction — root shortcut (Step 9.5.2)`
 
-### Step 9.5.3 — Inbox menu
+### Step 9.5.3 — Inbox menu (shipped)
 
 *Deliverable: Inbox group menu + all 7 inbox flows.*
 

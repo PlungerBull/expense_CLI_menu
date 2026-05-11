@@ -13,6 +13,7 @@ import typer
 from expense.cache import queries
 
 BACK = object()
+SKIP = object()
 
 
 def _format_choice(name: str, resource_id: str) -> str:
@@ -32,17 +33,21 @@ def _select_id(
     *,
     prompt: str,
     resource_plural: str,
+    allow_skip: bool = False,
 ) -> object:
     if not items:
         _empty_hint(resource_plural)
         return BACK
-    choices = [
+    choices: list = []
+    if allow_skip:
+        choices.append(questionary.Choice(title="(skip — leave blank)", value=SKIP))
+    choices.extend(
         questionary.Choice(
             title=_format_choice(item.get("name") or "(unnamed)", item["id"]),
             value=item["id"],
         )
         for item in items
-    ]
+    )
     answer = questionary.select(prompt, choices=choices).ask()
     if answer is None:
         return BACK
@@ -53,6 +58,7 @@ def pick_account(
     *,
     include_archived: bool = False,
     include_people: bool = False,
+    allow_skip: bool = False,
     prompt: str = "Account",
 ) -> object:
     items = queries.list_accounts(
@@ -60,16 +66,22 @@ def pick_account(
         include_deleted=False,
         include_people=include_people,
     )
-    return _select_id(items, prompt=prompt, resource_plural="accounts")
+    return _select_id(items, prompt=prompt, resource_plural="accounts", allow_skip=allow_skip)
 
 
 def pick_category(
     *,
     include_archived: bool = False,
+    allow_skip: bool = False,
     prompt: str = "Category",
 ) -> object:
     page = queries.list_categories(include_archived=include_archived, include_deleted=False)
-    return _select_id(page.get("items", []), prompt=prompt, resource_plural="categories")
+    return _select_id(
+        page.get("items", []),
+        prompt=prompt,
+        resource_plural="categories",
+        allow_skip=allow_skip,
+    )
 
 
 def pick_hashtag(
@@ -94,6 +106,45 @@ def pick_hashtag(
         answer = questionary.checkbox(prompt, choices=choices).ask()
     else:
         answer = questionary.select(prompt, choices=choices).ask()
+    if answer is None:
+        return BACK
+    return answer
+
+
+def _format_inbox_choice(item: dict) -> str:
+    title = item.get("title") or "(no title)"
+    amount = item.get("amount_cents")
+    amount_s = "(no amount)" if amount is None else f"{amount:+d}"
+    date_raw = item.get("date") or ""
+    date_short = date_raw[:10] if isinstance(date_raw, str) else ""
+    item_id = item.get("id", "")
+    return f"{title}  · {amount_s}  · {date_short}  · {item_id[:8]}…"
+
+
+def pick_inbox(
+    *,
+    only_deleted: bool = False,
+    prompt: str = "Inbox item",
+) -> object:
+    """Pick an inbox item from the cached replica.
+
+    `only_deleted=True` filters to soft-deleted drafts (for Restore).
+    Otherwise returns active drafts only.
+    """
+    page = queries.list_inbox(include_deleted=only_deleted)
+    items = page.get("items", [])
+    if only_deleted:
+        items = [it for it in items if it.get("deleted_at") is not None]
+    if not items:
+        if only_deleted:
+            typer.echo("No deleted inbox items found.", err=True)
+        else:
+            _empty_hint("inbox")
+        return BACK
+    choices = [
+        questionary.Choice(title=_format_inbox_choice(item), value=item["id"]) for item in items
+    ]
+    answer = questionary.select(prompt, choices=choices).ask()
     if answer is None:
         return BACK
     return answer
