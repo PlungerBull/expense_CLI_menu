@@ -120,9 +120,9 @@ def test_freshman_flow(isolated_env):
         dashboard_result = _run("dashboard", "--json")
         _assert_ok(dashboard_result, "dashboard --json")
         dashboard = _parse_json_stdout(dashboard_result.stdout)
-        assert any(
-            key in dashboard for key in ("totals", "accounts", "bank_accounts")
-        ), f"dashboard --json missing expected keys; got: {sorted(dashboard.keys())}"
+        assert any(key in dashboard for key in ("totals", "accounts", "bank_accounts")), (
+            f"dashboard --json missing expected keys; got: {sorted(dashboard.keys())}"
+        )
 
     finally:
         # Best-effort cleanup; reverse dependency order. Ignore failures.

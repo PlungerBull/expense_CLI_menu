@@ -61,9 +61,9 @@ def test_command_has_example_in_docstring(path, callback):
     cmd_name = " ".join(path)
     doc = inspect.getdoc(callback)
     assert doc, f"`expense {cmd_name}` has no docstring (gate criterion 1)"
-    assert (
-        "Example:" in doc
-    ), f"`expense {cmd_name}` docstring is missing an `Example:` block (Step 9 gate criterion 1)"
+    assert "Example:" in doc, (
+        f"`expense {cmd_name}` docstring is missing an `Example:` block (Step 9 gate criterion 1)"
+    )
 
 
 @pytest.mark.parametrize(("path", "callback"), _LEAVES, ids=_LEAF_IDS)
