@@ -319,7 +319,7 @@ Both paths call the same underlying flat-command implementations. The menu is a 
 
 **Commit:** `feat(menu): foundation — questionary, root menu, shared helpers (Step 9.5.1)`
 
-### Step 9.5.2 — Log a transaction (root shortcut)
+### Step 9.5.2 — Log a transaction (root shortcut, shipped)
 
 *Deliverable: the most-used action wired end-to-end through the menu.*
 

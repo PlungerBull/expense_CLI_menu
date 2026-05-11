@@ -6,11 +6,19 @@ Group wiring lands in Steps 9.5.2 through 9.5.15.
 """
 
 import sys
+from collections.abc import Callable
 
 import questionary
 import typer
 
+from expense.menu.groups.log import run_log_flow
+
 QUIT = "Quit"
+
+
+_GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
+    "Log a transaction": run_log_flow,
+}
 
 
 _GROUP_PHASES: dict[str, str] = {
@@ -89,4 +97,11 @@ def menu_command(ctx: typer.Context) -> None:
             return
         if choice is None or choice == QUIT:
             return
-        _unwired(choice)
+        handler = _GROUP_HANDLERS.get(choice)
+        if handler is None:
+            _unwired(choice)
+            continue
+        try:
+            handler(ctx)
+        except (KeyboardInterrupt, typer.Exit):
+            pass

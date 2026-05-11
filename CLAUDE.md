@@ -89,7 +89,7 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 8.2 | Exchange-rate read | Done |
 | 9 | CLI complete (gate) | Done |
 | 9.5.1 | Menu — foundation (questionary, root menu, shared helpers) | Done |
-| 9.5.2 | Menu — Log a transaction (root shortcut) | Pending |
+| 9.5.2 | Menu — Log a transaction (root shortcut) | Done |
 | 9.5.3 | Menu — Inbox | Pending |
 | 9.5.4 | Menu — Transactions | Pending |
 | 9.5.5 | Menu — Dashboard | Pending |
