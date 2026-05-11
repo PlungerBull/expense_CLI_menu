@@ -88,4 +88,18 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 8.1 | Activity log read | Done |
 | 8.2 | Exchange-rate read | Done |
 | 9 | CLI complete (gate) | Done |
-| 9.5 | Interactive shell (`expense menu`) | Pending |
+| 9.5.1 | Menu — foundation (questionary, root menu, shared helpers) | Done |
+| 9.5.2 | Menu — Log a transaction (root shortcut) | Pending |
+| 9.5.3 | Menu — Inbox | Pending |
+| 9.5.4 | Menu — Transactions | Pending |
+| 9.5.5 | Menu — Dashboard | Pending |
+| 9.5.6 | Menu — Reports (with hashtag tree) | Pending |
+| 9.5.7 | Menu — Reconciliations (incl. `$EDITOR` reorder) | Pending |
+| 9.5.8 | Menu — Accounts | Pending |
+| 9.5.9 | Menu — Categories | Pending |
+| 9.5.10 | Menu — Hashtags | Pending |
+| 9.5.11 | Menu — Sync | Pending |
+| 9.5.12 | Menu — Activity log | Pending |
+| 9.5.13 | Menu — Exchange rates | Pending |
+| 9.5.14 | Menu — Auth & profile | Pending |
+| 9.5.15 | Menu — Config + Step 9.5 closeout | Pending |

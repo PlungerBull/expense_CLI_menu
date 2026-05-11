@@ -19,6 +19,7 @@ from expense.commands import (
     transactions_cmd,
 )
 from expense.context import AppContext
+from expense.menu import menu_command
 
 app = typer.Typer(
     help="The Hands — expense_world_engine CLI.",
@@ -84,6 +85,7 @@ app.command("whoami")(auth_cmd.whoami)
 app.command("log")(log_cmd.log)
 app.command("dashboard")(dashboard_cmd.dashboard)
 app.command("sync")(sync_cmd.sync)
+app.command("menu")(menu_command)
 
 
 if __name__ == "__main__":

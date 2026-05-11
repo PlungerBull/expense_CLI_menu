@@ -13,6 +13,7 @@ dependencies = [
     "httpx>=0.27",
     "pydantic>=2.6",
     "tzlocal>=5.2",
+    "questionary>=2.0",
 ]
 
 [project.optional-dependencies]
