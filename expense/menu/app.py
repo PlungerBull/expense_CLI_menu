@@ -11,6 +11,7 @@ from collections.abc import Callable
 import questionary
 import typer
 
+from expense.menu.groups.config import run_config_menu
 from expense.menu.groups.dashboard import run_dashboard_menu
 from expense.menu.groups.inbox import run_inbox_menu
 from expense.menu.groups.log import run_log_flow
@@ -24,6 +25,7 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Inbox": run_inbox_menu,
     "Transactions": run_transactions_menu,
     "Dashboard": run_dashboard_menu,
+    "Config": run_config_menu,
 }
 
 
@@ -48,6 +50,9 @@ _GROUP_PHASES: dict[str, str] = {
 def _root_choices() -> list:
     sep = questionary.Separator("───────────────")
     return [
+        "Config",
+        "Auth & profile",
+        sep,
         "Log a transaction",
         "Inbox",
         "Transactions",
@@ -62,9 +67,6 @@ def _root_choices() -> list:
         "Sync",
         "Activity log",
         "Exchange rates",
-        sep,
-        "Auth & profile",
-        "Config",
         sep,
         QUIT,
     ]

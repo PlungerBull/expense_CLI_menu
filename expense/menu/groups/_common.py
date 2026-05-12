@@ -5,6 +5,7 @@ helper here is intra-package public (no leading underscore) and consumed
 by sibling modules (log.py, inbox.py, future 9.5.4+ phases).
 """
 
+from collections.abc import Callable
 from datetime import date as date_cls
 from datetime import datetime, timedelta
 
@@ -138,6 +139,25 @@ def print_recap(command: str, flags: list[tuple[str, str | None]]) -> None:
 def pause() -> None:
     """Pause at end of a flow before returning to parent menu."""
     questionary.text("Press Enter to return").ask()
+
+
+def prompt_validated_text(
+    label: str,
+    validate: Callable[[str], bool | str],
+    *,
+    password: bool = False,
+) -> str | None:
+    """Validated text prompt. Returns the trimmed input, or None on Ctrl-C.
+
+    `validate(raw) -> True | error_message_str` is called synchronously by
+    questionary; on a string return value the prompt re-prompts. When
+    `password=True` the input is hidden (uses `questionary.password`).
+    """
+    prompter = questionary.password if password else questionary.text
+    answer = prompter(label, validate=validate).ask()
+    if answer is None:
+        return None
+    return answer.strip()
 
 
 _DATE_PRESETS = [

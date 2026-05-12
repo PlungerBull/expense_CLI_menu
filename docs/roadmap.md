@@ -361,7 +361,7 @@ Wires `View dashboard (current month)` and `View dashboard with archived panels`
 
 > **Reordered 2026-05-12.** Config + Auth & profile were promoted ahead of Reports/Reconcile/Accounts/etc. because the menu's whole point is "freshman walks the surface without `--help`" — and today a freshman has to drop to flat commands to set engine URL + token + bootstrap before the menu becomes usable. Shipped steps (9.5.1–9.5.5) keep their original numbers; only pending steps were renumbered. The Step 9.5 closeout (freshman-flow menu gate) was split out as 9.5.16 because it can only run once Config + Auth + Accounts + Categories are all wired.
 
-### Step 9.5.6 — Config menu
+### Step 9.5.6 — Config menu (shipped)
 
 *Deliverable: Config group menu + all 5 config flows.*
 
