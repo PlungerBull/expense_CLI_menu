@@ -641,22 +641,27 @@ def test_list_replica_cleared_filter(cache_populated):
     assert [r["id"] for r in payload["items"]] == ["tx-coffee"]
 
 
-def test_list_replica_strips_hashtag_ids(cache_populated):
+def test_list_replica_includes_hashtag_ids(cache_populated):
+    """Engine A+ embeds hashtag_ids on every transaction-returning endpoint;
+    cache mirrors that — list responses carry hashtag_ids."""
     with respx.mock(base_url="https://api.example.com"):
         result = runner.invoke(cli_app, ["transactions", "list", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.output)
     for item in payload["items"]:
-        assert "hashtag_ids" not in item
+        assert "hashtag_ids" in item
+        assert isinstance(item["hashtag_ids"], list)
 
 
 def test_get_replica_path(cache_populated):
+    """Engine A+ embeds hashtag_ids on GET /v1/transactions/{id}; cache mirrors."""
     with respx.mock(base_url="https://api.example.com"):
         result = runner.invoke(cli_app, ["transactions", "get", "tx-coffee", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["id"] == "tx-coffee"
-    assert "hashtag_ids" not in payload
+    assert "hashtag_ids" in payload
+    assert isinstance(payload["hashtag_ids"], list)
 
 
 def test_get_replica_not_found(cache_populated):

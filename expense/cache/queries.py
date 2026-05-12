@@ -263,17 +263,6 @@ def list_reconciliations(
     )
 
 
-def _strip_hashtag_ids(body: dict) -> dict:
-    """Engine `/v1/transactions` and `/v1/transactions/{id}` don't include
-    `hashtag_ids` (per §3a it's wire-format-only for /sync). Strip it from
-    cached responses for byte parity."""
-    if "hashtag_ids" not in body:
-        return body
-    out = dict(body)
-    out.pop("hashtag_ids", None)
-    return out
-
-
 def list_transactions(
     *,
     account_id: str | None = None,
@@ -291,7 +280,9 @@ def list_transactions(
 
     `hashtag_id` uses SQLite `json_each(body, '$.hashtag_ids')` for containment.
     `search` uses `LIKE ? COLLATE NOCASE` against title + description.
-    Returned items have `hashtag_ids` stripped to match engine response shape.
+    Engine A+ embeds `hashtag_ids` on every transaction-returning endpoint
+    (sorted ASC, `[]` on empty) per api-design-principles.md §3a, and the
+    cache mirrors that — items here carry `hashtag_ids` from the stored body.
     """
     eff_limit = limit if isinstance(limit, int) and limit > 0 else 100
     eff_offset = offset if isinstance(offset, int) and offset >= 0 else 0
@@ -350,7 +341,7 @@ def list_transactions(
         "total": total,
         "limit": eff_limit,
         "offset": eff_offset,
-        "items": [_strip_hashtag_ids(_row_to_dict(r["body"])) for r in rows],
+        "items": [_row_to_dict(r["body"]) for r in rows],
     }
 
 
@@ -364,7 +355,7 @@ def get_transaction(transaction_id: str) -> dict:
         conn.close()
     if row is None:
         raise _not_found("Transaction", transaction_id)
-    return _strip_hashtag_ids(_row_to_dict(row["body"]))
+    return _row_to_dict(row["body"])
 
 
 def get_reconciliation(

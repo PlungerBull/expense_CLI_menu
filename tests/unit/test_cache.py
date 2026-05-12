@@ -1101,7 +1101,9 @@ def test_list_transactions_orders_date_desc(cache_path):
     assert [r["id"] for r in body["items"]] == ["t2", "t3", "t1"]
 
 
-def test_list_transactions_strips_hashtag_ids(cache_path):
+def test_list_transactions_includes_hashtag_ids(cache_path):
+    """Engine A+ embeds hashtag_ids on every transaction-returning endpoint;
+    cache mirrors that — no strip on the cached list path."""
     conn = cache.connect()
     try:
         _seed_transactions_local(
@@ -1111,7 +1113,7 @@ def test_list_transactions_strips_hashtag_ids(cache_path):
     finally:
         conn.close()
     body = cache.list_transactions()
-    assert "hashtag_ids" not in body["items"][0]
+    assert body["items"][0]["hashtag_ids"] == ["h1", "h2"]
 
 
 def test_list_transactions_account_filter(cache_path):
@@ -1252,14 +1254,15 @@ def test_list_transactions_excludes_deleted(cache_path):
     assert "t2" not in ids
 
 
-def test_get_transaction_strips_hashtag_ids(cache_path):
+def test_get_transaction_includes_hashtag_ids(cache_path):
+    """Engine A+ embeds hashtag_ids on GET /v1/transactions/{id}; cache mirrors."""
     conn = cache.connect()
     try:
         _seed_transactions_local(conn, [_tx_row(id="t1", hashtag_ids=["h1"])])
     finally:
         conn.close()
     body = cache.get_transaction("t1")
-    assert "hashtag_ids" not in body
+    assert body["hashtag_ids"] == ["h1"]
     assert body["id"] == "t1"
 
 
