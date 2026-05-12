@@ -349,7 +349,7 @@ Wires `list` (filter prompts: account, category, hashtag, reconciliation, date r
 
 **Commit:** `feat(menu): Transactions — list/get/update/delete/restore/batch (Step 9.5.4)`
 
-### Step 9.5.5 — Dashboard menu
+### Step 9.5.5 — Dashboard menu (shipped)
 
 *Deliverable: Dashboard group menu + both dashboard variants.*
 

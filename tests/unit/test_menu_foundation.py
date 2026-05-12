@@ -82,12 +82,12 @@ def test_root_menu_handles_ctrl_c(monkeypatch):
 
 def test_stub_placeholder_advertises_correct_phase(monkeypatch):
     _no_tty_guard(monkeypatch)
-    # Pick a group that is still unwired (Dashboard ships in 9.5.5).
-    monkeypatch.setattr(menu_app.questionary, "select", _make_select_factory(["Dashboard", "Quit"]))
+    # Pick a group that is still unwired (Reports ships in 9.5.6).
+    monkeypatch.setattr(menu_app.questionary, "select", _make_select_factory(["Reports", "Quit"]))
     result = runner.invoke(app, ["menu"])
     assert result.exit_code == 0
     assert "not yet wired" in result.output
-    assert "9.5.5" in result.output
+    assert "9.5.6" in result.output
 
 
 def test_every_group_advertises_its_phase():

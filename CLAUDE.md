@@ -92,7 +92,7 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 9.5.2 | Menu — Log a transaction (root shortcut) | Done |
 | 9.5.3 | Menu — Inbox | Done |
 | 9.5.4 | Menu — Transactions | Done |
-| 9.5.5 | Menu — Dashboard | Pending |
+| 9.5.5 | Menu — Dashboard | Done |
 | 9.5.6 | Menu — Reports (with hashtag tree) | Pending |
 | 9.5.7 | Menu — Reconciliations (incl. `$EDITOR` reorder) | Pending |
 | 9.5.8 | Menu — Accounts | Pending |
