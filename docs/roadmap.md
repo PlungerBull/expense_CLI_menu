@@ -339,7 +339,7 @@ Wires `add`, `list`, `get`, `update`, `delete`, `restore`, `promote`. `add` reus
 
 **Commit:** `feat(menu): Inbox — add/list/get/update/delete/restore/promote (Step 9.5.3)`
 
-### Step 9.5.4 — Transactions menu
+### Step 9.5.4 — Transactions menu (shipped)
 
 *Deliverable: Transactions group menu + all 6 transactions flows.*
 

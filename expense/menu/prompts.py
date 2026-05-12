@@ -88,20 +88,30 @@ def pick_hashtag(
     *,
     multi: bool = False,
     include_archived: bool = False,
+    allow_skip: bool = False,
     prompt: str = "Hashtag",
 ) -> object:
+    """Pick one or many hashtags from the local cache.
+
+    `allow_skip=True` (single-select only) prepends a `(skip)` choice that
+    returns SKIP. Ignored when `multi=True` — empty checkbox selection
+    represents "no hashtags" naturally.
+    """
     page = queries.list_hashtags(include_archived=include_archived, include_deleted=False)
     items = page.get("items", [])
     if not items:
         _empty_hint("hashtags")
         return BACK
-    choices = [
+    choices: list = []
+    if allow_skip and not multi:
+        choices.append(questionary.Choice(title="(skip — leave blank)", value=SKIP))
+    choices.extend(
         questionary.Choice(
             title=_format_choice(item.get("name") or "(unnamed)", item["id"]),
             value=item["id"],
         )
         for item in items
-    ]
+    )
     if multi:
         answer = questionary.checkbox(prompt, choices=choices).ask()
     else:
@@ -148,6 +158,71 @@ def pick_inbox(
     if answer is None:
         return BACK
     return answer
+
+
+def _format_transaction_choice(item: dict) -> str:
+    """Same shape as `_format_inbox_choice` — title · signed-amount · date · id."""
+    title = item.get("title") or "(no title)"
+    amount = item.get("amount_cents")
+    amount_s = "(no amount)" if amount is None else f"{amount:+d}"
+    date_raw = item.get("date") or ""
+    date_short = date_raw[:10] if isinstance(date_raw, str) else ""
+    item_id = item.get("id", "")
+    return f"{title}  · {amount_s}  · {date_short}  · {item_id[:8]}…"
+
+
+def pick_transaction(
+    *,
+    only_deleted: bool = False,
+    prompt: str = "Transaction",
+) -> object:
+    """Pick a transaction from the local cached replica.
+
+    Defaults to 100 most recent (cache orders by date DESC, created_at DESC).
+    `only_deleted=True` filters to soft-deleted rows (for Restore).
+    """
+    page = queries.list_transactions(limit=100)
+    items = page.get("items", [])
+    if only_deleted:
+        # list_transactions filters out deleted rows by default; pull a wider
+        # include-deleted view via a second call.
+        page = _list_transactions_with_deleted()
+        items = [it for it in page.get("items", []) if it.get("deleted_at") is not None]
+    if not items:
+        if only_deleted:
+            typer.echo("No deleted transactions found.", err=True)
+        else:
+            _empty_hint("transactions")
+        return BACK
+    choices = [
+        questionary.Choice(title=_format_transaction_choice(item), value=item["id"])
+        for item in items
+    ]
+    answer = questionary.select(prompt, choices=choices).ask()
+    if answer is None:
+        return BACK
+    return answer
+
+
+def _list_transactions_with_deleted() -> dict:
+    """Bypass list_transactions's default `deleted_at IS NULL` filter.
+
+    list_transactions does not currently expose include_deleted, so we go
+    one level deeper for the Restore flow.
+    """
+    from expense.cache import db
+
+    conn = db.connect()
+    try:
+        rows = conn.execute(
+            "SELECT body FROM transactions ORDER BY date DESC, "
+            "json_extract(body, '$.created_at') DESC LIMIT 100"
+        ).fetchall()
+    finally:
+        conn.close()
+    import json
+
+    return {"items": [json.loads(r["body"]) for r in rows]}
 
 
 def pick_reconciliation(

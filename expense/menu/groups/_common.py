@@ -5,6 +5,9 @@ helper here is intra-package public (no leading underscore) and consumed
 by sibling modules (log.py, inbox.py, future 9.5.4+ phases).
 """
 
+from datetime import date as date_cls
+from datetime import datetime, timedelta
+
 import questionary
 import typer
 
@@ -135,3 +138,77 @@ def print_recap(command: str, flags: list[tuple[str, str | None]]) -> None:
 def pause() -> None:
     """Pause at end of a flow before returning to parent menu."""
     questionary.text("Press Enter to return").ask()
+
+
+_DATE_PRESETS = [
+    "Any date",
+    "This month",
+    "Last month",
+    "Last 30 days",
+    "Last 90 days",
+    "This year",
+    "Custom range…",
+]
+
+
+def _iso(dt: datetime) -> str:
+    """Local-aware ISO 8601 with seconds precision, matching dates.now_local_iso."""
+    return dt.astimezone().isoformat(timespec="seconds")
+
+
+def _first_of_month(d: date_cls) -> datetime:
+    return datetime(d.year, d.month, 1, 0, 0, 0)
+
+
+def _last_of_prev_month(today: date_cls) -> datetime:
+    first_this = date_cls(today.year, today.month, 1)
+    last_prev_d = first_this - timedelta(days=1)
+    return datetime(last_prev_d.year, last_prev_d.month, last_prev_d.day, 23, 59, 59)
+
+
+def prompt_date_range_preset() -> tuple[bool, str | None, str | None]:
+    """Date-range filter prompt.
+
+    Returns (ok, date_from_iso, date_to_iso). ok=False signals user aborted.
+    All presets compute client-side using the local timezone. Custom range
+    forks into two text prompts, each parsed via dates.to_canonical_aware.
+    """
+    choice = questionary.select("Date range?", choices=_DATE_PRESETS).ask()
+    if choice is None:
+        return False, None, None
+
+    today = datetime.now().date()
+    end_of_today = datetime(today.year, today.month, today.day, 23, 59, 59)
+
+    if choice == "Any date":
+        return True, None, None
+    if choice == "This month":
+        return True, _iso(_first_of_month(today)), _iso(end_of_today)
+    if choice == "Last month":
+        first_prev = date_cls(today.year, today.month, 1) - timedelta(days=1)
+        first_prev = date_cls(first_prev.year, first_prev.month, 1)
+        return True, _iso(_first_of_month(first_prev)), _iso(_last_of_prev_month(today))
+    if choice == "Last 30 days":
+        start = datetime.combine(today - timedelta(days=30), datetime.min.time())
+        return True, _iso(start), _iso(end_of_today)
+    if choice == "Last 90 days":
+        start = datetime.combine(today - timedelta(days=90), datetime.min.time())
+        return True, _iso(start), _iso(end_of_today)
+    if choice == "This year":
+        start = datetime(today.year, 1, 1, 0, 0, 0)
+        return True, _iso(start), _iso(end_of_today)
+
+    # Custom range — two text prompts.
+    raw_from = questionary.text("From date (YYYY-MM-DD or RFC 3339)").ask()
+    if raw_from is None:
+        return False, None, None
+    raw_to = questionary.text("To date (YYYY-MM-DD or RFC 3339)").ask()
+    if raw_to is None:
+        return False, None, None
+    try:
+        df = to_canonical_aware(raw_from.strip()) if raw_from.strip() else None
+        dt = to_canonical_aware(raw_to.strip()) if raw_to.strip() else None
+    except typer.BadParameter as exc:
+        typer.echo(f"  {exc.message}", err=True)
+        return False, None, None
+    return True, df, dt
