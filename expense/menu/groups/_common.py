@@ -99,7 +99,7 @@ def prompt_yes_no(message: str, *, default_no: bool = True) -> bool | None:
             questionary.Choice(title="No", value=False),
             questionary.Choice(title="Yes", value=True),
         ],
-        default="No" if default_no else "Yes",
+        default=False if default_no else True,
     ).ask()
     return answer
 

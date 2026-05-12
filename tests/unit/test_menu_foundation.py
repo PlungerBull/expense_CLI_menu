@@ -6,11 +6,13 @@ Ctrl-C handling, and the shared prompt helpers (`pick_account`,
 both monkeypatched, matching the pattern in `test_cmd_*.py`.
 """
 
+import questionary
 from typer.testing import CliRunner
 
 from expense.__main__ import app
 from expense.menu import app as menu_app
 from expense.menu import prompts
+from expense.menu.groups import _common as menu_common
 
 runner = CliRunner()
 
@@ -162,3 +164,34 @@ def test_confirm_destructive_no(monkeypatch):
 def test_confirm_destructive_aborted_returns_false(monkeypatch):
     monkeypatch.setattr(prompts.questionary, "select", _make_select_factory([None]))
     assert prompts.confirm_destructive("Delete it?") is False
+
+
+# ----- questionary defaults regression -----
+# questionary 2.x requires `default` to equal one of the choice *values*, not
+# labels. Earlier code passed default="No" with choices using value=False/True,
+# which raised ValueError at runtime but slipped past every test that stubs out
+# `questionary.select` entirely. These tests let real questionary validate.
+
+
+def _stub_ask_only(monkeypatch, target_module) -> None:
+    """Let real questionary.select run (validates default) but stub .ask()."""
+    real_select = questionary.select
+
+    def _select_then_stub_ask(*args, **kwargs):
+        question = real_select(*args, **kwargs)
+        question.ask = lambda: False
+        return question
+
+    monkeypatch.setattr(target_module.questionary, "select", _select_then_stub_ask)
+
+
+def test_prompt_yes_no_default_matches_choice_value(monkeypatch):
+    _stub_ask_only(monkeypatch, menu_common)
+    menu_common.prompt_yes_no("Proceed?")
+    menu_common.prompt_yes_no("Proceed?", default_no=False)
+
+
+def test_confirm_destructive_default_matches_choice_value(monkeypatch):
+    _stub_ask_only(monkeypatch, prompts)
+    prompts.confirm_destructive("Delete?")
+    prompts.confirm_destructive("Delete?", warning="This is permanent.")

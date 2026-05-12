@@ -263,7 +263,7 @@ def confirm_destructive(message: str, warning: str | None = None) -> bool:
             questionary.Choice(title="No", value=False),
             questionary.Choice(title="Yes, do it", value=True),
         ],
-        default="No",
+        default=False,
     ).ask()
     return bool(answer)
 
