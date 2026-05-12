@@ -93,13 +93,14 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 9.5.3 | Menu — Inbox | Done |
 | 9.5.4 | Menu — Transactions | Done |
 | 9.5.5 | Menu — Dashboard | Done |
-| 9.5.6 | Menu — Reports (with hashtag tree) | Pending |
-| 9.5.7 | Menu — Reconciliations (incl. `$EDITOR` reorder) | Pending |
-| 9.5.8 | Menu — Accounts | Pending |
-| 9.5.9 | Menu — Categories | Pending |
-| 9.5.10 | Menu — Hashtags | Pending |
-| 9.5.11 | Menu — Sync | Pending |
-| 9.5.12 | Menu — Activity log | Pending |
-| 9.5.13 | Menu — Exchange rates | Pending |
-| 9.5.14 | Menu — Auth & profile | Pending |
-| 9.5.15 | Menu — Config + Step 9.5 closeout | Pending |
+| 9.5.6 | Menu — Config (next) | Pending |
+| 9.5.7 | Menu — Auth & profile | Pending |
+| 9.5.8 | Menu — Reports (with hashtag tree) | Pending |
+| 9.5.9 | Menu — Reconciliations (incl. `$EDITOR` reorder) | Pending |
+| 9.5.10 | Menu — Accounts | Pending |
+| 9.5.11 | Menu — Categories | Pending |
+| 9.5.12 | Menu — Hashtags | Pending |
+| 9.5.13 | Menu — Sync | Pending |
+| 9.5.14 | Menu — Activity log | Pending |
+| 9.5.15 | Menu — Exchange rates | Pending |
+| 9.5.16 | Menu — Step 9.5 closeout (freshman-flow gate) | Pending |

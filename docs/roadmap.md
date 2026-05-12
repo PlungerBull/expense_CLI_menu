@@ -359,87 +359,19 @@ Wires `View dashboard (current month)` and `View dashboard with archived panels`
 
 **Commit:** `feat(menu): Dashboard — current month + archived variant (Step 9.5.5)`
 
-### Step 9.5.6 — Reports menu
+> **Reordered 2026-05-12.** Config + Auth & profile were promoted ahead of Reports/Reconcile/Accounts/etc. because the menu's whole point is "freshman walks the surface without `--help`" — and today a freshman has to drop to flat commands to set engine URL + token + bootstrap before the menu becomes usable. Shipped steps (9.5.1–9.5.5) keep their original numbers; only pending steps were renumbered. The Step 9.5 closeout (freshman-flow menu gate) was split out as 9.5.16 because it can only run once Config + Auth + Accounts + Categories are all wired.
 
-*Deliverable: Reports group menu + single-month + range flows.*
+### Step 9.5.6 — Config menu
 
-Wires `Monthly report (single month)` (month prompt + "show hashtag breakdown?" toggle) and `Monthly report (range)` (from/to prompts + "expand by hashtag?" toggle + 24-month span guard). If the underlying renderer doesn't yet resolve hashtag UUIDs to names, this phase upgrades it — small CLI-side join against the cached hashtag list, no engine change.
+*Deliverable: Config group menu + all 5 config flows.*
 
-**Verify:** single-month tree shows multi-hashtag combos like `Food + Club`; range matrix renders compactly by default; expand-by-hashtag toggle adds one row per combo per category.
+Wires `Show current config`, `Set engine URL`, `Set token (PAT)`, `Set main currency (local default)`, `Clear all config` (destructive — double-confirm). First step a freshman walks: with this in place, the entire bootstrap is reachable from `expense menu`.
 
-**Commit:** `feat(menu): Reports — single month + range with hashtag tree (Step 9.5.6)`
+**Verify:** new user sets engine URL and PAT from the menu only; `Show current config` reflects the change; `Clear all config` requires double-confirm and wipes both fields.
 
-### Step 9.5.7 — Reconciliations menu
+**Commit:** `feat(menu): Config — show/set engine-url/set token/set main-currency/clear (Step 9.5.6)`
 
-*Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder.*
-
-Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-balance` mutual-exclusion guard), `update`, `delete`, `restore`, `complete`, `revert` (extra-strong confirm), `move` (with `--to | --before | --after` mutex), `reorder` (reuses [expense/_editor.py](../expense/_editor.py) without modification).
-
-**Verify:** create chained vs manual; complete + revert prints lock/unlock counts; `move` reorders a single row; `reorder` opens `$EDITOR`, accepts the rearranged file, prints recalculated_count.
-
-**Commit:** `feat(menu): Reconciliations — full lifecycle + $EDITOR reorder (Step 9.5.7)`
-
-### Step 9.5.8 — Accounts menu
-
-*Deliverable: Accounts group menu + all 8 account flows.*
-
-Wires `list` (with archived/deleted/people toggles), `get`, `create` (with currency-code immutability warning), `update`, `archive`, `unarchive`, `delete`, `restore`.
-
-**Verify:** full CRUD + archive/unarchive/delete/restore round trip; `update --currency-code` blocked at parse time with friendly hint.
-
-**Commit:** `feat(menu): Accounts — CRUD + archive/restore (Step 9.5.8)`
-
-### Step 9.5.9 — Categories menu
-
-*Deliverable: Categories group menu + all 8 category flows.*
-
-Wires the same template as Accounts, with system-category guard (engine 403 on `@Debt` / `@Transfer` rename/delete/archive rendered as "System categories cannot be modified").
-
-**Verify:** full CRUD round trip; system-category rejection renders cleanly.
-
-**Commit:** `feat(menu): Categories — CRUD + archive/restore + system guard (Step 9.5.9)`
-
-### Step 9.5.10 — Hashtags menu
-
-*Deliverable: Hashtags group menu + all 8 hashtag flows.*
-
-Wires the same template; `delete` warning mentions junction-row cascade (restore does NOT undo).
-
-**Verify:** full CRUD round trip; delete-cascade warning surfaces before submit.
-
-**Commit:** `feat(menu): Hashtags — CRUD + archive/restore (Step 9.5.10)`
-
-### Step 9.5.11 — Sync menu
-
-*Deliverable: Sync group menu + both sync variants.*
-
-Wires `Refresh (delta sync)` and `Full rebuild (--full)`. Each prints the per-resource count summary the flat command already renders.
-
-**Verify:** delta sync after a no-op shows mostly zeros; `--full` rebuilds cache.
-
-**Commit:** `feat(menu): Sync — delta + full rebuild (Step 9.5.11)`
-
-### Step 9.5.12 — Activity log menu
-
-*Deliverable: Activity group menu + 3 activity flows.*
-
-Wires `List all recent activity`, `Filter by resource type`, `Filter by specific record` — same underlying `activity list` with different flag presets.
-
-**Verify:** each entry surfaces the expected activity rows; pagination hint renders.
-
-**Commit:** `feat(menu): Activity log — list + filter variants (Step 9.5.12)`
-
-### Step 9.5.13 — Exchange rates menu
-
-*Deliverable: Exchange rates group menu + lookup flow.*
-
-Wires `Look up a rate` (target required; base + date optional with engine-default fallbacks).
-
-**Verify:** `USD → PEN` lookup returns a number; missing target prompts; engine `RATE_UNAVAILABLE` 422 renders cleanly.
-
-**Commit:** `feat(menu): Exchange rates — lookup (Step 9.5.13)`
-
-### Step 9.5.14 — Auth & profile menu
+### Step 9.5.7 — Auth & profile menu
 
 *Deliverable: Auth group menu + all 5 auth flows.*
 
@@ -447,21 +379,101 @@ Wires `Show my profile (whoami)`, `First-time bootstrap`, `Update display name`,
 
 **Verify:** bootstrap, profile update, settings update, main-currency change with confirm all round-trip; recalc count surfaces after main-currency change.
 
-**Commit:** `feat(menu): Auth & profile — whoami/bootstrap/profile/settings/main_currency (Step 9.5.14)`
+**Commit:** `feat(menu): Auth & profile — whoami/bootstrap/profile/settings/main_currency (Step 9.5.7)`
 
-### Step 9.5.15 — Config menu
+### Step 9.5.8 — Reports menu
 
-*Deliverable: Config group menu + all 5 config flows. Closes Step 9.5.*
+*Deliverable: Reports group menu + single-month + range flows.*
 
-Wires `Show current config`, `Set engine URL`, `Set token (PAT)`, `Set main currency (local default)`, `Clear all config` (destructive — double-confirm).
+Wires `Monthly report (single month)` (month prompt + "show hashtag breakdown?" toggle) and `Monthly report (range)` (from/to prompts + "expand by hashtag?" toggle + 24-month span guard). If the underlying renderer doesn't yet resolve hashtag UUIDs to names, this phase upgrades it — small CLI-side join against the cached hashtag list, no engine change.
 
-**Verify:** the Step 9.5 freshman-flow contract test ([tests/contract/test_freshman_flow.py](../tests/contract/test_freshman_flow.py) extended for the menu) walks `Config → Set engine URL → Set token → Auth → Bootstrap → Accounts → Create → Log → Dashboard` end-to-end without consulting `--help` or memorizing a flag.
+**Verify:** single-month tree shows multi-hashtag combos like `Food + Club`; range matrix renders compactly by default; expand-by-hashtag toggle adds one row per combo per category.
 
-**Commit:** `feat(menu): Config + Step 9.5 closeout (Step 9.5.15)`
+**Commit:** `feat(menu): Reports — single month + range with hashtag tree (Step 9.5.8)`
+
+### Step 9.5.9 — Reconciliations menu
+
+*Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder.*
+
+Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-balance` mutual-exclusion guard), `update`, `delete`, `restore`, `complete`, `revert` (extra-strong confirm), `move` (with `--to | --before | --after` mutex), `reorder` (reuses [expense/_editor.py](../expense/_editor.py) without modification).
+
+**Verify:** create chained vs manual; complete + revert prints lock/unlock counts; `move` reorders a single row; `reorder` opens `$EDITOR`, accepts the rearranged file, prints recalculated_count.
+
+**Commit:** `feat(menu): Reconciliations — full lifecycle + $EDITOR reorder (Step 9.5.9)`
+
+### Step 9.5.10 — Accounts menu
+
+*Deliverable: Accounts group menu + all 8 account flows.*
+
+Wires `list` (with archived/deleted/people toggles), `get`, `create` (with currency-code immutability warning), `update`, `archive`, `unarchive`, `delete`, `restore`.
+
+**Verify:** full CRUD + archive/unarchive/delete/restore round trip; `update --currency-code` blocked at parse time with friendly hint.
+
+**Commit:** `feat(menu): Accounts — CRUD + archive/restore (Step 9.5.10)`
+
+### Step 9.5.11 — Categories menu
+
+*Deliverable: Categories group menu + all 8 category flows.*
+
+Wires the same template as Accounts, with system-category guard (engine 403 on `@Debt` / `@Transfer` rename/delete/archive rendered as "System categories cannot be modified").
+
+**Verify:** full CRUD round trip; system-category rejection renders cleanly.
+
+**Commit:** `feat(menu): Categories — CRUD + archive/restore + system guard (Step 9.5.11)`
+
+### Step 9.5.12 — Hashtags menu
+
+*Deliverable: Hashtags group menu + all 8 hashtag flows.*
+
+Wires the same template; `delete` warning mentions junction-row cascade (restore does NOT undo).
+
+**Verify:** full CRUD round trip; delete-cascade warning surfaces before submit.
+
+**Commit:** `feat(menu): Hashtags — CRUD + archive/restore (Step 9.5.12)`
+
+### Step 9.5.13 — Sync menu
+
+*Deliverable: Sync group menu + both sync variants.*
+
+Wires `Refresh (delta sync)` and `Full rebuild (--full)`. Each prints the per-resource count summary the flat command already renders.
+
+**Verify:** delta sync after a no-op shows mostly zeros; `--full` rebuilds cache.
+
+**Commit:** `feat(menu): Sync — delta + full rebuild (Step 9.5.13)`
+
+### Step 9.5.14 — Activity log menu
+
+*Deliverable: Activity group menu + 3 activity flows.*
+
+Wires `List all recent activity`, `Filter by resource type`, `Filter by specific record` — same underlying `activity list` with different flag presets.
+
+**Verify:** each entry surfaces the expected activity rows; pagination hint renders.
+
+**Commit:** `feat(menu): Activity log — list + filter variants (Step 9.5.14)`
+
+### Step 9.5.15 — Exchange rates menu
+
+*Deliverable: Exchange rates group menu + lookup flow.*
+
+Wires `Look up a rate` (target required; base + date optional with engine-default fallbacks).
+
+**Verify:** `USD → PEN` lookup returns a number; missing target prompts; engine `RATE_UNAVAILABLE` 422 renders cleanly.
+
+**Commit:** `feat(menu): Exchange rates — lookup (Step 9.5.15)`
+
+### Step 9.5.16 — Step 9.5 closeout (freshman-flow menu gate)
+
+*Deliverable: Extend [tests/contract/test_freshman_flow.py](../tests/contract/test_freshman_flow.py) (or add a sibling) to drive the menu end-to-end. Closes Step 9.5.*
+
+Walks `expense menu` through `Config → Set engine URL → Set token → Auth → Bootstrap → Accounts → Create → Categories → Create → Log → Dashboard` against the live engine without consulting `--help` or memorizing a flag. No new feature code — purely a gate that proves the freshman UX holds together. Depends on Config (9.5.6), Auth (9.5.7), Accounts (9.5.10), Categories (9.5.11).
+
+**Verify:** the live freshman walk passes under `PYTEST_LIVE=1 EXPENSE_PAT=<token>`.
+
+**Commit:** `test(menu): freshman flow E2E via menu — Step 9.5 closeout (Step 9.5.16)`
 
 ---
 
-**Step 9.5 done** when 9.5.15 lands and the freshman-flow menu walk passes against the live engine.
+**Step 9.5 done** when 9.5.16 lands and the freshman-flow menu walk passes against the live engine.
 
 ---
 
