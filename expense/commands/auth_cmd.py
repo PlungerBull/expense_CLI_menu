@@ -59,10 +59,28 @@ def _render_settings_only(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
+    recalc = body.get("recalculation")
     typer.echo("Settings:")
     for key, value in body.items():
+        if key == "recalculation":
+            continue
         display = value if value is not None else "(null)"
         typer.echo(f"  {key}: {display}")
+    if recalc:
+        _render_recalc_summary(recalc)
+
+
+def _render_recalc_summary(recalc: dict) -> None:
+    total = recalc.get("total", 0)
+    orphans = recalc.get("orphan_transfer_legs", 0)
+    typer.echo("")
+    typer.echo(f"Rewrote {total} transaction(s) in home currency.")
+    if orphans:
+        typer.secho(
+            f"  ⚠ {orphans} transfer leg(s) need attention "
+            f"(soft-delete orphans — resolve via the transactions API).",
+            fg=typer.colors.YELLOW,
+        )
 
 
 def _render_user_only(body: dict, *, json_mode: bool) -> None:

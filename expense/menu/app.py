@@ -11,6 +11,7 @@ from collections.abc import Callable
 import questionary
 import typer
 
+from expense.menu.groups.auth import run_auth_menu
 from expense.menu.groups.config import run_config_menu
 from expense.menu.groups.dashboard import run_dashboard_menu
 from expense.menu.groups.inbox import run_inbox_menu
@@ -26,6 +27,7 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Transactions": run_transactions_menu,
     "Dashboard": run_dashboard_menu,
     "Config": run_config_menu,
+    "Auth & profile": run_auth_menu,
 }
 
 

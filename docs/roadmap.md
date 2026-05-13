@@ -371,13 +371,13 @@ Wires `Show current config`, `Set engine URL`, `Set token (PAT)`, `Set main curr
 
 **Commit:** `feat(menu): Config — show/set engine-url/set token/set main-currency/clear (Step 9.5.6)`
 
-### Step 9.5.7 — Auth & profile menu
+### Step 9.5.7 — Auth & profile menu (shipped)
 
 *Deliverable: Auth group menu + all 5 auth flows.*
 
-Wires `Show my profile (whoami)`, `First-time bootstrap`, `Update display name`, `Update settings (theme, week start, sidebar, …)`, `Update main currency` (the last gets its own warning + double-confirm because of engine-side recalc).
+Wires `Show my profile (whoami)`, `Bootstrap (first-time login)`, `Update display name`, `Update settings…` (inner picker for theme, start_of_week, transaction_sort_preference, display_timezone, and the three sidebar toggles), `Update main currency` (its own menu entry with warning + double-confirm via `confirm_destructive` because the engine synchronously recalculates home-currency amounts).
 
-**Verify:** bootstrap, profile update, settings update, main-currency change with confirm all round-trip; recalc count surfaces after main-currency change.
+**Verify:** bootstrap, profile update, settings update, main-currency change with double-confirm all round-trip against the engine and via [tests/unit/test_menu_auth.py](../tests/unit/test_menu_auth.py); decline path on the main-currency confirm makes no PUT. Main-currency change surfaces the engine's inline `recalculation` summary (`Rewrote N transaction(s) in home currency.` from `total`, plus a yellow warning if `orphan_transfer_legs > 0`) — engine ships this on `PUT /v1/auth/settings` per the null-over-omission rule; the renderer skips the field cleanly when null.
 
 **Commit:** `feat(menu): Auth & profile — whoami/bootstrap/profile/settings/main_currency (Step 9.5.7)`
 
