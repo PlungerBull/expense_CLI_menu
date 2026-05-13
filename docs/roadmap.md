@@ -359,7 +359,7 @@ Wires `View dashboard (current month)` and `View dashboard with archived panels`
 
 **Commit:** `feat(menu): Dashboard — current month + archived variant (Step 9.5.5)`
 
-> **Reordered 2026-05-12.** Config + Auth & profile were promoted ahead of Reports/Reconcile/Accounts/etc. because the menu's whole point is "freshman walks the surface without `--help`" — and today a freshman has to drop to flat commands to set engine URL + token + bootstrap before the menu becomes usable. Shipped steps (9.5.1–9.5.5) keep their original numbers; only pending steps were renumbered. The Step 9.5 closeout (freshman-flow menu gate) was split out as 9.5.16 because it can only run once Config + Auth + Accounts + Categories are all wired.
+> **Reordered 2026-05-12.** Config + Auth & profile were promoted ahead of Reports/Reconcile/Accounts/etc., and then Accounts/Categories/Hashtags were promoted ahead of Reconciliations/Sync/Activity/Rates — because the menu's whole point is "freshman walks the surface without `--help`" and the freshman gate at 9.5.16 unlocks the moment Accounts + Categories are wired (Reconcile/Sync/Activity/Rates aren't on the critical path). Shipped steps (9.5.1–9.5.8) keep their original numbers; only pending steps were renumbered. The Step 9.5 closeout (freshman-flow menu gate) was split out as 9.5.16 because it can only run once Config + Auth + Accounts + Categories are all wired.
 
 ### Step 9.5.6 — Config menu (shipped)
 
@@ -391,17 +391,7 @@ Wires `Monthly report (single month)` (month prompt + "show hashtag breakdown?" 
 
 **Commit:** `feat(menu): Reports — single month + range with hashtag tree (Step 9.5.8)`
 
-### Step 9.5.9 — Reconciliations menu
-
-*Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder.*
-
-Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-balance` mutual-exclusion guard), `update`, `delete`, `restore`, `complete`, `revert` (extra-strong confirm), `move` (with `--to | --before | --after` mutex), `reorder` (reuses [expense/_editor.py](../expense/_editor.py) without modification).
-
-**Verify:** create chained vs manual; complete + revert prints lock/unlock counts; `move` reorders a single row; `reorder` opens `$EDITOR`, accepts the rearranged file, prints recalculated_count.
-
-**Commit:** `feat(menu): Reconciliations — full lifecycle + $EDITOR reorder (Step 9.5.9)`
-
-### Step 9.5.10 — Accounts menu
+### Step 9.5.9 — Accounts menu
 
 *Deliverable: Accounts group menu + all 8 account flows.*
 
@@ -409,9 +399,9 @@ Wires `list` (with archived/deleted/people toggles), `get`, `create` (with curre
 
 **Verify:** full CRUD + archive/unarchive/delete/restore round trip; `update --currency-code` blocked at parse time with friendly hint.
 
-**Commit:** `feat(menu): Accounts — CRUD + archive/restore (Step 9.5.10)`
+**Commit:** `feat(menu): Accounts — CRUD + archive/restore (Step 9.5.9)`
 
-### Step 9.5.11 — Categories menu
+### Step 9.5.10 — Categories menu
 
 *Deliverable: Categories group menu + all 8 category flows.*
 
@@ -419,9 +409,9 @@ Wires the same template as Accounts, with system-category guard (engine 403 on `
 
 **Verify:** full CRUD round trip; system-category rejection renders cleanly.
 
-**Commit:** `feat(menu): Categories — CRUD + archive/restore + system guard (Step 9.5.11)`
+**Commit:** `feat(menu): Categories — CRUD + archive/restore + system guard (Step 9.5.10)`
 
-### Step 9.5.12 — Hashtags menu
+### Step 9.5.11 — Hashtags menu
 
 *Deliverable: Hashtags group menu + all 8 hashtag flows.*
 
@@ -429,7 +419,17 @@ Wires the same template; `delete` warning mentions junction-row cascade (restore
 
 **Verify:** full CRUD round trip; delete-cascade warning surfaces before submit.
 
-**Commit:** `feat(menu): Hashtags — CRUD + archive/restore (Step 9.5.12)`
+**Commit:** `feat(menu): Hashtags — CRUD + archive/restore (Step 9.5.11)`
+
+### Step 9.5.12 — Reconciliations menu
+
+*Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder.*
+
+Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-balance` mutual-exclusion guard), `update`, `delete`, `restore`, `complete`, `revert` (extra-strong confirm), `move` (with `--to | --before | --after` mutex), `reorder` (reuses [expense/_editor.py](../expense/_editor.py) without modification).
+
+**Verify:** create chained vs manual; complete + revert prints lock/unlock counts; `move` reorders a single row; `reorder` opens `$EDITOR`, accepts the rearranged file, prints recalculated_count.
+
+**Commit:** `feat(menu): Reconciliations — full lifecycle + $EDITOR reorder (Step 9.5.12)`
 
 ### Step 9.5.13 — Sync menu
 
@@ -465,7 +465,7 @@ Wires `Look up a rate` (target required; base + date optional with engine-defaul
 
 *Deliverable: Extend [tests/contract/test_freshman_flow.py](../tests/contract/test_freshman_flow.py) (or add a sibling) to drive the menu end-to-end. Closes Step 9.5.*
 
-Walks `expense menu` through `Config → Set engine URL → Set token → Auth → Bootstrap → Accounts → Create → Categories → Create → Log → Dashboard` against the live engine without consulting `--help` or memorizing a flag. No new feature code — purely a gate that proves the freshman UX holds together. Depends on Config (9.5.6), Auth (9.5.7), Accounts (9.5.10), Categories (9.5.11).
+Walks `expense menu` through `Config → Set engine URL → Set token → Auth → Bootstrap → Accounts → Create → Categories → Create → Log → Dashboard` against the live engine without consulting `--help` or memorizing a flag. No new feature code — purely a gate that proves the freshman UX holds together. Depends on Config (9.5.6), Auth (9.5.7), Accounts (9.5.9), Categories (9.5.10).
 
 **Verify:** the live freshman walk passes under `PYTEST_LIVE=1 EXPENSE_PAT=<token>`.
 
