@@ -97,8 +97,8 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 9.5.7 | Menu — Auth & profile | Done |
 | 9.5.8 | Menu — Reports (with hashtag tree) | Done |
 | 9.5.9 | Menu — Accounts | Done |
-| 9.5.10 | Menu — Categories (next) | Pending |
-| 9.5.11 | Menu — Hashtags | Pending |
+| 9.5.10 | Menu — Categories | Done |
+| 9.5.11 | Menu — Hashtags (next) | Pending |
 | 9.5.12 | Menu — Reconciliations (incl. `$EDITOR` reorder) | Pending |
 | 9.5.13 | Menu — Sync | Pending |
 | 9.5.14 | Menu — Activity log | Pending |

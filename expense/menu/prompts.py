@@ -97,12 +97,27 @@ def pick_account(
 def pick_category(
     *,
     include_archived: bool = False,
+    only_archived: bool = False,
+    only_deleted: bool = False,
+    exclude_system: bool = False,
     allow_skip: bool = False,
     prompt: str = "Category",
 ) -> object:
-    page = queries.list_categories(include_archived=include_archived, include_deleted=False)
+    if only_archived and only_deleted:
+        raise ValueError("only_archived and only_deleted are mutually exclusive.")
+    if only_archived:
+        page = queries.list_categories(include_archived=True, include_deleted=False)
+        items = [item for item in page.get("items", []) if item.get("is_archived")]
+    elif only_deleted:
+        page = queries.list_categories(include_archived=True, include_deleted=True)
+        items = [item for item in page.get("items", []) if item.get("deleted_at") is not None]
+    else:
+        page = queries.list_categories(include_archived=include_archived, include_deleted=False)
+        items = list(page.get("items", []))
+    if exclude_system:
+        items = [item for item in items if not item.get("is_system")]
     return _select_id(
-        page.get("items", []),
+        items,
         prompt=prompt,
         resource_plural="categories",
         allow_skip=allow_skip,

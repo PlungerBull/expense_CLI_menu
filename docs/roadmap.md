@@ -401,7 +401,7 @@ Wires `list` (with archived/deleted/people toggles), `get`, `create` (with curre
 
 **Commit:** `feat(menu): Accounts — CRUD + archive/restore (Step 9.5.9)`
 
-### Step 9.5.10 — Categories menu
+### Step 9.5.10 — Categories menu (shipped)
 
 *Deliverable: Categories group menu + all 8 category flows.*
 

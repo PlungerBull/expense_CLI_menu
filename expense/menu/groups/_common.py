@@ -234,6 +234,48 @@ def prompt_date_range_preset() -> tuple[bool, str | None, str | None]:
     return True, df, dt
 
 
+def format_field_label(field: str, current: object) -> str:
+    """`Update <field>? (current: <value>)` — shared across CRUD update flows.
+
+    Long string values are truncated to 40 chars with an ellipsis; None renders
+    as `unset`.
+    """
+    if current is None:
+        current_s = "unset"
+    elif isinstance(current, str) and len(current) > 40:
+        current_s = current[:37] + "…"
+    else:
+        current_s = str(current)
+    return f"Update {field}? (current: {current_s})"
+
+
+def validate_optional_int(raw: str) -> bool | str:
+    """questionary validator for optional integer prompts. Empty → ok, skip."""
+    value = raw.strip()
+    if value == "":
+        return True
+    try:
+        int(value)
+    except ValueError:
+        return "Must be an integer (e.g. 10) or empty to skip."
+    return True
+
+
+def prompt_optional_int(label: str) -> tuple[bool, int | None]:
+    """Optional integer prompt. Returns (ok, value). Empty → (True, None).
+
+    Ctrl-C → (False, None). Used by CRUD create/update flows that accept
+    optional sort_order or limit-like integers.
+    """
+    raw = questionary.text(f"{label} (skip)", validate=validate_optional_int).ask()
+    if raw is None:
+        return False, None
+    raw = raw.strip()
+    if raw == "":
+        return True, None
+    return True, int(raw)
+
+
 def validate_currency_code(raw: str) -> bool | str:
     """questionary validator for ISO 4217 currency codes (3 uppercase letters)."""
     value = raw.strip()

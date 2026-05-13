@@ -13,6 +13,7 @@ import typer
 
 from expense.menu.groups.accounts import run_accounts_menu
 from expense.menu.groups.auth import run_auth_menu
+from expense.menu.groups.categories import run_categories_menu
 from expense.menu.groups.config import run_config_menu
 from expense.menu.groups.dashboard import run_dashboard_menu
 from expense.menu.groups.inbox import run_inbox_menu
@@ -30,6 +31,7 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Dashboard": run_dashboard_menu,
     "Reports": run_reports_menu,
     "Accounts": run_accounts_menu,
+    "Categories": run_categories_menu,
     "Config": run_config_menu,
     "Auth & profile": run_auth_menu,
 }
