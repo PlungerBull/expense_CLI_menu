@@ -381,7 +381,7 @@ Wires `Show my profile (whoami)`, `Bootstrap (first-time login)`, `Update displa
 
 **Commit:** `feat(menu): Auth & profile — whoami/bootstrap/profile/settings/main_currency (Step 9.5.7)`
 
-### Step 9.5.8 — Reports menu
+### Step 9.5.8 — Reports menu (shipped)
 
 *Deliverable: Reports group menu + single-month + range flows.*
 

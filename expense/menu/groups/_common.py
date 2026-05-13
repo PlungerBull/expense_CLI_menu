@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import questionary
 import typer
 
-from expense.dates import to_canonical_aware
+from expense.dates import parse_year_month, to_canonical_aware
 
 
 def prompt_title() -> str | None:
@@ -232,3 +232,20 @@ def prompt_date_range_preset() -> tuple[bool, str | None, str | None]:
         typer.echo(f"  {exc.message}", err=True)
         return False, None, None
     return True, df, dt
+
+
+def prompt_year_month(label: str, *, default: str | None = None) -> tuple[bool, str | None]:
+    """YYYY-MM prompt. Returns (ok, canonical "YYYY-MM"). Ctrl-C → (False, None)."""
+
+    def _validate(raw: str) -> bool | str:
+        try:
+            parse_year_month(raw.strip(), param_hint=label)
+        except typer.BadParameter as exc:
+            return exc.message
+        return True
+
+    raw = questionary.text(label, default=default or "", validate=_validate).ask()
+    if raw is None:
+        return False, None
+    year, month = parse_year_month(raw.strip(), param_hint=label)
+    return True, f"{year:04d}-{month:02d}"

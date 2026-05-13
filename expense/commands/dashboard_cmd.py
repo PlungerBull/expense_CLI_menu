@@ -3,6 +3,7 @@ import json
 import typer
 
 from expense import config as config_module
+from expense.cache import queries
 from expense.commands._resource import render_totals
 from expense.context import get_verbose
 from expense.errors import handle_errors
@@ -30,12 +31,55 @@ def _render_account_row(item: dict) -> None:
     typer.echo(f"    balance: {native_s} (home: {home_s})")
 
 
-def render_category_section(categories: list[dict] | None, *, header: str = "Categories") -> None:
+def load_hashtag_name_map() -> dict[str, str]:
+    """Return {hashtag_id: name} from the local cache, or {} on any failure.
+
+    The engine returns hashtag UUIDs in `hashtag_breakdown` rows; the renderer
+    joins against this map to display human names like `Food + Club`. Empty
+    map is safe — callers fall back to raw ids.
+    """
+    try:
+        page = queries.list_hashtags(include_archived=True, include_deleted=False)
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for item in page.get("items") or []:
+        hid = item.get("id")
+        name = item.get("name")
+        if isinstance(hid, str) and isinstance(name, str):
+            out[hid] = name
+    return out
+
+
+def hashtag_label(ids: list[str], name_map: dict[str, str]) -> str:
+    """Format a hashtag-combo label, resolving ids via name_map.
+
+    Empty ids → `(no hashtags)`. Otherwise joins resolved names (or raw id
+    fallback for any unresolved entry) with ` + `.
+    """
+    if not ids:
+        return "(no hashtags)"
+    return " + ".join(name_map.get(hid, hid) for hid in ids)
+
+
+def render_category_section(
+    categories: list[dict] | None,
+    *,
+    header: str = "Categories",
+    show_hashtags: bool = True,
+    name_map: dict[str, str] | None = None,
+) -> None:
     """Render the categories + hashtag-breakdown block. Shared with reports_cmd."""
     typer.echo(f"{header}:")
     if not categories:
         typer.echo("  (no categories)")
         return
+    if name_map is not None:
+        resolved = name_map
+    elif show_hashtags:
+        resolved = load_hashtag_name_map()
+    else:
+        resolved = {}
     for cat in categories:
         name = cat.get("name", "(unnamed)")
         spent = cat.get("spent_cents")
@@ -44,6 +88,8 @@ def render_category_section(categories: list[dict] | None, *, header: str = "Cat
         home_s = spent_home if spent_home is not None else "(null)"
         typer.echo(f"  {name}")
         typer.echo(f"    spent: {spent_s} (home: {home_s})")
+        if not show_hashtags:
+            continue
         breakdown = cat.get("hashtag_breakdown") or []
         if breakdown:
             typer.echo("    breakdown:")
@@ -53,7 +99,7 @@ def render_category_section(categories: list[dict] | None, *, header: str = "Cat
                 row_home = row.get("spent_home_cents")
                 row_amount_s = row_amount if row_amount is not None else "(null)"
                 row_home_s = row_home if row_home is not None else "(null)"
-                label = "[" + ", ".join(ids) + "]" if ids else "(no hashtags)"
+                label = hashtag_label(ids, resolved)
                 typer.echo(f"      {label}: {row_amount_s} (home: {row_home_s})")
 
 

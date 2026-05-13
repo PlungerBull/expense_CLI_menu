@@ -109,7 +109,9 @@ DASHBOARD_WITH_ARCHIVED = {
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
     config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
     monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
     config_module.save(
         config_module.Config(
             engine_url="https://api.example.com",
@@ -131,7 +133,7 @@ def test_dashboard_happy(configured):
     assert "BCP Soles (PEN)" in result.output
     assert "Alex (PEN)" in result.output
     assert "Food" in result.output
-    assert "[aaaa, bbbb]: -30000" in result.output
+    assert "aaaa + bbbb: -30000" in result.output
     assert "(no hashtags): -20000" in result.output
     assert "inflow: 800000" in result.output
 

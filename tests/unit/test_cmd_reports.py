@@ -134,7 +134,9 @@ RANGE_RESPONSE = {
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
     config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
     monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
     config_module.save(
         config_module.Config(
             engine_url="https://api.example.com",
@@ -154,7 +156,7 @@ def test_monthly_single_happy(configured):
     assert result.exit_code == 0, result.output
     assert "Month: 2026-03" in result.output
     assert "Food" in result.output
-    assert "[aaaa]: -30000" in result.output
+    assert "aaaa: -30000" in result.output
     assert "(no hashtags): -20000" in result.output
     assert "net: 750000" in result.output
 

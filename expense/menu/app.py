@@ -16,6 +16,7 @@ from expense.menu.groups.config import run_config_menu
 from expense.menu.groups.dashboard import run_dashboard_menu
 from expense.menu.groups.inbox import run_inbox_menu
 from expense.menu.groups.log import run_log_flow
+from expense.menu.groups.reports import run_reports_menu
 from expense.menu.groups.transactions import run_transactions_menu
 
 QUIT = "Quit"
@@ -26,6 +27,7 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Inbox": run_inbox_menu,
     "Transactions": run_transactions_menu,
     "Dashboard": run_dashboard_menu,
+    "Reports": run_reports_menu,
     "Config": run_config_menu,
     "Auth & profile": run_auth_menu,
 }
