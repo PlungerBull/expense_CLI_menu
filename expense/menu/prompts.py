@@ -58,14 +58,39 @@ def pick_account(
     *,
     include_archived: bool = False,
     include_people: bool = False,
+    only_archived: bool = False,
+    only_deleted: bool = False,
     allow_skip: bool = False,
     prompt: str = "Account",
 ) -> object:
-    items = queries.list_accounts(
-        include_archived=include_archived,
-        include_deleted=False,
-        include_people=include_people,
-    )
+    if only_archived and only_deleted:
+        raise ValueError("only_archived and only_deleted are mutually exclusive.")
+    if only_archived:
+        items = [
+            item
+            for item in queries.list_accounts(
+                include_archived=True,
+                include_deleted=False,
+                include_people=include_people,
+            )
+            if item.get("is_archived")
+        ]
+    elif only_deleted:
+        items = [
+            item
+            for item in queries.list_accounts(
+                include_archived=True,
+                include_deleted=True,
+                include_people=include_people,
+            )
+            if item.get("deleted_at") is not None
+        ]
+    else:
+        items = queries.list_accounts(
+            include_archived=include_archived,
+            include_deleted=False,
+            include_people=include_people,
+        )
     return _select_id(items, prompt=prompt, resource_plural="accounts", allow_skip=allow_skip)
 
 

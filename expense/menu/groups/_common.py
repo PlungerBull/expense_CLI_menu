@@ -234,6 +234,16 @@ def prompt_date_range_preset() -> tuple[bool, str | None, str | None]:
     return True, df, dt
 
 
+def validate_currency_code(raw: str) -> bool | str:
+    """questionary validator for ISO 4217 currency codes (3 uppercase letters)."""
+    value = raw.strip()
+    if not value:
+        return "Currency code is required."
+    if len(value) != 3 or not value.isalpha() or not value.isupper():
+        return "Currency code must be 3 uppercase letters (e.g. USD, PEN)."
+    return True
+
+
 def prompt_year_month(label: str, *, default: str | None = None) -> tuple[bool, str | None]:
     """YYYY-MM prompt. Returns (ok, canonical "YYYY-MM"). Ctrl-C → (False, None)."""
 

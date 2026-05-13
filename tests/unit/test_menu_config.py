@@ -90,13 +90,13 @@ def test_engine_url_validator():
 
 
 def test_currency_code_validator():
-    assert menu_config._validate_currency_code("") != True  # noqa: E712
-    assert menu_config._validate_currency_code("usd") != True  # noqa: E712
-    assert menu_config._validate_currency_code("US") != True  # noqa: E712
-    assert menu_config._validate_currency_code("USDT") != True  # noqa: E712
-    assert menu_config._validate_currency_code("US1") != True  # noqa: E712
-    assert menu_config._validate_currency_code("USD") is True
-    assert menu_config._validate_currency_code("PEN") is True
+    assert menu_common.validate_currency_code("") != True  # noqa: E712
+    assert menu_common.validate_currency_code("usd") != True  # noqa: E712
+    assert menu_common.validate_currency_code("US") != True  # noqa: E712
+    assert menu_common.validate_currency_code("USDT") != True  # noqa: E712
+    assert menu_common.validate_currency_code("US1") != True  # noqa: E712
+    assert menu_common.validate_currency_code("USD") is True
+    assert menu_common.validate_currency_code("PEN") is True
 
 
 # ----- flow tests -----

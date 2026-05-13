@@ -391,7 +391,7 @@ Wires `Monthly report (single month)` (month prompt + "show hashtag breakdown?" 
 
 **Commit:** `feat(menu): Reports — single month + range with hashtag tree (Step 9.5.8)`
 
-### Step 9.5.9 — Accounts menu
+### Step 9.5.9 — Accounts menu (shipped)
 
 *Deliverable: Accounts group menu + all 8 account flows.*
 

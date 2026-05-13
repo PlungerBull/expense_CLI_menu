@@ -117,21 +117,14 @@ def run_set_token(ctx: typer.Context) -> None:
 # ----------------------------------------------------------- 4. Set main currency
 
 
-def _validate_currency_code(raw: str) -> bool | str:
-    value = raw.strip()
-    if not value:
-        return "Currency code is required."
-    if len(value) != 3 or not value.isalpha() or not value.isupper():
-        return "Currency code must be 3 uppercase letters (e.g. USD, PEN)."
-    return True
-
-
 def run_set_main_currency(ctx: typer.Context) -> None:
     if config_module.load() is None:
         typer.echo("Set engine URL first.", err=True)
         common.pause()
         return
-    value = common.prompt_validated_text("Main currency (local default)", _validate_currency_code)
+    value = common.prompt_validated_text(
+        "Main currency (local default)", common.validate_currency_code
+    )
     if value is None:
         return
     common.print_recap("config set", [("--main-currency", value)])

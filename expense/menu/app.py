@@ -11,6 +11,7 @@ from collections.abc import Callable
 import questionary
 import typer
 
+from expense.menu.groups.accounts import run_accounts_menu
 from expense.menu.groups.auth import run_auth_menu
 from expense.menu.groups.config import run_config_menu
 from expense.menu.groups.dashboard import run_dashboard_menu
@@ -28,6 +29,7 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Transactions": run_transactions_menu,
     "Dashboard": run_dashboard_menu,
     "Reports": run_reports_menu,
+    "Accounts": run_accounts_menu,
     "Config": run_config_menu,
     "Auth & profile": run_auth_menu,
 }
@@ -41,10 +43,10 @@ _GROUP_PHASES: dict[str, str] = {
     "Config": "9.5.6",
     "Auth & profile": "9.5.7",
     "Reports": "9.5.8",
-    "Reconciliations": "9.5.9",
-    "Accounts": "9.5.10",
-    "Categories": "9.5.11",
-    "Hashtags": "9.5.12",
+    "Accounts": "9.5.9",
+    "Categories": "9.5.10",
+    "Hashtags": "9.5.11",
+    "Reconciliations": "9.5.12",
     "Sync": "9.5.13",
     "Activity log": "9.5.14",
     "Exchange rates": "9.5.15",
