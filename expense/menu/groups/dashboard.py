@@ -9,6 +9,7 @@ import typer
 
 from expense.commands import dashboard_cmd
 from expense.menu.groups import _common as common
+from expense.menu.term import clear_screen
 
 BACK_LABEL = "← Back"
 
@@ -16,6 +17,7 @@ BACK_LABEL = "← Back"
 def run_dashboard_menu(ctx: typer.Context) -> None:
     """Dashboard sub-menu loop."""
     while True:
+        clear_screen()
         try:
             choice = questionary.select(
                 "Dashboard — what do you like to view?",
@@ -32,6 +34,7 @@ def run_dashboard_menu(ctx: typer.Context) -> None:
         handler = _HANDLERS.get(choice)
         if handler is None:
             continue
+        clear_screen()
         try:
             handler(ctx)
         except typer.Exit:

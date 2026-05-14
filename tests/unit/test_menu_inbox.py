@@ -283,7 +283,8 @@ def test_update_no_changes_no_http(configured, monkeypatch):
     )
     monkeypatch.setattr(prompts, "pick_inbox", lambda **_k: "11111111-1111-1111-1111-111111111111")
     monkeypatch.setattr(menu_inbox.queries, "get_inbox", lambda _id: INBOX_RESPONSE)
-    script = _PromptScript([False] * 8)  # decline every field
+    # 8 declines + 1 pause-Enter after "No changes." (Step 9.5.11b).
+    script = _PromptScript([False] * 8 + [""])
     _patch_questionary(monkeypatch, script)
     menu_inbox.run_update(_make_ctx())
     assert not route.called

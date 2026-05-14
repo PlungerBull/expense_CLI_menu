@@ -13,6 +13,7 @@ from expense import config as config_module
 from expense.commands import config_cmd
 from expense.menu import prompts
 from expense.menu.groups import _common as common
+from expense.menu.term import clear_screen
 
 BACK_LABEL = "← Back"
 
@@ -20,6 +21,7 @@ BACK_LABEL = "← Back"
 def run_config_menu(ctx: typer.Context) -> None:
     """Config sub-menu loop."""
     while True:
+        clear_screen()
         try:
             choice = questionary.select(
                 "Config — what do you like to do?",
@@ -39,6 +41,7 @@ def run_config_menu(ctx: typer.Context) -> None:
         handler = _HANDLERS.get(choice)
         if handler is None:
             continue
+        clear_screen()
         try:
             handler(ctx)
         except typer.Exit:
@@ -76,6 +79,7 @@ def run_set_engine_url(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and save?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         config_cmd.set_cmd(engine_url=value, token=None, main_currency=None)
@@ -106,6 +110,7 @@ def run_set_token(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Save token?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         config_cmd.set_cmd(engine_url=None, token=value, main_currency=None)
@@ -131,6 +136,7 @@ def run_set_main_currency(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and save?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         config_cmd.set_cmd(engine_url=None, token=None, main_currency=value)
@@ -154,6 +160,7 @@ def run_clear(ctx: typer.Context) -> None:
     )
     if not confirmed:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         config_cmd.clear_cmd(yes=True)

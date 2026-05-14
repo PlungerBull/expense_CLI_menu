@@ -16,6 +16,7 @@ from expense import config as config_module
 from expense.commands import reports_cmd
 from expense.context import get_verbose
 from expense.menu.groups import _common as common
+from expense.menu.term import clear_screen
 
 BACK_LABEL = "← Back"
 
@@ -23,6 +24,7 @@ BACK_LABEL = "← Back"
 def run_reports_menu(ctx: typer.Context) -> None:
     """Reports sub-menu loop."""
     while True:
+        clear_screen()
         try:
             choice = questionary.select(
                 "Reports — what do you like to view?",
@@ -39,6 +41,7 @@ def run_reports_menu(ctx: typer.Context) -> None:
         handler = _HANDLERS.get(choice)
         if handler is None:
             continue
+        clear_screen()
         try:
             handler(ctx)
         except typer.Exit:

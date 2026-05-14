@@ -16,6 +16,7 @@ from expense import config as config_module
 from expense.commands import auth_cmd
 from expense.menu import prompts
 from expense.menu.groups import _common as common
+from expense.menu.term import clear_screen
 
 BACK_LABEL = "← Back"
 
@@ -23,6 +24,7 @@ BACK_LABEL = "← Back"
 def run_auth_menu(ctx: typer.Context) -> None:
     """Auth & profile sub-menu loop."""
     while True:
+        clear_screen()
         try:
             choice = questionary.select(
                 "Auth & profile — what do you like to do?",
@@ -42,6 +44,7 @@ def run_auth_menu(ctx: typer.Context) -> None:
         handler = _HANDLERS.get(choice)
         if handler is None:
             continue
+        clear_screen()
         try:
             handler(ctx)
         except typer.Exit:
@@ -111,6 +114,7 @@ def run_bootstrap(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and call engine?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         auth_cmd.bootstrap(
@@ -137,6 +141,7 @@ def run_update_display_name(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and save?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         auth_cmd.profile(ctx, display_name=value, json_output=False)
@@ -265,6 +270,7 @@ def run_update_settings(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and save?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         auth_cmd.settings(ctx, yes=True, json_output=False, **kwargs)
@@ -307,6 +313,7 @@ def run_update_main_currency(ctx: typer.Context) -> None:
     )
     if not confirmed:
         typer.echo("Aborted.")
+        common.pause()
         return
     kwargs = _empty_settings_kwargs()
     kwargs["main_currency"] = value

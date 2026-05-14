@@ -164,6 +164,7 @@ def test_set_engine_url_aborted_writes_nothing(no_config, monkeypatch):
             "Set engine URL",
             "https://api.example.com",
             False,  # decline confirm
+            "",  # pause after Aborted.
             "← Back",
         ]
     )
@@ -255,6 +256,7 @@ def test_clear_declined_keeps_file(partial_config, monkeypatch):
         [
             "Clear all config",
             False,  # confirm_destructive → No
+            "",  # pause after Aborted.
             "← Back",
         ]
     )

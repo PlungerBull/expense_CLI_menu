@@ -88,6 +88,9 @@ def test_stub_placeholder_advertises_correct_phase(monkeypatch):
     monkeypatch.setattr(
         menu_app.questionary, "select", _make_select_factory(["Reconciliations", "Quit"])
     )
+    # The unwired branch now ends with common.pause() so the placeholder
+    # line stays readable under clear-on-navigate (Step 9.5.11b).
+    monkeypatch.setattr(menu_common.questionary, "text", _make_select_factory([""]))
     result = runner.invoke(app, ["menu"])
     assert result.exit_code == 0
     assert "not yet wired" in result.output
@@ -135,6 +138,9 @@ def test_pick_account_returns_chosen_id(monkeypatch):
 
 def test_pick_account_returns_back_when_cache_empty(monkeypatch, capsys):
     monkeypatch.setattr(prompts.queries, "list_accounts", lambda **_k: [])
+    # _empty_hint now calls common.pause() so the empty-cache message stays
+    # readable under clear-on-navigate (Step 9.5.11b).
+    monkeypatch.setattr(menu_common.questionary, "text", _make_select_factory([""]))
     result = prompts.pick_account()
     assert result is prompts.BACK
     captured = capsys.readouterr()

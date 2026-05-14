@@ -254,6 +254,7 @@ def test_bootstrap_aborted(bootstrapped_config, monkeypatch):
             "Alex",
             "America/Lima",
             False,  # decline confirm
+            "",  # pause after Aborted.
             "← Back",
         ]
     )
@@ -291,6 +292,7 @@ def test_update_display_name_aborted(bootstrapped_config, monkeypatch):
             "Update display name",
             "Alex Tern",
             False,  # decline confirm
+            "",  # pause after Aborted.
             "← Back",
         ]
     )
@@ -403,6 +405,7 @@ def test_main_currency_change_declined(bootstrapped_config, monkeypatch):
             "Update main currency",
             "PEN",
             False,  # decline destructive confirm
+            "",  # pause after Aborted.
             "← Back",
         ]
     )

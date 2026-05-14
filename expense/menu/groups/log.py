@@ -114,6 +114,7 @@ def run_log_flow(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and submit?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
 
     try:

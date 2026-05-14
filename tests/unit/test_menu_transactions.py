@@ -358,8 +358,8 @@ def test_update_no_changes_short_circuit(monkeypatch, capsys):
     monkeypatch.setattr(prompts, "pick_transaction", lambda **_k: tx_id)
     monkeypatch.setattr(menu_tx.queries, "get_transaction", lambda _id: TRANSACTION_RESPONSE)
     monkeypatch.setattr(menu_tx.queries, "list_hashtags", lambda **_k: {"items": []})
-    # All 10 fields: No
-    script = _PromptScript([False] * 10)
+    # All 10 fields: No, then pause-Enter after "No changes." (Step 9.5.11b).
+    script = _PromptScript([False] * 10 + [""])
     _patch_questionary(monkeypatch, script)
     menu_tx.run_update(_make_ctx())
     out = capsys.readouterr().out
@@ -486,7 +486,8 @@ def test_batch_rejects_transfer_field(monkeypatch, tmp_path, capsys):
     batch_file.write_text(
         json.dumps([{"title": "T1", "amount_cents": -100, "transfer": {"id": "x"}}])
     )
-    script = _PromptScript([str(batch_file)])  # path only — must abort before confirm
+    # path + pause-Enter after the transfer-rejection message (Step 9.5.11b).
+    script = _PromptScript([str(batch_file), ""])
     _patch_questionary(monkeypatch, script)
     menu_tx.run_batch(_make_ctx())
     err = capsys.readouterr().err

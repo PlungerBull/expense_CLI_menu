@@ -15,6 +15,7 @@ from expense.cache import queries
 from expense.commands import transactions_cmd
 from expense.menu import prompts
 from expense.menu.groups import _common as common
+from expense.menu.term import clear_screen
 
 BACK_LABEL = "← Back"
 
@@ -22,6 +23,7 @@ BACK_LABEL = "← Back"
 def run_transactions_menu(ctx: typer.Context) -> None:
     """Transactions sub-menu loop."""
     while True:
+        clear_screen()
         try:
             choice = questionary.select(
                 "Transactions — what do you like to do?",
@@ -42,6 +44,7 @@ def run_transactions_menu(ctx: typer.Context) -> None:
         handler = _HANDLERS.get(choice)
         if handler is None:
             continue
+        clear_screen()
         try:
             handler(ctx)
         except typer.Exit:
@@ -197,6 +200,7 @@ def run_update(ctx: typer.Context) -> None:
         item = queries.get_transaction(item_id)
     except Exception as exc:  # pragma: no cover — picker came from cache
         typer.echo(f"Could not load transaction: {exc}", err=True)
+        common.pause()
         return
 
     current_hashtag_ids = item.get("hashtag_ids", []) or []
@@ -309,6 +313,7 @@ def run_update(ctx: typer.Context) -> None:
 
     if not changes:
         typer.echo("No changes.")
+        common.pause()
         return
 
     flags: list[tuple[str, str | None]] = []
@@ -339,6 +344,7 @@ def run_update(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and submit?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
 
     update_kwargs = {
@@ -377,6 +383,7 @@ def run_delete(ctx: typer.Context) -> None:
     )
     if not confirmed:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         transactions_cmd.delete(ctx, id_=item_id, yes=True, json_output=False)
@@ -409,9 +416,11 @@ def run_batch(ctx: typer.Context) -> None:
     path = os.path.expanduser(path_raw.strip())
     if not path:
         typer.echo("Aborted.")
+        common.pause()
         return
     if not os.path.isfile(path):
         typer.echo(f"File not found: {path}", err=True)
+        common.pause()
         return
 
     try:
@@ -419,10 +428,12 @@ def run_batch(ctx: typer.Context) -> None:
             data = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         typer.echo(f"Could not read JSON: {exc}", err=True)
+        common.pause()
         return
 
     if not isinstance(data, list) or not data:
         typer.echo("File must contain a non-empty JSON array.", err=True)
+        common.pause()
         return
 
     items_with_account = sum(1 for it in data if isinstance(it, dict) and it.get("account_id"))
@@ -445,6 +456,7 @@ def run_batch(ctx: typer.Context) -> None:
             "use 'expense log --transfer' instead.",
             err=True,
         )
+        common.pause()
         return
 
     confirmed = prompts.confirm_destructive(
@@ -453,6 +465,7 @@ def run_batch(ctx: typer.Context) -> None:
     )
     if not confirmed:
         typer.echo("Aborted.")
+        common.pause()
         return
 
     try:

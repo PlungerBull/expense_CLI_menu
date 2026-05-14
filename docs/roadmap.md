@@ -421,7 +421,17 @@ Wires the same template; `delete` warning mentions junction-row cascade (restore
 
 **Commit:** `feat(menu): Hashtags — CRUD + archive/restore (Step 9.5.11)`
 
-### Step 9.5.12 — Reconciliations menu
+### Step 9.5.11b — Clear-on-navigate UX (shipped)
+
+*Deliverable: terminal wipes on every menu transition; status messages stay readable.*
+
+Adds [expense/menu/term.py](../expense/menu/term.py) with `clear_screen()` (gentle viewport clear via `click.clear()`, preserves scrollback so `print_recap()` audit stays intact). Two-point clear in every menu loop (root + 9 groups): before each `questionary.select` and before each handler dispatch. Coupled audit: every early-return that prints user-facing status (`Aborted.` / `No changes.` / `Could not load …` / file errors) now calls `common.pause()` before returning, so the message stays readable instead of flashing under the next clear. Opt-out via `EXPENSE_NO_CLEAR=1` (matches `EXPENSE_NO_SYNC_AFTER` convention); no `--no-clear` flag since menu is TTY-only.
+
+**Verify:** menu transitions render on a clean screen; abort/no-changes paths show `Press Enter to return…`; scrollback still contains prior recap lines (Cmd+UpArrow); `EXPENSE_NO_CLEAR=1 expense menu` matches pre-9.5.11b behavior.
+
+**Commit:** `feat(menu): clear-on-navigate UX — wipe viewport on every menu transition (Step 9.5.11b)`
+
+### Step 9.5.12 — Reconciliations menu (next)
 
 *Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder.*
 

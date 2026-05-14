@@ -51,6 +51,7 @@ def prompt_date_optional() -> tuple[bool, str | None]:
         return True, to_canonical_aware(raw)
     except typer.BadParameter as exc:
         typer.echo(f"  {exc.message}", err=True)
+        pause()
         return False, None
 
 
@@ -230,6 +231,7 @@ def prompt_date_range_preset() -> tuple[bool, str | None, str | None]:
         dt = to_canonical_aware(raw_to.strip()) if raw_to.strip() else None
     except typer.BadParameter as exc:
         typer.echo(f"  {exc.message}", err=True)
+        pause()
         return False, None, None
     return True, df, dt
 

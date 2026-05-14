@@ -13,6 +13,7 @@ from expense.cache import queries
 from expense.commands import hashtags_cmd
 from expense.menu import prompts
 from expense.menu.groups import _common as common
+from expense.menu.term import clear_screen
 
 BACK_LABEL = "← Back"
 
@@ -20,6 +21,7 @@ BACK_LABEL = "← Back"
 def run_hashtags_menu(ctx: typer.Context) -> None:
     """Hashtags sub-menu loop."""
     while True:
+        clear_screen()
         try:
             choice = questionary.select(
                 "Hashtags — what do you like to do?",
@@ -42,6 +44,7 @@ def run_hashtags_menu(ctx: typer.Context) -> None:
         handler = _HANDLERS.get(choice)
         if handler is None:
             continue
+        clear_screen()
         try:
             handler(ctx)
         except typer.Exit:
@@ -117,6 +120,7 @@ def run_create(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and submit?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
 
     try:
@@ -143,6 +147,7 @@ def run_update(ctx: typer.Context) -> None:
         item = queries.get_hashtag(tag_id)
     except Exception as exc:  # pragma: no cover — picker came from cache
         typer.echo(f"Could not load hashtag: {exc}", err=True)
+        common.pause()
         return
 
     changes: dict = {}
@@ -171,6 +176,7 @@ def run_update(ctx: typer.Context) -> None:
 
     if not changes:
         typer.echo("No changes.")
+        common.pause()
         return
 
     flags: list[tuple[str, str | None]] = []
@@ -183,6 +189,7 @@ def run_update(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Confirm and submit?", default_no=True)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
 
     try:
@@ -211,6 +218,7 @@ def run_archive(ctx: typer.Context) -> None:
     )
     if not confirmed:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         hashtags_cmd.archive(ctx, id_=tag_id, json_output=False)
@@ -229,6 +237,7 @@ def run_unarchive(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Unarchive?", default_no=False)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         hashtags_cmd.unarchive(ctx, id_=tag_id, json_output=False)
@@ -253,6 +262,7 @@ def run_delete(ctx: typer.Context) -> None:
     )
     if not confirmed:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         hashtags_cmd.delete(ctx, id_=tag_id, yes=True, json_output=False)
@@ -271,6 +281,7 @@ def run_restore(ctx: typer.Context) -> None:
     confirm = common.prompt_yes_no("Restore?", default_no=False)
     if confirm is None or not confirm:
         typer.echo("Aborted.")
+        common.pause()
         return
     try:
         hashtags_cmd.restore(ctx, id_=tag_id, json_output=False)

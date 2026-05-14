@@ -11,6 +11,7 @@ import questionary
 import typer
 
 from expense.cache import queries
+from expense.menu.groups import _common as common
 
 BACK = object()
 SKIP = object()
@@ -26,6 +27,7 @@ def _empty_hint(resource_plural: str) -> None:
         f"or create one via `expense {resource_plural} create`.",
         err=True,
     )
+    common.pause()
 
 
 def _select_id(
@@ -198,6 +200,7 @@ def pick_inbox(
     if not items:
         if only_deleted:
             typer.echo("No deleted inbox items found.", err=True)
+            common.pause()
         else:
             _empty_hint("inbox")
         return BACK
@@ -241,6 +244,7 @@ def pick_transaction(
     if not items:
         if only_deleted:
             typer.echo("No deleted transactions found.", err=True)
+            common.pause()
         else:
             _empty_hint("transactions")
         return BACK

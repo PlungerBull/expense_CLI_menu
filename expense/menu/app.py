@@ -11,6 +11,7 @@ from collections.abc import Callable
 import questionary
 import typer
 
+from expense.menu.groups import _common as common
 from expense.menu.groups.accounts import run_accounts_menu
 from expense.menu.groups.auth import run_auth_menu
 from expense.menu.groups.categories import run_categories_menu
@@ -21,6 +22,7 @@ from expense.menu.groups.inbox import run_inbox_menu
 from expense.menu.groups.log import run_log_flow
 from expense.menu.groups.reports import run_reports_menu
 from expense.menu.groups.transactions import run_transactions_menu
+from expense.menu.term import clear_screen
 
 QUIT = "Quit"
 
@@ -105,6 +107,7 @@ def menu_command(ctx: typer.Context) -> None:
     """
     _require_tty()
     while True:
+        clear_screen()
         try:
             choice = questionary.select(
                 "expense menu — what do you like to do?",
@@ -115,9 +118,11 @@ def menu_command(ctx: typer.Context) -> None:
             return
         if choice is None or choice == QUIT:
             return
+        clear_screen()
         handler = _GROUP_HANDLERS.get(choice)
         if handler is None:
             _unwired(choice)
+            common.pause()
             continue
         try:
             handler(ctx)

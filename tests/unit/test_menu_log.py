@@ -222,6 +222,7 @@ def test_user_aborts_at_confirm(configured, monkeypatch):
             "-450",
             False,  # optional? No
             False,  # confirm? No
+            "",  # pause after Aborted.
         ]
     )
     _patch_questionary(monkeypatch, script)

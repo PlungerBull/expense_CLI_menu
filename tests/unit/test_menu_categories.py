@@ -273,6 +273,7 @@ def test_create_declined_no_http(configured, monkeypatch):
             "#FF6B6B",
             "",
             False,  # confirm? No
+            "",  # pause after Aborted.
             "← Back",
         ]
     )
@@ -294,6 +295,7 @@ def test_update_no_changes_no_http(configured, monkeypatch, cache_with_mixed_cat
             False,  # change name? No
             False,  # change color? No
             False,  # change sort_order? No
+            "",  # pause after No changes.
             "← Back",
         ]
     )
@@ -392,6 +394,7 @@ def test_archive_declined_no_http(configured, monkeypatch):
     script = _PromptScript(
         [
             "Archive a category",
+            "",  # pause after Aborted.
             "← Back",
         ]
     )
