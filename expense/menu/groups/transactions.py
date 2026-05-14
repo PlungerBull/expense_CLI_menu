@@ -54,99 +54,24 @@ def run_transactions_menu(ctx: typer.Context) -> None:
 # ----------------------------------------------------------- 1. List
 
 
-def _prompt_cleared_filter() -> tuple[bool, bool | None]:
-    answer = questionary.select(
-        "Cleared?",
-        choices=[
-            questionary.Choice(title="Any", value="any"),
-            questionary.Choice(title="Cleared only", value=True),
-            questionary.Choice(title="Not cleared only", value=False),
-        ],
-    ).ask()
-    if answer is None:
-        return False, None
-    return True, None if answer == "any" else bool(answer)
-
-
-def _prompt_page_size(default: int = 50) -> int | None:
-    def _validate(raw: str) -> bool | str:
-        if raw == "":
-            return True
-        try:
-            v = int(raw)
-        except ValueError:
-            return "Must be a positive integer."
-        if v <= 0:
-            return "Must be a positive integer."
-        return True
-
-    answer = questionary.text(f"Page size [{default}]", validate=_validate).ask()
-    if answer is None:
-        return None
-    answer = answer.strip()
-    return default if answer == "" else int(answer)
-
-
 def run_list(ctx: typer.Context) -> None:
-    account_id = prompts.pick_account(allow_skip=True)
-    if account_id is prompts.BACK:
-        return
-    if account_id is prompts.SKIP:
-        account_id = None
-
-    category_id = prompts.pick_category(allow_skip=True)
-    if category_id is prompts.BACK:
-        return
-    if category_id is prompts.SKIP:
-        category_id = None
-
-    hashtag_id = prompts.pick_hashtag(allow_skip=True)
-    if hashtag_id is prompts.BACK:
-        return
-    if hashtag_id is prompts.SKIP:
-        hashtag_id = None
-
-    reconciliation_id = None
-    if account_id is not None:
-        rec = prompts.pick_reconciliation(account_id=account_id)
-        # rec returns BACK if no reconciliations exist OR if user aborts.
-        # Treat the empty-cache case as "skip reconciliation filter" rather
-        # than aborting the whole list flow.
-        if rec is not prompts.BACK:
-            reconciliation_id = rec
-
-    ok, date_from, date_to = common.prompt_date_range_preset()
-    if not ok:
-        return
-
-    search = common.prompt_optional_text("Search title/description")
-
-    ok, cleared = _prompt_cleared_filter()
-    if not ok:
-        return
-
-    include_deleted = common.prompt_yes_no("Include soft-deleted?", default_no=True)
-    if include_deleted is None:
-        return
-
-    limit = _prompt_page_size()
-    if limit is None:
-        return
-
+    # No filter prompts: dump the most recent 25 transactions across all
+    # accounts/categories/hashtags/dates straight from the local replica.
+    # Use the flat `expense transactions list <flags>` for filtered queries.
     try:
         transactions_cmd.list_(
             ctx,
-            account=account_id,
-            category=category_id,
-            hashtag=hashtag_id,
-            reconciliation=reconciliation_id,
-            date_from=date_from,
-            date_to=date_to,
-            cleared=cleared,
-            search=search,
-            limit=limit,
+            account=None,
+            category=None,
+            hashtag=None,
+            reconciliation=None,
+            date_from=None,
+            date_to=None,
+            cleared=None,
+            search=None,
+            limit=25,
             offset=0,
-            include_deleted=bool(include_deleted),
+            include_deleted=False,
             debit_as_negative=False,
             json_output=False,
         )

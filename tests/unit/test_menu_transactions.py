@@ -116,130 +116,42 @@ def _make_ctx() -> _StubCtx:
 
 
 @respx.mock
-def test_list_no_filters(configured, monkeypatch):
+def test_list_skips_all_prompts_and_uses_defaults(configured, monkeypatch):
+    """Menu list flow asks no questions: hits the engine with no filters,
+    limit=25, and include_deleted=False. Pickers must not be invoked."""
     route = respx.get("https://api.example.com/v1/transactions").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    monkeypatch.setattr(prompts, "pick_account", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_category", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_hashtag", lambda **_k: prompts.SKIP)
-    script = _PromptScript(
-        [
-            "Any date",  # date range
-            "",  # search (skip)
-            "any",  # cleared
-            False,  # include-deleted
-            "",  # page size default
-            "",  # pause
-        ]
-    )
+
+    picker_calls = {"n": 0}
+
+    def _picker_should_not_fire(*_a, **_k):
+        picker_calls["n"] += 1
+        return prompts.SKIP
+
+    monkeypatch.setattr(prompts, "pick_account", _picker_should_not_fire)
+    monkeypatch.setattr(prompts, "pick_category", _picker_should_not_fire)
+    monkeypatch.setattr(prompts, "pick_hashtag", _picker_should_not_fire)
+    monkeypatch.setattr(prompts, "pick_reconciliation", _picker_should_not_fire)
+
+    # Only the trailing common.pause() consumes a script entry.
+    script = _PromptScript([""])
     _patch_questionary(monkeypatch, script)
     menu_tx.run_list(_make_ctx())
+
+    assert picker_calls["n"] == 0, "menu list must not invoke any picker"
     assert route.called
     params = route.calls.last.request.url.params
     assert params.get("account_id") is None
     assert params.get("category_id") is None
+    assert params.get("hashtag_id") is None
+    assert params.get("reconciliation_id") is None
     assert params.get("date_from") is None
-
-
-@respx.mock
-def test_list_account_filter(configured, monkeypatch):
-    route = respx.get("https://api.example.com/v1/transactions").mock(
-        return_value=httpx.Response(200, json=LIST_RESPONSE)
-    )
-    monkeypatch.setattr(prompts, "pick_account", lambda **_k: "acct-pick")
-    monkeypatch.setattr(prompts, "pick_category", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_hashtag", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_reconciliation", lambda **_k: prompts.BACK)
-    script = _PromptScript(
-        [
-            "Any date",
-            "",
-            "any",
-            False,
-            "",
-            "",  # pause
-        ]
-    )
-    _patch_questionary(monkeypatch, script)
-    menu_tx.run_list(_make_ctx())
-    assert route.calls.last.request.url.params.get("account_id") == "acct-pick"
-
-
-@respx.mock
-def test_list_date_preset_last_30_days(configured, monkeypatch):
-    route = respx.get("https://api.example.com/v1/transactions").mock(
-        return_value=httpx.Response(200, json=LIST_RESPONSE)
-    )
-    monkeypatch.setattr(prompts, "pick_account", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_category", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_hashtag", lambda **_k: prompts.SKIP)
-    script = _PromptScript(
-        [
-            "Last 30 days",  # date preset
-            "",  # search
-            "any",  # cleared
-            False,  # include-deleted
-            "",  # page size
-            "",  # pause
-        ]
-    )
-    _patch_questionary(monkeypatch, script)
-    menu_tx.run_list(_make_ctx())
-    params = route.calls.last.request.url.params
-    assert params.get("date_from") is not None
-    assert params.get("date_to") is not None
-    # ISO 8601 with year:
-    assert params.get("date_from").startswith("20")
-
-
-@respx.mock
-def test_list_date_preset_custom(configured, monkeypatch):
-    route = respx.get("https://api.example.com/v1/transactions").mock(
-        return_value=httpx.Response(200, json=LIST_RESPONSE)
-    )
-    monkeypatch.setattr(prompts, "pick_account", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_category", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_hashtag", lambda **_k: prompts.SKIP)
-    script = _PromptScript(
-        [
-            "Custom range…",
-            "2026-01-01",  # from
-            "2026-03-31",  # to
-            "",  # search
-            "any",  # cleared
-            False,  # include-deleted
-            "",  # page size
-            "",  # pause
-        ]
-    )
-    _patch_questionary(monkeypatch, script)
-    menu_tx.run_list(_make_ctx())
-    params = route.calls.last.request.url.params
-    assert params.get("date_from").startswith("2026-01-01")
-    assert params.get("date_to").startswith("2026-03-31")
-
-
-def test_list_reconciliation_skipped_without_account(monkeypatch):
-    """Without an account picked, reconciliation prompt must not be offered."""
-    monkeypatch.setattr(prompts, "pick_account", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_category", lambda **_k: prompts.SKIP)
-    monkeypatch.setattr(prompts, "pick_hashtag", lambda **_k: prompts.SKIP)
-
-    rec_called = {"hit": False}
-
-    def _rec(**_k):
-        rec_called["hit"] = True
-        return prompts.BACK
-
-    monkeypatch.setattr(prompts, "pick_reconciliation", _rec)
-
-    # Will abort at first date prompt by returning None — but we only care
-    # whether pick_reconciliation got invoked.
-    script = _PromptScript([None])
-    _patch_questionary(monkeypatch, script)
-    menu_tx.run_list(_make_ctx())
-    assert rec_called["hit"] is False
+    assert params.get("date_to") is None
+    assert params.get("cleared") is None
+    assert params.get("search") is None
+    assert params.get("include_deleted") is None  # default False ⇒ omitted
+    assert params.get("limit") == "25"
 
 
 # ----------------------------------------------------------- 2. Get

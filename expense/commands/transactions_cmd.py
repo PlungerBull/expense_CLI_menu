@@ -18,6 +18,7 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
+from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -56,6 +57,13 @@ def _fmt_amount(value: object) -> str:
     return "(null)" if value is None else str(value)
 
 
+def _fmt_hashtag_cell(ids: object, name_map: dict[str, str]) -> str:
+    if not isinstance(ids, list) or not ids:
+        return "—"
+    names = [name_map.get(hid, hid[:8] + "…") if isinstance(hid, str) else "?" for hid in ids]
+    return truncate(", ".join(names), 24)
+
+
 def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
@@ -67,6 +75,7 @@ def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
 
     accounts = load_account_name_map()
     categories = load_category_name_map()
+    hashtags = load_hashtag_name_map()
     rows = [
         {
             "title": truncate(item.get("title") or "—", 24),
@@ -75,6 +84,7 @@ def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
             "date": format_short_date(item.get("date")),
             "account": resolve_name(item.get("account_id"), accounts),
             "category": resolve_name(item.get("category_id"), categories),
+            "hashtags": _fmt_hashtag_cell(item.get("hashtag_ids"), hashtags),
         }
         for item in items
     ]
@@ -86,6 +96,7 @@ def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
             "date": "Date",
             "account": "Account",
             "category": "Category",
+            "hashtags": "Hashtags",
         },
         rows=rows,
         align_right={"amount"},
