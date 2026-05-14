@@ -57,6 +57,12 @@ def log(
         "--to-amount",
         help="Sibling signed-cents amount. Must be opposite sign to --amount.",
     ),
+    hashtag_ids: str | None = typer.Option(
+        None,
+        "--hashtag-ids",
+        help="Comma-separated hashtag UUIDs to attach at creation. "
+        "Engine rejects archived ids with 422.",
+    ),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     """POST /v1/transactions. Direct ledger entry; bypasses the inbox.
@@ -97,6 +103,10 @@ def log(
         payload["cleared"] = cleared
     if exchange_rate is not None:
         payload["exchange_rate"] = exchange_rate
+    if hashtag_ids is not None:
+        payload["hashtag_ids"] = [
+            piece.strip() for piece in hashtag_ids.split(",") if piece.strip()
+        ]
 
     sibling_id: str | None = None
     if transfer:

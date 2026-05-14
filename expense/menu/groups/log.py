@@ -8,9 +8,24 @@ delegate to `log_cmd.log()`.
 
 import typer
 
+from expense.cache import queries
 from expense.commands import log_cmd
 from expense.menu import prompts
 from expense.menu.groups import _common as common
+
+
+def _cache_has_active_hashtags() -> bool:
+    """Skip the hashtag picker entirely when the cache has nothing to pick.
+
+    Avoids the noisy '(no hashtags found)' empty-hint flash for users who
+    haven't started tagging yet.
+    """
+    try:
+        page = queries.list_hashtags(include_archived=False, include_deleted=False)
+    except Exception:
+        return False
+    items = page.get("items") if isinstance(page, dict) else None
+    return bool(items)
 
 
 def _recap_flags(args: dict) -> list[tuple[str, str | None]]:
@@ -31,6 +46,8 @@ def _recap_flags(args: dict) -> list[tuple[str, str | None]]:
         flags.append(("--no-cleared", ""))
     if args.get("exchange_rate") is not None:
         flags.append(("--exchange-rate", str(args["exchange_rate"])))
+    if args.get("hashtag_ids"):
+        flags.append(("--hashtag-ids", ",".join(args["hashtag_ids"])))
     if args.get("transfer"):
         flags.append(("--transfer", ""))
         flags.append(("--to-account-id", args["to_account_id"]))
@@ -61,11 +78,22 @@ def run_log_flow(ctx: typer.Context) -> None:
     if category_id is prompts.BACK:
         return
 
+    # Multi-select hashtag picker; only shown if there are hashtags to pick.
+    # Empty checkbox submit (Enter with nothing selected) = no hashtags.
+    # Esc/Ctrl-C inside the picker returns BACK — treat as 'skip', not abort,
+    # so the user can move past it without losing the title/amount they typed.
+    hashtag_ids: list[str] = []
+    if _cache_has_active_hashtags():
+        hashtag_pick = prompts.pick_hashtag(multi=True)
+        if isinstance(hashtag_pick, list):
+            hashtag_ids = hashtag_pick
+
     args: dict = {
         "title": title,
         "amount": amount,
         "account_id": account_id,
         "category_id": category_id,
+        "hashtag_ids": hashtag_ids,
         "date": None,
         "description": None,
         "cleared": None,
@@ -117,8 +145,12 @@ def run_log_flow(ctx: typer.Context) -> None:
         common.pause()
         return
 
+    # Flat command takes a comma-separated string; menu carries a list.
+    call_args = dict(args)
+    ids = call_args.pop("hashtag_ids", None) or []
+    call_args["hashtag_ids"] = ",".join(ids) if ids else None
     try:
-        log_cmd.log(ctx, json_output=False, **args)
+        log_cmd.log(ctx, json_output=False, **call_args)
     except typer.Exit:
         pass
 

@@ -207,6 +207,65 @@ def test_transfer_pair_path(configured, monkeypatch):
     assert body["transfer"]["amount_cents"] == 100
 
 
+@respx.mock
+def test_hashtags_attached_at_create(configured, monkeypatch):
+    """Cache has hashtags → picker fires → selected ids land in the POST body."""
+    route = respx.post("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(201, json=TRANSACTION_RESPONSE)
+    )
+    _patch_pickers(monkeypatch, "acct-id", "cat-id")
+    # Pretend the cache has at least one hashtag so the picker is offered.
+    monkeypatch.setattr(menu_log, "_cache_has_active_hashtags", lambda: True)
+    # Picker returns two hashtag ids (multi-select checkbox result).
+    monkeypatch.setattr(prompts, "pick_hashtag", lambda **_k: ["tag-aaa", "tag-bbb"])
+    script = _PromptScript(
+        [
+            "Lunch",
+            "-1500",
+            False,  # optional? No
+            True,  # confirm
+            "",  # pause
+        ]
+    )
+    _patch_questionary(monkeypatch, script)
+    menu_log.run_log_flow(_make_ctx())
+    body = json.loads(route.calls.last.request.content)
+    assert body["hashtag_ids"] == ["tag-aaa", "tag-bbb"]
+
+
+@respx.mock
+def test_hashtag_picker_skipped_when_cache_empty(configured, monkeypatch):
+    """No hashtags in cache → no picker prompt at all, no hashtag_ids in POST."""
+    route = respx.post("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(201, json=TRANSACTION_RESPONSE)
+    )
+    _patch_pickers(monkeypatch, "acct-id", "cat-id")
+    monkeypatch.setattr(menu_log, "_cache_has_active_hashtags", lambda: False)
+
+    picker_calls = {"n": 0}
+
+    def _picker_should_not_fire(**_k):
+        picker_calls["n"] += 1
+        return []
+
+    monkeypatch.setattr(prompts, "pick_hashtag", _picker_should_not_fire)
+    script = _PromptScript(
+        [
+            "Coffee",
+            "-450",
+            False,  # optional? No
+            True,  # confirm
+            "",  # pause
+        ]
+    )
+    _patch_questionary(monkeypatch, script)
+    menu_log.run_log_flow(_make_ctx())
+
+    assert picker_calls["n"] == 0
+    body = json.loads(route.calls.last.request.content)
+    assert "hashtag_ids" not in body
+
+
 # ----------------------------------------------------------- bail paths
 
 
