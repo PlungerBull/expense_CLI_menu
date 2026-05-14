@@ -166,7 +166,13 @@ def pick_hashtag(
             )
             for item in items
         ]
-        answer = questionary.checkbox(prompt, choices=choices).ask()
+        # Spell out Space/Enter — questionary checkbox's default hint is easy
+        # to miss, and "Enter without Space-selecting first" is the #1 trap.
+        answer = questionary.checkbox(
+            prompt,
+            choices=choices,
+            instruction="(Space to select, Enter to submit, leave blank for none)",
+        ).ask()
         if answer is None:
             return BACK
         return answer
