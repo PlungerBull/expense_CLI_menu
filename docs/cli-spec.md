@@ -143,7 +143,11 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ## Output conventions
 
-- **Tables** — monospace columns, header row + separator. Human mode only.
+- **Tables** — Default rendering for every `<resource> list` flow. Plain ASCII columns, header row + separator dashes, two-space gap between columns. Built via the shared helpers in [expense/commands/_resource.py](../expense/commands/_resource.py): `render_table(headers, rows, *, align_right)`, `pad_left`, `pad_right`, `visible_len`. Per-resource columns are chosen for at-a-glance scannability, not field-by-field completeness — the verbose key:value dump remains the `<resource> get <id>` view, and `--json` keeps raw passthrough.
+  - **Process rule:** before adding a new `list` renderer (or new columns to an existing one), propose the column set explicitly and get user sign-off. Never invent columns from the engine response shape alone — the user has the final say on what's scannable. The recommended workflow is the HTML mockup pattern used for Step 9.5.9/9.5.10 tables: dump the available fields, propose a short list with rationale, iterate, then implement.
+  - **Color swatches** — When a column carries a `#RRGGBB` value, render as a 2-char ANSI 24-bit block via `color_swatch(hex, color=color_supported())`. `color_supported()` gates on `sys.stdout.isatty()` + the `NO_COLOR` env var ([no-color.org](https://no-color.org)). Non-TTY (pipe, file, test) falls back to the hex string so output stays grep-able.
+  - **Name resolution** — ID columns on `inbox` / `transactions` / `reports` resolve to human names via cache-backed maps (`load_account_name_map`, `load_category_name_map`, `load_hashtag_name_map`). Unresolvable IDs fall back silently to the first 8 chars (e.g. `de37af15`); null IDs render as `—`. No warning on miss — the cache is the source of truth, missing means out-of-sync.
+  - **Truncation** — Free-text columns (`title`, `description`) truncate at 24 visible chars with a trailing `…`. The full value is still in `get` / `--json`.
 - **Amounts** — currency symbol prefix (`S/ 8,420.50`, `$5,200.00`). Native + home currency shown side-by-side when they differ. Outflows prefixed with `-`.
 - **Dates (output)** — ISO 8601 by default (`2026-04-19`). Relative hints (`3 days ago`) only in detail (`get`) views.
 - **Dates (input)** — Commands that accept `--date` (`expense log`, `expense inbox add`, `expense inbox update`; later `expense transactions update`) accept `YYYY-MM-DD`, `YYYY-MM-DD HH:MM[:SS]`, `YYYY-MM-DDTHH:MM[:SS]`, `YYYY-MM-DDTHH:MM:SSZ`, or `YYYY-MM-DDTHH:MM:SS±HH:MM`. Naive forms get the user's local timezone attached automatically by the CLI's normalizer in [expense/dates.py](../expense/dates.py). The engine itself rejects naive datetimes with 422 — the CLI's normalizer is the only place that accepts them.
@@ -163,4 +167,3 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - Import commands (`expense import csv`)
 - Shell completions (zsh, bash, fish)
 - Local SQLite cache for `--offline` reads (decision deferred to Step 7)
-- Color conventions (Rich library? plain ANSI? none?)

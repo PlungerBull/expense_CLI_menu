@@ -1,6 +1,8 @@
 """Shared helpers for resource sub-apps (accounts, categories, hashtags)."""
 
 import json
+import os
+import re
 import sys
 from collections.abc import Callable
 from typing import Any
@@ -13,6 +15,160 @@ from expense.config import Config
 from expense.context import get_no_cache, get_no_sync_after, get_verbose
 from expense.errors import EngineError
 from expense.http import ExpenseClient
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def visible_len(text: str) -> int:
+    """Length of `text` ignoring ANSI escape sequences."""
+    return len(_ANSI_RE.sub("", text))
+
+
+def pad_left(text: str, width: int) -> str:
+    """Left-align `text` (pad spaces on the right) to `width` visible cols."""
+    return text + " " * max(width - visible_len(text), 0)
+
+
+def pad_right(text: str, width: int) -> str:
+    """Right-align `text` (pad spaces on the left) to `width` visible cols."""
+    return " " * max(width - visible_len(text), 0) + text
+
+
+def color_supported() -> bool:
+    """True iff stdout is a TTY and NO_COLOR env var is unset.
+
+    Honors the de-facto NO_COLOR convention (https://no-color.org/).
+    """
+    return sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
+
+
+def color_swatch(hex_value: object, *, color: bool) -> str:
+    """Render a 2-char ANSI swatch for `#RRGGBB`, or fall back to the hex.
+
+    Returns `(none)` when the input is None. Invalid hex falls through to
+    the raw string. Set `color=False` to always render the hex literally
+    (e.g. when piping to a file).
+    """
+    if hex_value is None:
+        return "(none)"
+    if not isinstance(hex_value, str):
+        return str(hex_value)
+    if not color:
+        return hex_value
+    if len(hex_value) != 7 or not hex_value.startswith("#"):
+        return hex_value
+    try:
+        r = int(hex_value[1:3], 16)
+        g = int(hex_value[3:5], 16)
+        b = int(hex_value[5:7], 16)
+    except ValueError:
+        return hex_value
+    return f"\x1b[38;2;{r};{g};{b}m██\x1b[0m"
+
+
+def truncate(text: object, max_width: int) -> str:
+    """Truncate `text` to `max_width` visible chars, appending `…` if cut."""
+    if text is None:
+        return ""
+    s = str(text)
+    if visible_len(s) <= max_width:
+        return s
+    if max_width <= 1:
+        return s[:max_width]
+    return s[: max_width - 1] + "…"
+
+
+def format_short_date(iso_value: object) -> str:
+    """`2026-04-24T12:00:00Z` → `2026-04-24`. None / non-string → `—`."""
+    if not isinstance(iso_value, str) or len(iso_value) < 10:
+        return "—"
+    return iso_value[:10]
+
+
+def load_account_name_map() -> dict[str, str]:
+    """Cache-backed account id → name map. Empty on any cache failure.
+
+    Includes archived + people accounts so transaction/inbox rows can resolve
+    references to retired accounts. Soft-deleted excluded.
+    """
+    try:
+        from expense.cache import queries  # local import to keep _resource cheap to load
+    except Exception:
+        return {}
+    try:
+        items = queries.list_accounts(
+            include_archived=True, include_deleted=False, include_people=True
+        )
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for item in items or []:
+        aid = item.get("id")
+        name = item.get("name")
+        if isinstance(aid, str) and isinstance(name, str):
+            out[aid] = name
+    return out
+
+
+def load_category_name_map() -> dict[str, str]:
+    """Cache-backed category id → name map. Empty on any cache failure."""
+    try:
+        from expense.cache import queries
+    except Exception:
+        return {}
+    try:
+        page = queries.list_categories(include_archived=True, include_deleted=False)
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for item in (page.get("items") or []) if isinstance(page, dict) else []:
+        cid = item.get("id")
+        name = item.get("name")
+        if isinstance(cid, str) and isinstance(name, str):
+            out[cid] = name
+    return out
+
+
+def resolve_name(uuid_value: object, name_map: dict[str, str]) -> str:
+    """Resolve `uuid_value` via `name_map`, falling back to a short-id form.
+
+    None / non-string → `—`. Unresolvable UUID → first 8 chars (e.g. `de37af15`).
+    """
+    if uuid_value is None:
+        return "—"
+    if not isinstance(uuid_value, str):
+        return str(uuid_value)
+    return name_map.get(uuid_value, uuid_value[:8])
+
+
+def render_table(
+    headers: dict[str, str],
+    rows: list[dict[str, str]],
+    *,
+    align_right: set[str] | frozenset[str] = frozenset(),
+    sep: str = "  ",
+) -> None:
+    """Render an ASCII table. Cells must be pre-formatted strings.
+
+    `headers` is an ordered dict of {column-key: column-label}.
+    Each `row` is a dict keyed by the same column keys.
+    Cells listed in `align_right` are right-padded; the rest are left-padded.
+    Width per column = max(header label, max(visible_len(cell) for cell in column)).
+    """
+    if not rows:
+        return
+    widths = {
+        key: max([len(headers[key])] + [visible_len(row.get(key, "")) for row in rows])
+        for key in headers
+    }
+
+    def fmt(text: str, key: str) -> str:
+        return pad_right(text, widths[key]) if key in align_right else pad_left(text, widths[key])
+
+    typer.echo(sep.join(fmt(headers[key], key) for key in headers))
+    typer.echo(sep.join("-" * widths[key] for key in headers))
+    for row in rows:
+        typer.echo(sep.join(fmt(row.get(key, ""), key) for key in headers))
 
 
 def cache_after_write(ctx: typer.Context, client: ExpenseClient, cfg: Config) -> None:

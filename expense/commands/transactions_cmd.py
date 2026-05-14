@@ -9,8 +9,14 @@ from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
     cache_after_write,
+    format_short_date,
+    load_account_name_map,
+    load_category_name_map,
     render_pagination_hint,
+    render_table,
     require_yes,
+    resolve_name,
+    truncate,
 )
 from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
@@ -46,6 +52,10 @@ def _render_transaction(body: dict, *, json_mode: bool) -> None:
         typer.echo(f"  {key}: {display}")
 
 
+def _fmt_amount(value: object) -> str:
+    return "(null)" if value is None else str(value)
+
+
 def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
@@ -54,13 +64,32 @@ def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
     if not items:
         typer.echo("(no transactions)")
         return
-    for index, item in enumerate(items):
-        if index > 0:
-            typer.echo("")
-        for key, value in item.items():
-            display = value if value is not None else "(null)"
-            typer.echo(f"  {key}: {display}")
 
+    accounts = load_account_name_map()
+    categories = load_category_name_map()
+    rows = [
+        {
+            "title": truncate(item.get("title") or "—", 24),
+            "description": truncate(item.get("description"), 24),
+            "amount": _fmt_amount(item.get("amount_cents")),
+            "date": format_short_date(item.get("date")),
+            "account": resolve_name(item.get("account_id"), accounts),
+            "category": resolve_name(item.get("category_id"), categories),
+        }
+        for item in items
+    ]
+    render_table(
+        headers={
+            "title": "Title",
+            "description": "Description",
+            "amount": "Amount",
+            "date": "Date",
+            "account": "Account",
+            "category": "Category",
+        },
+        rows=rows,
+        align_right={"amount"},
+    )
     render_pagination_hint(body, items)
 
 

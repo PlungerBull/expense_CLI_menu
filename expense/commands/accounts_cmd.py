@@ -8,7 +8,10 @@ from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
     cache_after_write,
+    color_supported,
+    color_swatch,
     render_pagination_hint,
+    render_table,
     require_yes,
     run_toggle,
 )
@@ -30,6 +33,14 @@ def _render_account(body: dict, *, json_mode: bool) -> None:
         typer.echo(f"  {key}: {display}")
 
 
+def _fmt_bool(value: object) -> str:
+    return "yes" if bool(value) else "no"
+
+
+def _fmt_balance(cents: object) -> str:
+    return "(null)" if cents is None else str(cents)
+
+
 def _render_account_list(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
@@ -38,12 +49,31 @@ def _render_account_list(body: dict, *, json_mode: bool) -> None:
     if not items:
         typer.echo("(no accounts)")
         return
-    for index, item in enumerate(items):
-        if index > 0:
-            typer.echo("")
-        for key, value in item.items():
-            display = value if value is not None else "(null)"
-            typer.echo(f"  {key}: {display}")
+
+    color = color_supported()
+    rows = [
+        {
+            "name": item.get("name") or "(unnamed)",
+            "currency": item.get("currency_code") or "?",
+            "person": _fmt_bool(item.get("is_person")),
+            "color": color_swatch(item.get("color"), color=color),
+            "balance": _fmt_balance(item.get("current_balance_cents")),
+            "archived": _fmt_bool(item.get("is_archived")),
+        }
+        for item in items
+    ]
+    render_table(
+        headers={
+            "name": "Name",
+            "currency": "Currency",
+            "person": "Person",
+            "color": "Color",
+            "balance": "Balance",
+            "archived": "Archived",
+        },
+        rows=rows,
+        align_right={"balance"},
+    )
     render_pagination_hint(body, items)
 
 
