@@ -16,6 +16,7 @@ from expense.menu.groups.auth import run_auth_menu
 from expense.menu.groups.categories import run_categories_menu
 from expense.menu.groups.config import run_config_menu
 from expense.menu.groups.dashboard import run_dashboard_menu
+from expense.menu.groups.hashtags import run_hashtags_menu
 from expense.menu.groups.inbox import run_inbox_menu
 from expense.menu.groups.log import run_log_flow
 from expense.menu.groups.reports import run_reports_menu
@@ -32,6 +33,7 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Reports": run_reports_menu,
     "Accounts": run_accounts_menu,
     "Categories": run_categories_menu,
+    "Hashtags": run_hashtags_menu,
     "Config": run_config_menu,
     "Auth & profile": run_auth_menu,
 }

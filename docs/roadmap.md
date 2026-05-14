@@ -411,7 +411,7 @@ Wires the same template as Accounts, with system-category guard (engine 403 on `
 
 **Commit:** `feat(menu): Categories — CRUD + archive/restore + system guard (Step 9.5.10)`
 
-### Step 9.5.11 — Hashtags menu
+### Step 9.5.11 — Hashtags menu (shipped)
 
 *Deliverable: Hashtags group menu + all 8 hashtag flows.*
 

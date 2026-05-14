@@ -9,6 +9,7 @@ from expense.commands._resource import (
     build_update_payload,
     cache_after_write,
     render_pagination_hint,
+    render_table,
     require_yes,
     run_toggle,
 )
@@ -30,6 +31,10 @@ def _render_hashtag(body: dict, *, json_mode: bool) -> None:
         typer.echo(f"  {key}: {display}")
 
 
+def _fmt_bool(value: object) -> str:
+    return "yes" if bool(value) else "no"
+
+
 def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
@@ -38,12 +43,23 @@ def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
     if not items:
         typer.echo("(no hashtags)")
         return
-    for index, item in enumerate(items):
-        if index > 0:
-            typer.echo("")
-        for key, value in item.items():
-            display = value if value is not None else "(null)"
-            typer.echo(f"  {key}: {display}")
+
+    rows = [
+        {
+            "name": item.get("name") or "(unnamed)",
+            "archived": _fmt_bool(item.get("is_archived")),
+            "deleted": _fmt_bool(item.get("deleted_at")),
+        }
+        for item in items
+    ]
+    render_table(
+        headers={
+            "name": "Name",
+            "archived": "Archived",
+            "deleted": "Deleted",
+        },
+        rows=rows,
+    )
     render_pagination_hint(body, items)
 
 

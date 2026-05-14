@@ -128,6 +128,8 @@ def pick_hashtag(
     *,
     multi: bool = False,
     include_archived: bool = False,
+    only_archived: bool = False,
+    only_deleted: bool = False,
     allow_skip: bool = False,
     prompt: str = "Hashtag",
 ) -> object:
@@ -136,29 +138,37 @@ def pick_hashtag(
     `allow_skip=True` (single-select only) prepends a `(skip)` choice that
     returns SKIP. Ignored when `multi=True` — empty checkbox selection
     represents "no hashtags" naturally.
+
+    `only_archived` / `only_deleted` filter to a single lifecycle slice for
+    Unarchive / Restore flows; mutually exclusive.
     """
-    page = queries.list_hashtags(include_archived=include_archived, include_deleted=False)
-    items = page.get("items", [])
-    if not items:
-        _empty_hint("hashtags")
-        return BACK
-    choices: list = []
-    if allow_skip and not multi:
-        choices.append(questionary.Choice(title="(skip — leave blank)", value=SKIP))
-    choices.extend(
-        questionary.Choice(
-            title=_format_choice(item.get("name") or "(unnamed)", item["id"]),
-            value=item["id"],
-        )
-        for item in items
-    )
-    if multi:
-        answer = questionary.checkbox(prompt, choices=choices).ask()
+    if only_archived and only_deleted:
+        raise ValueError("only_archived and only_deleted are mutually exclusive.")
+    if only_archived:
+        page = queries.list_hashtags(include_archived=True, include_deleted=False)
+        items = [item for item in page.get("items", []) if item.get("is_archived")]
+    elif only_deleted:
+        page = queries.list_hashtags(include_archived=True, include_deleted=True)
+        items = [item for item in page.get("items", []) if item.get("deleted_at") is not None]
     else:
-        answer = questionary.select(prompt, choices=choices).ask()
-    if answer is None:
-        return BACK
-    return answer
+        page = queries.list_hashtags(include_archived=include_archived, include_deleted=False)
+        items = list(page.get("items", []))
+    if multi:
+        if not items:
+            _empty_hint("hashtags")
+            return BACK
+        choices = [
+            questionary.Choice(
+                title=_format_choice(item.get("name") or "(unnamed)", item["id"]),
+                value=item["id"],
+            )
+            for item in items
+        ]
+        answer = questionary.checkbox(prompt, choices=choices).ask()
+        if answer is None:
+            return BACK
+        return answer
+    return _select_id(items, prompt=prompt, resource_plural="hashtags", allow_skip=allow_skip)
 
 
 def _format_inbox_choice(item: dict) -> str:
