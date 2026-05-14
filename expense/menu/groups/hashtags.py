@@ -10,7 +10,7 @@ import questionary
 import typer
 
 from expense.cache import queries
-from expense.commands import hashtags_cmd
+from expense.commands import hashtags_cmd, transactions_cmd
 from expense.menu import prompts
 from expense.menu.groups import _common as common
 from expense.menu.term import clear_screen
@@ -92,6 +92,28 @@ def run_get(ctx: typer.Context) -> None:
         return
     try:
         hashtags_cmd.get(ctx, id_=tag_id, json_output=False)
+    except typer.Exit:
+        pass
+    typer.echo("")
+    typer.echo("Recent transactions (tagged with this hashtag):")
+    typer.echo("")
+    try:
+        transactions_cmd.list_(
+            ctx,
+            account=None,
+            category=None,
+            hashtag=tag_id,
+            reconciliation=None,
+            date_from=None,
+            date_to=None,
+            cleared=None,
+            search=None,
+            limit=25,
+            offset=0,
+            include_deleted=False,
+            debit_as_negative=False,
+            json_output=False,
+        )
     except typer.Exit:
         pass
     common.pause()

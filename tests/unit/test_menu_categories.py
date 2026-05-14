@@ -220,6 +220,10 @@ def test_get_happy(configured, monkeypatch, capsys):
     route = respx.get(
         "https://api.example.com/v1/categories/11111111-1111-1111-1111-111111111111"
     ).mock(return_value=httpx.Response(200, json=CATEGORY_RESPONSE))
+    # View now dumps the recent-25 transactions in the category inline.
+    respx.get("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(200, json={"items": [], "total": 0, "limit": 25, "offset": 0})
+    )
     monkeypatch.setattr(prompts, "pick_category", lambda **_k: CATEGORY_RESPONSE["id"])
     script = _PromptScript(
         [
@@ -231,7 +235,9 @@ def test_get_happy(configured, monkeypatch, capsys):
     _patch_questionary(monkeypatch, script)
     menu_categories.run_categories_menu(_make_ctx())
     assert route.called
-    assert "Food" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Food" in out
+    assert "Recent transactions (this category)" in out
 
 
 # --------------------------------------------------------------- 3. Create

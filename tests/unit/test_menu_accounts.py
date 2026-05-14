@@ -216,6 +216,10 @@ def test_get_happy(configured, monkeypatch, capsys):
     route = respx.get(
         "https://api.example.com/v1/accounts/11111111-1111-1111-1111-111111111111"
     ).mock(return_value=httpx.Response(200, json=ACCOUNT_RESPONSE))
+    # View now dumps the recent-25 transactions for the account inline.
+    respx.get("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(200, json={"items": [], "total": 0, "limit": 25, "offset": 0})
+    )
     monkeypatch.setattr(prompts, "pick_account", lambda **_k: ACCOUNT_RESPONSE["id"])
     script = _PromptScript(
         [
@@ -229,6 +233,7 @@ def test_get_happy(configured, monkeypatch, capsys):
     assert route.called
     out = capsys.readouterr().out
     assert "BCP Soles" in out
+    assert "Recent transactions (this account)" in out
 
 
 # --------------------------------------------------------------- 3. Create

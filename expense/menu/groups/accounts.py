@@ -9,7 +9,7 @@ import questionary
 import typer
 
 from expense.cache import queries
-from expense.commands import accounts_cmd
+from expense.commands import accounts_cmd, transactions_cmd
 from expense.menu import prompts
 from expense.menu.groups import _common as common
 from expense.menu.term import clear_screen
@@ -95,6 +95,28 @@ def run_get(ctx: typer.Context) -> None:
         return
     try:
         accounts_cmd.get(ctx, id_=acc_id, json_output=False)
+    except typer.Exit:
+        pass
+    typer.echo("")
+    typer.echo("Recent transactions (this account):")
+    typer.echo("")
+    try:
+        transactions_cmd.list_(
+            ctx,
+            account=acc_id,
+            category=None,
+            hashtag=None,
+            reconciliation=None,
+            date_from=None,
+            date_to=None,
+            cleared=None,
+            search=None,
+            limit=25,
+            offset=0,
+            include_deleted=False,
+            debit_as_negative=False,
+            json_output=False,
+        )
     except typer.Exit:
         pass
     common.pause()

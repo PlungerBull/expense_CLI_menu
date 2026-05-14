@@ -231,6 +231,10 @@ def test_get_happy(configured, monkeypatch, capsys):
     route = respx.get(
         "https://api.example.com/v1/hashtags/11111111-1111-1111-1111-111111111111"
     ).mock(return_value=httpx.Response(200, json=HASHTAG_RESPONSE))
+    # View now dumps the recent-25 tagged transactions inline.
+    respx.get("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(200, json={"items": [], "total": 0, "limit": 25, "offset": 0})
+    )
     monkeypatch.setattr(prompts, "pick_hashtag", lambda **_k: HASHTAG_RESPONSE["id"])
     script = _PromptScript(
         [
@@ -242,7 +246,9 @@ def test_get_happy(configured, monkeypatch, capsys):
     _patch_questionary(monkeypatch, script)
     menu_hashtags.run_hashtags_menu(_make_ctx())
     assert route.called
-    assert "lunch" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "lunch" in out
+    assert "Recent transactions (tagged with this hashtag)" in out
 
 
 @respx.mock
