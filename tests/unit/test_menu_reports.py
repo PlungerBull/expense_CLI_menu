@@ -236,8 +236,12 @@ def test_single_month_with_breakdown_resolves_names(configured, monkeypatch, cap
 
     out = capsys.readouterr().out
     assert "Month: 2026-03" in out
-    assert "Food + Club: -30000" in out
-    assert "(no hashtags): -20000" in out
+    # Hashtag sub-rows now render as indented rows in the categories table:
+    # the combo name lives in the Name column and amounts in Spent/Home cells.
+    assert "Food + Club" in out
+    assert "-30000" in out
+    assert "(no hashtags)" in out
+    assert "-20000" in out
 
 
 @respx.mock

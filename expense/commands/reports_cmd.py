@@ -3,11 +3,10 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import render_totals
+from expense.commands._resource import render_table, render_totals
 from expense.commands.dashboard_cmd import (
     hashtag_label,
     load_hashtag_name_map,
-    render_category_section,
 )
 from expense.context import get_verbose
 from expense.dates import parse_year_month
@@ -34,13 +33,57 @@ def _months_between(from_ym: tuple[int, int], to_ym: tuple[int, int]) -> int:
     return (to_ym[0] - from_ym[0]) * 12 + (to_ym[1] - from_ym[1]) + 1
 
 
+def _fmt_amount(cents: object) -> str:
+    return "(null)" if cents is None else str(cents)
+
+
+def _render_single_month_categories(categories: list[dict] | None, *, show_hashtags: bool) -> None:
+    """Render the Categories block as an ASCII table.
+
+    When show_hashtags is True, each category's hashtag_breakdown rows render
+    as indented sub-rows in the Name column.
+    """
+    typer.echo("Categories:")
+    if not categories:
+        typer.echo("  (no categories)")
+        return
+
+    name_map = load_hashtag_name_map() if show_hashtags else {}
+    rows: list[dict[str, str]] = []
+    for cat in categories:
+        rows.append(
+            {
+                "name": cat.get("name") or "(unnamed)",
+                "spent": _fmt_amount(cat.get("spent_cents")),
+                "home": _fmt_amount(cat.get("spent_home_cents")),
+            }
+        )
+        if not show_hashtags:
+            continue
+        for sub in cat.get("hashtag_breakdown") or []:
+            ids = sub.get("hashtag_ids") or []
+            rows.append(
+                {
+                    "name": "  " + hashtag_label(ids, name_map),
+                    "spent": _fmt_amount(sub.get("spent_cents")),
+                    "home": _fmt_amount(sub.get("spent_home_cents")),
+                }
+            )
+
+    render_table(
+        headers={"name": "Name", "spent": "Spent", "home": "Home"},
+        rows=rows,
+        align_right={"spent", "home"},
+    )
+
+
 def _render_single_month(body: dict, *, json_mode: bool, show_hashtags: bool = True) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
     typer.echo(f"Month: {_format_month(body.get('month'))}")
     typer.echo("")
-    render_category_section(body.get("categories"), show_hashtags=show_hashtags)
+    _render_single_month_categories(body.get("categories"), show_hashtags=show_hashtags)
     typer.echo("")
     render_totals(body.get("totals"))
 

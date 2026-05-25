@@ -156,8 +156,12 @@ def test_monthly_single_happy(configured):
     assert result.exit_code == 0, result.output
     assert "Month: 2026-03" in result.output
     assert "Food" in result.output
-    assert "aaaa: -30000" in result.output
-    assert "(no hashtags): -20000" in result.output
+    # New table layout: hashtag sub-rows are indented in the Name column with
+    # spent/home as right-aligned cells (no `label: amount` colon syntax).
+    assert "aaaa" in result.output
+    assert "-30000" in result.output
+    assert "(no hashtags)" in result.output
+    assert "-20000" in result.output
     assert "net: 750000" in result.output
 
     request = route.calls.last.request
