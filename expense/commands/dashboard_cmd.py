@@ -4,7 +4,7 @@ import typer
 
 from expense import config as config_module
 from expense.cache import queries
-from expense.commands._resource import render_totals
+from expense.commands._resource import render_table, render_totals
 from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -20,15 +20,34 @@ def _format_month(month: dict | None) -> str:
     return "(unknown)"
 
 
-def _render_account_row(item: dict) -> None:
-    name = item.get("name", "(unnamed)")
-    currency = item.get("currency_code", "?")
-    native = item.get("current_balance_cents")
-    home = item.get("current_balance_home_cents")
-    native_s = native if native is not None else "(null)"
-    home_s = home if home is not None else "(null)"
-    typer.echo(f"  {name} ({currency})")
-    typer.echo(f"    balance: {native_s} (home: {home_s})")
+def _fmt_amount(cents: object) -> str:
+    return "(null)" if cents is None else str(cents)
+
+
+def _render_account_table(items: list[dict] | None, *, empty_message: str) -> None:
+    """Render a list of accounts (bank or people) as Name / Currency / Balance.
+
+    Balance is the native amount in the account's currency; the home-currency
+    equivalent is intentionally not shown — single-currency users see only one
+    meaningful number, and multi-currency users get the value in the unit they
+    actually think in for that account.
+    """
+    if not items:
+        typer.echo(empty_message)
+        return
+    rows = [
+        {
+            "name": item.get("name") or "(unnamed)",
+            "currency": item.get("currency_code") or "?",
+            "balance": _fmt_amount(item.get("current_balance_cents")),
+        }
+        for item in items
+    ]
+    render_table(
+        headers={"name": "Name", "currency": "Currency", "balance": "Balance"},
+        rows=rows,
+        align_right={"balance"},
+    )
 
 
 def load_hashtag_name_map() -> dict[str, str]:
@@ -62,69 +81,59 @@ def hashtag_label(ids: list[str], name_map: dict[str, str]) -> str:
     return " + ".join(name_map.get(hid, hid) for hid in ids)
 
 
-def render_category_section(
-    categories: list[dict] | None,
-    *,
-    header: str = "Categories",
-    show_hashtags: bool = True,
-    name_map: dict[str, str] | None = None,
-) -> None:
-    """Render the categories + hashtag-breakdown block. Shared with reports_cmd."""
-    typer.echo(f"{header}:")
+def _render_categories_table(categories: list[dict] | None) -> None:
+    """Render the Categories block as Name / Spent, with indented hashtag sub-rows.
+
+    Hashtag breakdown (when present in the engine payload) renders as an
+    indented sub-row in the Name column. Spent is the native sum from
+    spent_cents; the home-currency variant is dropped per the dashboard's
+    single-column convention.
+    """
+    typer.echo("Categories:")
     if not categories:
         typer.echo("  (no categories)")
         return
-    if name_map is not None:
-        resolved = name_map
-    elif show_hashtags:
-        resolved = load_hashtag_name_map()
-    else:
-        resolved = {}
+    name_map = load_hashtag_name_map()
+    rows: list[dict[str, str]] = []
     for cat in categories:
-        name = cat.get("name", "(unnamed)")
-        spent = cat.get("spent_cents")
-        spent_home = cat.get("spent_home_cents")
-        spent_s = spent if spent is not None else "(null)"
-        home_s = spent_home if spent_home is not None else "(null)"
-        typer.echo(f"  {name}")
-        typer.echo(f"    spent: {spent_s} (home: {home_s})")
-        if not show_hashtags:
-            continue
-        breakdown = cat.get("hashtag_breakdown") or []
-        if breakdown:
-            typer.echo("    breakdown:")
-            for row in breakdown:
-                ids = row.get("hashtag_ids") or []
-                row_amount = row.get("spent_cents")
-                row_home = row.get("spent_home_cents")
-                row_amount_s = row_amount if row_amount is not None else "(null)"
-                row_home_s = row_home if row_home is not None else "(null)"
-                label = hashtag_label(ids, resolved)
-                typer.echo(f"      {label}: {row_amount_s} (home: {row_home_s})")
+        rows.append(
+            {
+                "name": cat.get("name") or "(unnamed)",
+                "spent": _fmt_amount(cat.get("spent_cents")),
+            }
+        )
+        for sub in cat.get("hashtag_breakdown") or []:
+            ids = sub.get("hashtag_ids") or []
+            rows.append(
+                {
+                    "name": "  " + hashtag_label(ids, name_map),
+                    "spent": _fmt_amount(sub.get("spent_cents")),
+                }
+            )
+    render_table(
+        headers={"name": "Name", "spent": "Spent"},
+        rows=rows,
+        align_right={"spent"},
+    )
 
 
-def _render_archived_accounts(items: list[dict] | None) -> None:
-    typer.echo("Archived accounts:")
+def _render_lifetime_table(items: list[dict] | None, *, empty_message: str) -> None:
+    """Render archived-categories / archived-hashtags lifetime totals as Name / Lifetime spent."""
     if not items:
-        typer.echo("  (no archived accounts)")
+        typer.echo(empty_message)
         return
-    for item in items:
-        _render_account_row(item)
-
-
-def _render_archived_lifetime(items: list[dict] | None, *, header: str) -> None:
-    typer.echo(f"{header}:")
-    if not items:
-        typer.echo(f"  (no {header.lower()})")
-        return
-    for item in items:
-        name = item.get("name", "(unnamed)")
-        lifetime = item.get("lifetime_spent_cents")
-        lifetime_home = item.get("lifetime_spent_home_cents")
-        lifetime_s = lifetime if lifetime is not None else "(null)"
-        home_s = lifetime_home if lifetime_home is not None else "(null)"
-        typer.echo(f"  {name}")
-        typer.echo(f"    lifetime spent: {lifetime_s} (home: {home_s})")
+    rows = [
+        {
+            "name": item.get("name") or "(unnamed)",
+            "lifetime": _fmt_amount(item.get("lifetime_spent_cents")),
+        }
+        for item in items
+    ]
+    render_table(
+        headers={"name": "Name", "lifetime": "Lifetime spent"},
+        rows=rows,
+        align_right={"lifetime"},
+    )
 
 
 def _render_dashboard(body: dict, *, json_mode: bool) -> None:
@@ -136,22 +145,16 @@ def _render_dashboard(body: dict, *, json_mode: bool) -> None:
     typer.echo("")
 
     typer.echo("Bank accounts:")
-    bank_accounts = body.get("bank_accounts") or []
-    if not bank_accounts:
-        typer.echo("  (no bank accounts)")
-    else:
-        for item in bank_accounts:
-            _render_account_row(item)
+    _render_account_table(body.get("bank_accounts"), empty_message="  (no bank accounts)")
     typer.echo("")
 
     people = body.get("people") or []
     if people:
         typer.echo("People:")
-        for item in people:
-            _render_account_row(item)
+        _render_account_table(people, empty_message="  (no people)")
         typer.echo("")
 
-    render_category_section(body.get("categories"))
+    _render_categories_table(body.get("categories"))
     typer.echo("")
 
     render_totals(body.get("totals"))
@@ -165,11 +168,14 @@ def _render_dashboard(body: dict, *, json_mode: bool) -> None:
         or archived_hashtags is not None
     ):
         typer.echo("")
-        _render_archived_accounts(archived_accounts)
+        typer.echo("Archived accounts:")
+        _render_account_table(archived_accounts, empty_message="  (no archived accounts)")
         typer.echo("")
-        _render_archived_lifetime(archived_categories, header="Archived categories")
+        typer.echo("Archived categories:")
+        _render_lifetime_table(archived_categories, empty_message="  (no archived categories)")
         typer.echo("")
-        _render_archived_lifetime(archived_hashtags, header="Archived hashtags")
+        typer.echo("Archived hashtags:")
+        _render_lifetime_table(archived_hashtags, empty_message="  (no archived hashtags)")
 
 
 @handle_errors

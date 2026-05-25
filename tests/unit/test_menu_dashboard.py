@@ -168,7 +168,9 @@ def test_current_month_renders(configured, monkeypatch, capsys):
     assert "include_archived" not in request.url.params
     out = capsys.readouterr().out
     assert "Month: 2026-05" in out
-    assert "BCP Soles (PEN)" in out
+    # Tabular accounts: Name and Currency are separate columns now, not "Name (CUR)".
+    assert "BCP Soles" in out
+    assert "PEN" in out
     assert "Archived accounts" not in out
 
 

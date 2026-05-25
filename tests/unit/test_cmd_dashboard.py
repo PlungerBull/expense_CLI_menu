@@ -130,11 +130,20 @@ def test_dashboard_happy(configured):
     result = runner.invoke(cli_app, ["dashboard"])
     assert result.exit_code == 0, result.output
     assert "Month: 2026-04" in result.output
-    assert "BCP Soles (PEN)" in result.output
-    assert "Alex (PEN)" in result.output
+    # New tabular layout: Name + Currency + Balance in one row per account; no
+    # parenthetical "(home: ...)" since the Home column was dropped.
+    assert "Month: 2026-04" in result.output
+    assert "BCP Soles" in result.output
+    assert "PEN" in result.output
+    assert "125000" in result.output
+    assert "Alex" in result.output
     assert "Food" in result.output
-    assert "aaaa + bbbb: -30000" in result.output
-    assert "(no hashtags): -20000" in result.output
+    # Hashtag sub-rows render inside the Categories table (Name col gets the
+    # combo label, Spent col gets the amount — no `label: amount` colon).
+    assert "aaaa + bbbb" in result.output
+    assert "-30000" in result.output
+    assert "(no hashtags)" in result.output
+    assert "-20000" in result.output
     assert "inflow: 800000" in result.output
 
     request = route.calls.last.request
@@ -152,7 +161,10 @@ def test_dashboard_include_archived(configured):
     assert "Old BCP" in result.output
     assert "Archived categories:" in result.output
     assert "Crypto" in result.output
-    assert "lifetime spent: -250000" in result.output
+    # Lifetime spent now renders as a table column header + right-aligned cell
+    # value rather than the old `lifetime spent: -X (home: -X)` line.
+    assert "Lifetime spent" in result.output
+    assert "-250000" in result.output
     assert "Archived hashtags:" in result.output
     assert "#vacation-2024" in result.output
 
