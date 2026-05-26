@@ -13,6 +13,7 @@ import typer
 
 from expense.menu.groups import _common as common
 from expense.menu.groups.accounts import run_accounts_menu
+from expense.menu.groups.activity_log import run_activity_log_menu
 from expense.menu.groups.auth import run_auth_menu
 from expense.menu.groups.categories import run_categories_menu
 from expense.menu.groups.config import run_config_menu
@@ -38,6 +39,7 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Categories": run_categories_menu,
     "Hashtags": run_hashtags_menu,
     "Reconciliations": run_reconciliations_menu,
+    "Activity log": run_activity_log_menu,
     "Config": run_config_menu,
     "Auth & profile": run_auth_menu,
 }

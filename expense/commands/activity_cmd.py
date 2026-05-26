@@ -3,9 +3,9 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import render_pagination_hint
+from expense.commands._resource import render_pagination_hint, render_table
 from expense.context import get_verbose
-from expense.errors import handle_errors
+from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
 
 app = typer.Typer(help="Activity log (audit trail).", no_args_is_help=True)
@@ -21,16 +21,110 @@ def _action_label(action: object) -> str:
     return str(action)
 
 
-def _render_row(row: dict) -> None:
-    typer.echo(f"  created_at  {row.get('created_at', '(null)')}")
-    typer.echo(f"  action      {_action_label(row.get('action'))}")
-    actor = row.get("changed_by", "(null)")
-    actor_type = row.get("actor_type", "(null)")
-    typer.echo(f"  actor       {actor} ({actor_type})")
-    resource_type = row.get("resource_type", "(null)")
-    resource_id = row.get("resource_id", "(null)")
-    typer.echo(f"  resource    {resource_type} {resource_id}")
-    typer.echo(f"  id          {row.get('id', '(null)')}")
+def _split_date_time(created_at: object) -> tuple[str, str]:
+    if not isinstance(created_at, str) or len(created_at) < 19:
+        return "—", "—"
+    return created_at[:10], created_at[11:19]
+
+
+def _short_id(resource_id: object) -> str:
+    if not isinstance(resource_id, str) or not resource_id:
+        return "—"
+    return resource_id[:8]
+
+
+def _resolve_resource_name(resource_type: object, resource_id: object) -> str:
+    """Look up a human name for the row via the local cache replica.
+
+    Returns the short 8-char UUID prefix on any cache miss / error so deleted
+    or never-synced records still have a usable handle.
+    """
+    if not isinstance(resource_id, str) or not resource_id:
+        return "—"
+    if not isinstance(resource_type, str):
+        return _short_id(resource_id)
+    try:
+        from expense.cache import queries
+    except Exception:
+        return _short_id(resource_id)
+
+    try:
+        if resource_type == "expense_transactions":
+            row = queries.get_transaction(resource_id)
+            return row.get("title") or row.get("description") or _short_id(resource_id)
+        if resource_type == "accounts":
+            row = queries.get_account(resource_id)
+            return row.get("name") or _short_id(resource_id)
+        if resource_type == "categories":
+            row = queries.get_category(resource_id)
+            return row.get("name") or _short_id(resource_id)
+        if resource_type == "hashtags":
+            row = queries.get_hashtag(resource_id)
+            name = row.get("name")
+            return f"#{name}" if name else _short_id(resource_id)
+        if resource_type == "inbox_items":
+            row = queries.get_inbox(resource_id)
+            return row.get("title") or row.get("description") or _short_id(resource_id)
+        if resource_type == "reconciliations":
+            row = queries.get_reconciliation(resource_id)
+            date = row.get("statement_date") or row.get("date")
+            account_id = row.get("account_id")
+            account_name = None
+            if isinstance(account_id, str):
+                try:
+                    account_row = queries.get_account(account_id)
+                    account_name = account_row.get("name")
+                except EngineError:
+                    account_name = None
+            if isinstance(date, str) and account_name:
+                return f"{date[:10]} / {account_name}"
+            if isinstance(date, str):
+                return date[:10]
+            if account_name:
+                return account_name
+            return _short_id(resource_id)
+    except EngineError:
+        return _short_id(resource_id)
+    except Exception:
+        return _short_id(resource_id)
+
+    return _short_id(resource_id)
+
+
+def _render_activity_rows(items: list[dict]) -> None:
+    """Render activity rows as a 6-column table (Date · Time · Action · Actor · Type · Resource).
+
+    Module-level so the menu wrapper can reuse it. Snapshots and `changed_by`
+    are deliberately omitted from the table; both remain accessible via --json.
+    """
+    rows: list[dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        date_part, time_part = _split_date_time(item.get("created_at"))
+        rows.append(
+            {
+                "date": date_part,
+                "time": time_part,
+                "action": _action_label(item.get("action")),
+                "actor": str(item.get("actor_type") or "—"),
+                "type": str(item.get("resource_type") or "—"),
+                "resource": _resolve_resource_name(
+                    item.get("resource_type"), item.get("resource_id")
+                ),
+            }
+        )
+    render_table(
+        headers={
+            "date": "Date",
+            "time": "Time",
+            "action": "Action",
+            "actor": "Actor",
+            "type": "Type",
+            "resource": "Resource",
+        },
+        rows=rows,
+    )
 
 
 def _render_list(body: object, *, json_mode: bool) -> None:
@@ -41,10 +135,7 @@ def _render_list(body: object, *, json_mode: bool) -> None:
     if not items:
         typer.echo("(no activity)")
         return
-    for index, item in enumerate(items):
-        if index > 0:
-            typer.echo("")
-        _render_row(item)
+    _render_activity_rows(items)
     render_pagination_hint(body, items)
 
 
