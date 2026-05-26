@@ -441,7 +441,7 @@ Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-bal
 
 **Commit:** `feat(menu): Reconciliations — full lifecycle + $EDITOR reorder (Step 9.5.12)`
 
-### Step 9.5.13 — Sync menu (next)
+### Step 9.5.13 — Sync menu (shipped)
 
 *Deliverable: Sync group menu + both sync variants.*
 
