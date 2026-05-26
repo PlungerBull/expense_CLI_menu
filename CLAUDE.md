@@ -100,8 +100,8 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 9.5.10 | Menu — Categories | Done |
 | 9.5.11 | Menu — Hashtags | Done |
 | 9.5.11b | Menu — Clear-on-navigate UX | Done |
-| 9.5.12 | Menu — Reconciliations (incl. `$EDITOR` reorder) (next) | Pending |
-| 9.5.13 | Menu — Sync | Pending |
+| 9.5.12 | Menu — Reconciliations (incl. `$EDITOR` reorder) | Done |
+| 9.5.13 | Menu — Sync (next) | Pending |
 | 9.5.14 | Menu — Activity log | Pending |
 | 9.5.15 | Menu — Exchange rates | Pending |
 | 9.5.16 | Menu — Step 9.5 closeout (freshman-flow gate) | Pending |

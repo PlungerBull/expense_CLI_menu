@@ -431,7 +431,7 @@ Adds [expense/menu/term.py](../expense/menu/term.py) with `clear_screen()` (gent
 
 **Commit:** `feat(menu): clear-on-navigate UX — wipe viewport on every menu transition (Step 9.5.11b)`
 
-### Step 9.5.12 — Reconciliations menu (next)
+### Step 9.5.12 — Reconciliations menu (shipped)
 
 *Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder.*
 
@@ -441,7 +441,7 @@ Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-bal
 
 **Commit:** `feat(menu): Reconciliations — full lifecycle + $EDITOR reorder (Step 9.5.12)`
 
-### Step 9.5.13 — Sync menu
+### Step 9.5.13 — Sync menu (next)
 
 *Deliverable: Sync group menu + both sync variants.*
 
