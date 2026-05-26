@@ -38,6 +38,7 @@ Engine docs are **referenced, not copied**. Single source of truth lives in the 
 - **HTTP client:** httpx
 - **Config storage:** `~/.expense-config` (chmod 600)
 - **Local cache (Step 7b — committed deliverable, not optional):** SQLite under `~/.expense-cache.sqlite3` per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md). Stateless escape hatch via `--no-cache` / `EXPENSE_STATELESS=1`. See [docs/cli-runtime.md](docs/cli-runtime.md).
+- **Sync architecture — server-first, not local-first.** Writes go engine-direct over HTTPS; the local SQLite is a read-through replica only, never the origin of a write. No offline write queue (unlike Todoist's mobile clients — that's an **iOS-only future feature** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), explicitly excluded from CLI and web by design). Why: single source of truth = no conflict resolution, no CRDTs, no per-row vector clocks — every client inherits the same simple `POST → wait → done` contract.
 
 ## Non-negotiable conventions
 
