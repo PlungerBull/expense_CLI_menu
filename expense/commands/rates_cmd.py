@@ -10,6 +10,21 @@ from expense.http import ExpenseClient
 app = typer.Typer(help="Exchange rates.", no_args_is_help=True)
 
 
+def _render_rate(body: object) -> None:
+    """Human-mode renderer for /v1/exchange-rates responses.
+
+    Generic key/value iteration so additional engine fields (provider,
+    source, fetched_at, …) render without a code change. Shared with the
+    9.5.15 menu surface.
+    """
+    if isinstance(body, dict):
+        for key, value in body.items():
+            display = value if value is not None else "(null)"
+            typer.echo(f"  {key}: {display}")
+    else:
+        typer.echo(json.dumps(body, indent=2))
+
+
 @app.command("get")
 @handle_errors
 def get(
@@ -49,9 +64,4 @@ def get(
     if json_output:
         typer.echo(json.dumps(body, indent=2))
         return
-    if isinstance(body, dict):
-        for key, value in body.items():
-            display = value if value is not None else "(null)"
-            typer.echo(f"  {key}: {display}")
-    else:
-        typer.echo(json.dumps(body, indent=2))
+    _render_rate(body)

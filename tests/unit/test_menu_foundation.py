@@ -82,21 +82,6 @@ def test_root_menu_handles_ctrl_c(monkeypatch):
     assert result.exit_code == 0
 
 
-def test_stub_placeholder_advertises_correct_phase(monkeypatch):
-    _no_tty_guard(monkeypatch)
-    # Pick a group that is still unwired (Exchange rates ships next as 9.5.15).
-    monkeypatch.setattr(
-        menu_app.questionary, "select", _make_select_factory(["Exchange rates", "Quit"])
-    )
-    # The unwired branch now ends with common.pause() so the placeholder
-    # line stays readable under clear-on-navigate (Step 9.5.11b).
-    monkeypatch.setattr(menu_common.questionary, "text", _make_select_factory([""]))
-    result = runner.invoke(app, ["menu"])
-    assert result.exit_code == 0
-    assert "not yet wired" in result.output
-    assert "9.5.15" in result.output
-
-
 def test_every_group_advertises_its_phase():
     """Every root-menu group has a phase mapping (no silent omissions)."""
     expected = {

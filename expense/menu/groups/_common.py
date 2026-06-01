@@ -5,6 +5,7 @@ helper here is intra-package public (no leading underscore) and consumed
 by sibling modules (log.py, inbox.py, future 9.5.4+ phases).
 """
 
+import re
 from collections.abc import Callable
 from datetime import date as date_cls
 from datetime import datetime, timedelta
@@ -13,6 +14,8 @@ import questionary
 import typer
 
 from expense.dates import parse_year_month, to_canonical_aware
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def prompt_title() -> str | None:
@@ -285,6 +288,26 @@ def validate_currency_code(raw: str) -> bool | str:
         return "Currency code is required."
     if len(value) != 3 or not value.isalpha() or not value.isupper():
         return "Currency code must be 3 uppercase letters (e.g. USD, PEN)."
+    return True
+
+
+def validate_date_iso(raw: str) -> bool | str:
+    """questionary validator for plain YYYY-MM-DD (no time, no tz).
+
+    Engine /exchange-rates expects bare YYYY-MM-DD — NOT RFC 3339. This is
+    intentionally narrower than expense.dates.to_canonical_aware so the menu
+    never silently coerces input into a timezone-aware string the engine
+    will reject.
+    """
+    value = raw.strip()
+    if not value:
+        return "Date is required."
+    if not _ISO_DATE_RE.match(value):
+        return "Must be YYYY-MM-DD (e.g. 2026-05-26)."
+    try:
+        date_cls.fromisoformat(value)
+    except ValueError:
+        return "Not a real calendar date."
     return True
 
 

@@ -21,6 +21,7 @@ from expense.menu.groups.dashboard import run_dashboard_menu
 from expense.menu.groups.hashtags import run_hashtags_menu
 from expense.menu.groups.inbox import run_inbox_menu
 from expense.menu.groups.log import run_log_flow
+from expense.menu.groups.rates import run_rates_menu
 from expense.menu.groups.reconciliations import run_reconciliations_menu
 from expense.menu.groups.reports import run_reports_menu
 from expense.menu.groups.sync import run_sync_menu
@@ -42,6 +43,7 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Reconciliations": run_reconciliations_menu,
     "Sync": run_sync_menu,
     "Activity log": run_activity_log_menu,
+    "Exchange rates": run_rates_menu,
     "Config": run_config_menu,
     "Auth & profile": run_auth_menu,
 }

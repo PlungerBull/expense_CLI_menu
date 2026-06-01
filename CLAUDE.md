@@ -104,5 +104,5 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 9.5.12 | Menu — Reconciliations (incl. `$EDITOR` reorder) | Done |
 | 9.5.13 | Menu — Sync | Done |
 | 9.5.14 | Menu — Activity log | Done |
-| 9.5.15 | Menu — Exchange rates (next) | Pending |
-| 9.5.16 | Menu — Step 9.5 closeout (freshman-flow gate) | Pending |
+| 9.5.15 | Menu — Exchange rates | Done |
+| 9.5.16 | Menu — Step 9.5 closeout (freshman-flow gate, next) | Pending |

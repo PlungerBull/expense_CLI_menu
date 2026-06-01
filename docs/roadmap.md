@@ -461,7 +461,7 @@ Wires `List all recent activity`, `Filter by resource type`, `Filter by specific
 
 **Commit:** `feat(menu): Activity log — list + filter variants (Step 9.5.14)`
 
-### Step 9.5.15 — Exchange rates menu
+### Step 9.5.15 — Exchange rates menu (shipped)
 
 *Deliverable: Exchange rates group menu + lookup flow.*
 
