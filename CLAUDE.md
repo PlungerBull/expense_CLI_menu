@@ -65,7 +65,7 @@ Auth token + engine URL live in `~/.expense-config`. Never checked in, never sha
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 9 (CLI-complete gate closed 2026-05-10): every engine endpoint with a CLI surface is wrapped, surface coverage is regression-armored by [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py), and the freshman flow is wired as a live contract test. Next is Step 9.5 (interactive shell).
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 9 (CLI-complete gate closed 2026-05-10): every engine endpoint with a CLI surface is wrapped, surface coverage is regression-armored by [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py), and the freshman flow is wired as a live contract test. Step 9.5 (interactive shell) is complete: all 14 menu groups are wired and the freshman-flow menu gate ([tests/contract/test_freshman_flow_menu.py](tests/contract/test_freshman_flow_menu.py)) closed it (Step 9.5.16). Next is post-Step-9 ergonomics (quick-add parser, shell completions — see [docs/roadmap.md](docs/roadmap.md)).
 
 The CLI is **cache-by-default by design** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), with stateless as the explicit escape hatch. Step 7 phases: 7a (stateless milestone, shipped), 7b.1 (replica foundation, shipped), 7b.2.1 / 7b.2.2 / 7b.2.3 (replica reads, all shipped), 7b.3 (write-path refresh, shipped).
 
@@ -105,4 +105,4 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 9.5.13 | Menu — Sync | Done |
 | 9.5.14 | Menu — Activity log | Done |
 | 9.5.15 | Menu — Exchange rates | Done |
-| 9.5.16 | Menu — Step 9.5 closeout (freshman-flow gate, next) | Pending |
+| 9.5.16 | Menu — Step 9.5 closeout (freshman-flow gate) | Done |

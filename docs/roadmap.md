@@ -471,9 +471,11 @@ Wires `Look up a rate` (target required; base + date optional with engine-defaul
 
 **Commit:** `feat(menu): Exchange rates — lookup (Step 9.5.15)`
 
-### Step 9.5.16 — Step 9.5 closeout (freshman-flow menu gate)
+### Step 9.5.16 — Step 9.5 closeout (freshman-flow menu gate) (shipped)
 
 *Deliverable: Extend [tests/contract/test_freshman_flow.py](../tests/contract/test_freshman_flow.py) (or add a sibling) to drive the menu end-to-end. Closes Step 9.5.*
+
+Shipped as a sibling, [tests/contract/test_freshman_flow_menu.py](../tests/contract/test_freshman_flow_menu.py), driving the menu group flows per-leg against the live engine; the flat-command gate stays untouched alongside it.
 
 Walks `expense menu` through `Config → Set engine URL → Set token → Auth → Bootstrap → Accounts → Create → Categories → Create → Log → Dashboard` against the live engine without consulting `--help` or memorizing a flag. No new feature code — purely a gate that proves the freshman UX holds together. Depends on Config (9.5.6), Auth (9.5.7), Accounts (9.5.9), Categories (9.5.10).
 
@@ -483,7 +485,7 @@ Walks `expense menu` through `Config → Set engine URL → Set token → Auth �
 
 ---
 
-**Step 9.5 done** when 9.5.16 lands and the freshman-flow menu walk passes against the live engine.
+**Step 9.5 done** — 9.5.16 landed; the freshman-flow menu walk passes against the live engine.
 
 ---
 
