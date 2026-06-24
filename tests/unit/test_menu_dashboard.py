@@ -1,8 +1,9 @@
-"""Step 9.5.5 — menu-driven Dashboard flows.
+"""Step 9.5.5 — Dashboard view flows.
 
-Covers both variants (current month, with archived panels), the Back path,
-and Ctrl-C handling. Dashboard is engine-only (no cache), so we stub
-GET /v1/dashboard directly with respx.
+Covers both flow functions (current month, with archived panels). These are
+surfaced under the Reports umbrella menu; the umbrella routing itself is
+covered in test_menu_reports.py. Dashboard is engine-only (no cache), so we
+stub GET /v1/dashboard directly with respx.
 """
 
 from uuid import uuid4
@@ -120,10 +121,9 @@ class _PromptScript:
 
 
 def _patch_questionary(monkeypatch, script: _PromptScript) -> None:
+    # The flow functions only prompt via common.pause(); patch that surface.
     monkeypatch.setattr(menu_common.questionary, "text", script)
     monkeypatch.setattr(menu_common.questionary, "select", script)
-    monkeypatch.setattr(menu_dash.questionary, "select", script)
-    monkeypatch.setattr(menu_dash.questionary, "text", script)
 
 
 class _StubCtx:
@@ -138,31 +138,13 @@ def _make_ctx() -> _StubCtx:
 
 
 @respx.mock
-def test_menu_back_exits(configured, monkeypatch, capsys):
-    route = respx.get("https://api.example.com/v1/dashboard").mock(
-        return_value=httpx.Response(200, json=DASHBOARD_RESPONSE)
-    )
-    script = _PromptScript(["← Back"])
-    _patch_questionary(monkeypatch, script)
-    menu_dash.run_dashboard_menu(_make_ctx())
-    assert not route.called
-    assert script.remaining == 0
-
-
-@respx.mock
 def test_current_month_renders(configured, monkeypatch, capsys):
     route = respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(200, json=DASHBOARD_RESPONSE)
     )
-    script = _PromptScript(
-        [
-            "View dashboard (current month)",
-            "",  # pause
-            "← Back",
-        ]
-    )
+    script = _PromptScript([""])  # pause
     _patch_questionary(monkeypatch, script)
-    menu_dash.run_dashboard_menu(_make_ctx())
+    menu_dash.run_current_month(_make_ctx())
     assert route.called
     request = route.calls.last.request
     assert "include_archived" not in request.url.params
@@ -179,15 +161,9 @@ def test_with_archived_renders(configured, monkeypatch, capsys):
     route = respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(200, json=DASHBOARD_WITH_ARCHIVED)
     )
-    script = _PromptScript(
-        [
-            "View dashboard with archived panels",
-            "",  # pause
-            "← Back",
-        ]
-    )
+    script = _PromptScript([""])  # pause
     _patch_questionary(monkeypatch, script)
-    menu_dash.run_dashboard_menu(_make_ctx())
+    menu_dash.run_with_archived(_make_ctx())
     assert route.called
     request = route.calls.last.request
     assert request.url.params.get("include_archived") == "true"
@@ -198,14 +174,3 @@ def test_with_archived_renders(configured, monkeypatch, capsys):
     assert "Crypto" in out
     assert "Archived hashtags:" in out
     assert "#vacation-2024" in out
-
-
-@respx.mock
-def test_keyboard_interrupt_exits(configured, monkeypatch):
-    route = respx.get("https://api.example.com/v1/dashboard").mock(
-        return_value=httpx.Response(200, json=DASHBOARD_RESPONSE)
-    )
-    script = _PromptScript([KeyboardInterrupt()])
-    _patch_questionary(monkeypatch, script)
-    menu_dash.run_dashboard_menu(_make_ctx())
-    assert not route.called

@@ -9,6 +9,9 @@ import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
+from expense.cache import db as cache_db
+from expense.cache import state as cache_state
+from expense.commands import reports_cmd
 from expense.commands.reports_cmd import app as reports_app
 
 cli_app = typer.Typer()
@@ -144,7 +147,90 @@ def configured(tmp_path, monkeypatch):
             client_id=uuid4(),
         )
     )
+    # Seed a healthy (empty) replica so the single-month report's hashtag-name
+    # warming (ensure_synced) is a no-op — no /v1/sync round-trip to mock here.
+    cfg = config_module.ensure_loaded()
+    conn = cache_db.connect()
+    try:
+        cache_state.write_identity(
+            conn, user_id="u1", client_id=str(cfg.client_id), engine_url=cfg.engine_url
+        )
+        cache_state.write_token(conn, "tok-test")
+    finally:
+        conn.close()
     yield
+
+
+@pytest.fixture
+def configured_cold(tmp_path, monkeypatch):
+    """Config present but the replica is cold (never synced)."""
+    config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
+    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
+    config_module.save(
+        config_module.Config(
+            engine_url="https://api.example.com",
+            token="ewe_pat_test",
+            client_id=uuid4(),
+        )
+    )
+    yield
+
+
+def _sync_payload_with_hashtag() -> dict:
+    return {
+        "sync_token": "tok-1",
+        "accounts": [],
+        "categories": [],
+        "hashtags": [
+            {
+                "id": "aaaa",
+                "user_id": "u1",
+                "name": "Groceries",
+                "is_archived": False,
+                "deleted_at": None,
+                "sort_order": 1,
+                "version": 1,
+            }
+        ],
+        "inbox": [],
+        "transactions": [],
+        "reconciliations": [],
+        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
+    }
+
+
+@respx.mock
+def test_monthly_single_cold_cache_warms_and_resolves_names(configured_cold):
+    """A cold cache is warmed via GET /v1/sync so hashtag UUIDs render as names.
+
+    This is the bug the screenshot showed: with an empty replica the breakdown
+    fell back to raw ids. The report now triggers a cold-start sync first.
+    """
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload_with_hashtag())
+    )
+    respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(200, json=SINGLE_MONTH_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-03"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
+    # The "aaaa" combo now resolves to its name instead of the raw id.
+    assert "Groceries" in result.output
+
+
+@respx.mock
+def test_monthly_single_no_cache_skips_warm(configured_cold):
+    """no_cache (stateless) suppresses the warming sync entirely."""
+    sync_route = respx.get("https://api.example.com/v1/sync")
+    respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(200, json=SINGLE_MONTH_RESPONSE)
+    )
+    cfg = config_module.ensure_loaded()
+    reports_cmd.run_single_month(cfg, year=2026, month=3, no_cache=True)
+    assert not sync_route.called
 
 
 @respx.mock
@@ -159,10 +245,10 @@ def test_monthly_single_happy(configured):
     # New table layout: hashtag sub-rows are indented in the Name column with
     # spent/home as right-aligned cells (no `label: amount` colon syntax).
     assert "aaaa" in result.output
-    assert "-30000" in result.output
+    assert "-300.00" in result.output
     assert "(no hashtags)" in result.output
-    assert "-20000" in result.output
-    assert "net: 750000" in result.output
+    assert "-200.00" in result.output
+    assert "net: 7,500.00" in result.output
 
     request = route.calls.last.request
     assert request.url.params.get("year") == "2026"
@@ -192,8 +278,8 @@ def test_monthly_range_happy(configured):
     assert "Food" in result.output
     assert "Rent" in result.output
     assert "Totals (net)" in result.output
-    assert "-210000" in result.output
-    assert "-115000" in result.output
+    assert "-2,100.00" in result.output
+    assert "-1,150.00" in result.output
 
     request = route.calls.last.request
     assert request.url.params.get("from_year") == "2025"

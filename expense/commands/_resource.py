@@ -85,6 +85,38 @@ def format_short_date(iso_value: object) -> str:
     return iso_value[:10]
 
 
+def format_cents(value: object) -> str:
+    """Render an integer-cents amount as grouped major units with 2 decimals.
+
+    `651900` → `6,519.00`; `-418797` → `-4,187.97`; `0` → `0.00`; None → `(null)`.
+
+    Integer arithmetic throughout — no float division — so large amounts never
+    drift. This is a human-display convenience only; `--json` output stays the
+    raw engine integer. Non-int, non-None values fall back to `str()`.
+    """
+    if value is None:
+        return "(null)"
+    if not isinstance(value, int) or isinstance(value, bool):
+        return str(value)
+    negative = value < 0
+    cents = -value if negative else value
+    major, minor = divmod(cents, 100)
+    body = f"{major:,}.{minor:02d}"
+    return f"-{body}" if negative else body
+
+
+def format_field_value(key: object, value: object) -> str:
+    """Render one `key: value` line for the single-resource `get` dumps.
+
+    Money fields (keys ending in `_cents`) render as grouped major units via
+    `format_cents` so a raw dump is as readable as the list tables; every other
+    field is its literal value, or `(null)` when None.
+    """
+    if isinstance(key, str) and key.endswith("_cents"):
+        return format_cents(value)
+    return "(null)" if value is None else str(value)
+
+
 def load_account_name_map() -> dict[str, str]:
     """Cache-backed account id → name map. Empty on any cache failure.
 
@@ -221,11 +253,9 @@ def render_totals(totals: dict | None) -> None:
         typer.echo("  (no totals)")
         return
     for key in ("inflow_cents", "outflow_cents", "net_cents"):
-        native = totals.get(key)
         home_key = key.replace("_cents", "_home_cents")
-        home = totals.get(home_key)
-        native_s = native if native is not None else "(null)"
-        home_s = home if home is not None else "(null)"
+        native_s = format_cents(totals.get(key))
+        home_s = format_cents(totals.get(home_key))
         label = key.replace("_cents", "")
         typer.echo(f"  {label}: {native_s} (home: {home_s})")
 

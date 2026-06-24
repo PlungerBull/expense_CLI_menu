@@ -1,44 +1,17 @@
-"""Menu flows for the Dashboard group (Step 9.5.5).
+"""Outstanding Amounts view flows (Step 9.5.5).
 
-Wraps `expense dashboard` with and without --include-archived. No payload
-construction or HTTP logic — flows delegate to dashboard_cmd.dashboard().
+Wraps the `expense dashboard` command (`GET /v1/dashboard`) with and without
+--include-archived. No payload construction or HTTP logic — flows delegate to
+dashboard_cmd.dashboard().
+
+Surfaced under the Reports umbrella menu (`expense.menu.groups.reports`) as the
+"Outstanding Amounts" entries; there is no standalone sub-menu.
 """
 
-import questionary
 import typer
 
 from expense.commands import dashboard_cmd
 from expense.menu.groups import _common as common
-from expense.menu.term import clear_screen
-
-BACK_LABEL = "← Back"
-
-
-def run_dashboard_menu(ctx: typer.Context) -> None:
-    """Dashboard sub-menu loop."""
-    while True:
-        clear_screen()
-        try:
-            choice = questionary.select(
-                "Dashboard — what do you like to view?",
-                choices=[
-                    "View dashboard (current month)",
-                    "View dashboard with archived panels",
-                    BACK_LABEL,
-                ],
-            ).ask()
-        except KeyboardInterrupt:
-            return
-        if choice is None or choice == BACK_LABEL:
-            return
-        handler = _HANDLERS.get(choice)
-        if handler is None:
-            continue
-        clear_screen()
-        try:
-            handler(ctx)
-        except typer.Exit:
-            pass
 
 
 def run_current_month(ctx: typer.Context) -> None:
@@ -55,9 +28,3 @@ def run_with_archived(ctx: typer.Context) -> None:
     except typer.Exit:
         pass
     common.pause()
-
-
-_HANDLERS = {
-    "View dashboard (current month)": run_current_month,
-    "View dashboard with archived panels": run_with_archived,
-}

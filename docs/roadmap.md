@@ -349,11 +349,11 @@ Wires `list` (filter prompts: account, category, hashtag, reconciliation, date r
 
 **Commit:** `feat(menu): Transactions — list/get/update/delete/restore/batch (Step 9.5.4)`
 
-### Step 9.5.5 — Dashboard menu (shipped)
+### Step 9.5.5 — Outstanding Amounts menu (shipped)
 
-*Deliverable: Dashboard group menu + both dashboard variants.*
+*Deliverable: the "Outstanding Amounts" menu entries (the `expense dashboard` / `GET /v1/dashboard` wrapper) + both variants.*
 
-Wires `View dashboard (current month)` and `View dashboard with archived panels`. No further prompts — both go straight to render.
+Wires `Outstanding Amounts (current month)` and `Outstanding Amounts (with archived panels)`. No further prompts — both go straight to render. (Surfaced under the Reports umbrella menu; the entries were renamed from "Dashboard" while still wrapping the engine's `dashboard` endpoint.)
 
 **Verify:** both variants render against the live engine; archived panels show only when opted in.
 
@@ -477,7 +477,7 @@ Wires `Look up a rate` (target required; base + date optional with engine-defaul
 
 Shipped as a sibling, [tests/contract/test_freshman_flow_menu.py](../tests/contract/test_freshman_flow_menu.py), driving the menu group flows per-leg against the live engine; the flat-command gate stays untouched alongside it.
 
-Walks `expense menu` through `Config → Set engine URL → Set token → Auth → Bootstrap → Accounts → Create → Categories → Create → Log → Dashboard` against the live engine without consulting `--help` or memorizing a flag. No new feature code — purely a gate that proves the freshman UX holds together. Depends on Config (9.5.6), Auth (9.5.7), Accounts (9.5.9), Categories (9.5.10).
+Walks `expense menu` through `Config → Set engine URL → Set token → Auth → Bootstrap → Accounts → Create → Categories → Create → Log → Outstanding Amounts` against the live engine without consulting `--help` or memorizing a flag. No new feature code — purely a gate that proves the freshman UX holds together. Depends on Config (9.5.6), Auth (9.5.7), Accounts (9.5.9), Categories (9.5.10).
 
 **Verify:** the live freshman walk passes under `PYTEST_LIVE=1 EXPENSE_PAT=<token>`.
 

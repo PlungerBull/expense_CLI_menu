@@ -8,7 +8,7 @@ surface, this one walks a brand-new user through the *menu* freshman path:
     → Accounts → create
     → Categories → create
     → Log a transaction
-    → Dashboard
+    → Reports → Outstanding Amounts (current month)
 
 Each menu flow delegates to the same flat command the CLI runs, and those
 write paths call `cache_after_write`, refreshing the local SQLite replica. So
@@ -49,8 +49,8 @@ from expense.menu.groups import accounts as menu_accounts
 from expense.menu.groups import auth as menu_auth
 from expense.menu.groups import categories as menu_categories
 from expense.menu.groups import config as menu_config
-from expense.menu.groups import dashboard as menu_dashboard
 from expense.menu.groups import log as menu_log
+from expense.menu.groups import reports as menu_reports
 
 ENGINE_URL = os.environ.get("EXPENSE_ENGINE_URL", "https://expense-world-engine.onrender.com")
 PAT = os.environ.get("EXPENSE_PAT")
@@ -111,7 +111,7 @@ _PATCH_TARGETS = (
     menu_auth,
     menu_accounts,
     menu_categories,
-    menu_dashboard,
+    menu_reports,
 )
 
 
@@ -257,13 +257,14 @@ def test_freshman_flow_via_menu(isolated_env, monkeypatch, capsys):
         )
         transaction_id = _captured_created_id(_assert_clean(capsys, "log"), "log")
 
-        # 6. Dashboard — current month renders against the live engine.
+        # 6. Outstanding Amounts (via the Reports umbrella) — current month
+        #    renders against the live engine (GET /v1/dashboard).
         _run_leg(
             monkeypatch,
-            menu_dashboard.run_dashboard_menu,
+            menu_reports.run_reports_menu,
             ctx,
             [
-                "View dashboard (current month)",
+                "Outstanding Amounts (current month)",
                 "",  # pause
                 "← Back",
             ],

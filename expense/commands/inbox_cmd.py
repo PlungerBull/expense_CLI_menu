@@ -8,6 +8,8 @@ from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
     cache_after_write,
+    format_cents,
+    format_field_value,
     format_short_date,
     load_account_name_map,
     load_category_name_map,
@@ -35,8 +37,7 @@ def _render_inbox(body: dict, *, json_mode: bool) -> None:
         typer.echo(json.dumps(body, indent=2))
         return
     for key, value in body.items():
-        display = value if value is not None else "(null)"
-        typer.echo(f"  {key}: {display}")
+        typer.echo(f"  {key}: {format_field_value(key, value)}")
 
 
 _INBOX_STATUS = {1: "pending", 2: "promoted"}
@@ -49,7 +50,7 @@ def _fmt_status(value: object) -> str:
 
 
 def _fmt_amount(value: object) -> str:
-    return "(null)" if value is None else str(value)
+    return format_cents(value)
 
 
 def _render_inbox_list(body: dict, *, json_mode: bool) -> None:

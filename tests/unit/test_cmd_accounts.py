@@ -239,6 +239,8 @@ def test_list_replica_path(cache_populated):
     assert result.exit_code == 0, result.output
     assert "BCP Soles" in result.output
     assert "Cash" in result.output
+    # Balance renders as grouped major units (Cash: 5000 cents → 50.00).
+    assert "50.00" in result.output
     assert "Old BCP" not in result.output  # archived excluded by default
     assert "Alex" not in result.output  # people excluded by default
     assert not accounts_route.called  # engine NOT called

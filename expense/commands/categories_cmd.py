@@ -10,6 +10,7 @@ from expense.commands._resource import (
     cache_after_write,
     color_supported,
     color_swatch,
+    format_field_value,
     render_pagination_hint,
     render_table,
     require_yes,
@@ -30,8 +31,7 @@ def _render_category(body: dict, *, json_mode: bool) -> None:
         typer.echo(json.dumps(body, indent=2))
         return
     for key, value in body.items():
-        display = value if value is not None else "(null)"
-        typer.echo(f"  {key}: {display}")
+        typer.echo(f"  {key}: {format_field_value(key, value)}")
 
 
 def _fmt_bool(value: object) -> str:

@@ -8,6 +8,8 @@ import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
+from expense.cache import db as cache_db
+from expense.cache import state as cache_state
 from expense.commands.dashboard_cmd import dashboard
 
 cli_app = typer.Typer()
@@ -119,6 +121,17 @@ def configured(tmp_path, monkeypatch):
             client_id=uuid4(),
         )
     )
+    # Seed a healthy (empty) replica so the dashboard's hashtag-name warming
+    # (ensure_synced) is a no-op — no /v1/sync round-trip to mock here.
+    cfg = config_module.ensure_loaded()
+    conn = cache_db.connect()
+    try:
+        cache_state.write_identity(
+            conn, user_id="u1", client_id=str(cfg.client_id), engine_url=cfg.engine_url
+        )
+        cache_state.write_token(conn, "tok-test")
+    finally:
+        conn.close()
     yield
 
 
@@ -135,16 +148,16 @@ def test_dashboard_happy(configured):
     assert "Month: 2026-04" in result.output
     assert "BCP Soles" in result.output
     assert "PEN" in result.output
-    assert "125000" in result.output
+    assert "1,250.00" in result.output
     assert "Alex" in result.output
     assert "Food" in result.output
     # Hashtag sub-rows render inside the Categories table (Name col gets the
     # combo label, Spent col gets the amount — no `label: amount` colon).
     assert "aaaa + bbbb" in result.output
-    assert "-30000" in result.output
+    assert "-300.00" in result.output
     assert "(no hashtags)" in result.output
-    assert "-20000" in result.output
-    assert "inflow: 800000" in result.output
+    assert "-200.00" in result.output
+    assert "inflow: 8,000.00" in result.output
 
     request = route.calls.last.request
     assert "include_archived" not in request.url.params
@@ -164,7 +177,7 @@ def test_dashboard_include_archived(configured):
     # Lifetime spent now renders as a table column header + right-aligned cell
     # value rather than the old `lifetime spent: -X (home: -X)` line.
     assert "Lifetime spent" in result.output
-    assert "-250000" in result.output
+    assert "-2,500.00" in result.output
     assert "Archived hashtags:" in result.output
     assert "#vacation-2024" in result.output
 

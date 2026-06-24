@@ -16,6 +16,8 @@ from typer.testing import CliRunner
 from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
+    format_cents,
+    format_field_value,
     render_pagination_hint,
     render_totals,
     require_yes,
@@ -90,6 +92,47 @@ def test_require_yes_exits_in_non_tty_without_yes(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# format_cents
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (651900, "6,519.00"),
+        (-418797, "-4,187.97"),
+        (-1027202, "-10,272.02"),
+        (-800, "-8.00"),
+        (0, "0.00"),
+        (5, "0.05"),
+        (-1, "-0.01"),
+        (99, "0.99"),
+        (None, "(null)"),
+    ],
+)
+def test_format_cents(value, expected):
+    assert format_cents(value) == expected
+
+
+def test_format_cents_non_int_falls_back_to_str():
+    # Booleans are an int subclass but are never amounts — keep them literal.
+    assert format_cents(True) == "True"
+    assert format_cents("n/a") == "n/a"
+
+
+def test_format_field_value_formats_only_cents_keys():
+    # *_cents keys → grouped major units.
+    assert format_field_value("amount_cents", -150000) == "-1,500.00"
+    assert format_field_value("current_balance_cents", 5000) == "50.00"
+    assert format_field_value("amount_cents", None) == "(null)"
+    # Non-money fields pass through literally (incl. decimal rates, ids, ints).
+    assert format_field_value("exchange_rate", 1.0) == "1.0"
+    assert format_field_value("version", 3) == "3"
+    assert format_field_value("title", None) == "(null)"
+    assert format_field_value("transaction_type", 1) == "1"
+
+
+# ---------------------------------------------------------------------------
 # render_totals
 # ---------------------------------------------------------------------------
 
@@ -107,9 +150,9 @@ def test_render_totals_human_renders_inflow_outflow_net(capsys):
     )
     out = capsys.readouterr().out
     assert "Totals:" in out
-    assert "inflow: 800000" in out
-    assert "outflow: 320000" in out
-    assert "net: 480000" in out
+    assert "inflow: 8,000.00" in out
+    assert "outflow: 3,200.00" in out
+    assert "net: 4,800.00" in out
 
 
 def test_render_totals_handles_none(capsys):

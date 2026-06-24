@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense — Claude-Code-level TUI (Rung 3)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     Mockup: how `expense` would look as a RETAINED-MODE interactive TUI
+     (Textual / Ink class — the "Claude Code level"). Same amber palette as
+     docs/mockups/expense-tui.html, but this one demonstrates Rung-3 traits
+     a one-shot print can't: a persistent app with view tabs, scrollback +
+     a pinned live region, an interactive expand/collapse tree with a
+     focused row, a live spinner, a footer keybar, and a command input.
+     ---------------------------------------------------------------------- */
+
+  :root {
+    --bg:        #0a0805;
+    --term-bg:   #0e0a05;
+    --frame:     #b9802f;
+    --frame-dim: #5e4520;
+    --amber:     #e3a849;
+    --amber-hi:  #f6c772;
+    --amber-lo:  #a87f3e;
+    --dim:       #6f5630;   /* scrollback / hints */
+    --dimmer:    #4d3c22;
+    --sel-bg:    #e9b25a;   /* selected/focused row (inverse) */
+    --sel-fg:    #1c1305;
+    --pos:       #f2cd84;   /* income (lighter amber) */
+    --glow:      rgba(233,178,90,0.18);
+    --mono: "Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html,body { margin:0; background:var(--bg); }
+  body {
+    min-height:100vh;
+    display:flex; flex-direction:column; align-items:center;
+    gap:22px; padding:42px 20px 64px;
+    font-family:var(--mono);
+    color:var(--amber);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .caption { width:min(980px,100%); }
+  .caption h1 {
+    font-size:15px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--amber-hi); margin:0 0 4px; font-weight:700;
+  }
+  .caption p { margin:0; font-size:13px; color:var(--dim); line-height:1.5; }
+  .caption .tag { color:var(--amber-lo); }
+
+  /* ---- terminal window chrome ---- */
+  .term {
+    width:min(980px,100%);
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(233,178,90,0.05), transparent 60%),
+      var(--term-bg);
+    border:1px solid #241a0d;
+    border-radius:14px;
+    box-shadow:0 30px 80px -30px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.02) inset;
+    overflow:hidden;
+    font-size:14.5px; line-height:1.5;
+  }
+  .titlebar {
+    display:flex; align-items:center; gap:10px;
+    padding:11px 16px; background:#120d07; border-bottom:1px solid #221809;
+  }
+  .dots { display:flex; gap:7px; }
+  .dot { width:11px; height:11px; border-radius:50%; }
+  .dot.r{background:#e0654b}.dot.y{background:#dca23a}.dot.g{background:#3fa66a}
+  .title { color:var(--dim); font-size:12.5px; letter-spacing:.04em; }
+  .title b { color:var(--amber-lo); font-weight:600; }
+  .conn { margin-left:auto; color:var(--dim); font-size:12px; }
+  .conn .live-dot {
+    color:#6cc08a; animation:pulse 1.8s ease-in-out infinite; display:inline-block;
+  }
+
+  .screen { padding:14px 18px 16px; }
+
+  /* ---- 1) committed scrollback (dimmed) ---- */
+  .scrollback { color:var(--dim); font-size:13.5px; line-height:1.55; opacity:.92; }
+  .scrollback .cmd { color:var(--amber-lo); }
+  .scrollback .warm::before { content:"● "; color:#c69134; }
+  .scrollback .mut { color:var(--dimmer); }
+  .sb-table { margin:2px 0 2px; }
+  .sb-row { display:flex; gap:14px; color:var(--dimmer); }
+  .sb-row .amt { margin-left:auto; font-variant-numeric:tabular-nums; }
+  .divider {
+    display:flex; align-items:center; gap:10px; margin:10px 0; color:var(--dimmer);
+    font-size:11.5px; letter-spacing:.18em; text-transform:uppercase;
+  }
+  .divider::before,.divider::after{ content:""; height:1px; flex:1; background:#241a0c; }
+
+  /* ---- 2) the LIVE region (bright, bordered, rounded) ---- */
+  .live {
+    margin-top:4px;
+    border:1px solid var(--frame);
+    border-radius:12px;
+    background:linear-gradient(180deg, rgba(233,178,90,0.05), rgba(233,178,90,0.012));
+    box-shadow:0 0 0 1px rgba(185,128,47,0.12), 0 0 34px -12px var(--glow);
+    overflow:hidden;
+  }
+  /* view tabs — proof this is a persistent app, not a single command */
+  .tabs {
+    display:flex; gap:2px; padding:7px 10px 0; background:rgba(0,0,0,.18);
+    border-bottom:1px solid #2a1f0e; font-size:13px;
+  }
+  .tab { padding:5px 13px; color:var(--amber-lo); border:1px solid transparent;
+         border-bottom:none; border-radius:8px 8px 0 0; }
+  .tab.active {
+    color:var(--sel-fg); background:var(--amber);
+    box-shadow:0 -1px 10px -2px var(--glow);
+  }
+  .tab .k { opacity:.55; font-size:11px; }
+
+  .live-head {
+    display:flex; align-items:center; gap:10px; padding:11px 16px 9px;
+    color:var(--amber-hi); letter-spacing:.05em;
+  }
+  .live-head .sub { color:var(--amber-lo); letter-spacing:0; }
+  .badge {
+    margin-left:auto; font-size:11px; letter-spacing:.16em; padding:2px 9px;
+    border:1px solid var(--frame-dim); border-radius:999px; color:var(--amber-hi);
+  }
+  .badge .live-dot { color:#6cc08a; animation:pulse 1.7s ease-in-out infinite; }
+
+  .body { padding:2px 16px 6px; }
+  .sect {
+    color:var(--amber-lo); font-size:11.5px; letter-spacing:.16em;
+    text-transform:uppercase; margin:12px 0 5px;
+  }
+  /* account grids */
+  .grid3 { display:grid; grid-template-columns:1fr 64px 150px; }
+  .grid3 .h { color:var(--dim); font-size:12px; padding-bottom:2px; }
+  .grid3 .nm { color:var(--amber); }
+  .grid3 .cur { color:var(--amber-lo); }
+  .grid3 .bal { text-align:right; font-variant-numeric:tabular-nums; }
+  .neg{ color:var(--amber); } .pos{ color:var(--pos); }
+
+  /* interactive category tree */
+  .tree { margin-top:2px; }
+  .node {
+    display:flex; align-items:center; gap:8px; padding:2px 8px; border-radius:6px;
+    cursor:default;
+  }
+  .node .caret { width:12px; color:var(--amber-lo); text-align:center; }
+  .node .label { color:var(--amber); }
+  .node .amt { margin-left:auto; font-variant-numeric:tabular-nums; }
+  .node.sub { padding-left:30px; }
+  .node.sub .label { color:var(--amber-lo); }
+  .node.focus {
+    background:var(--sel-bg); box-shadow:0 0 18px -6px var(--glow);
+  }
+  .node.focus .caret,.node.focus .label,.node.focus .amt { color:var(--sel-fg); }
+  .node.focus::before {
+    content:"▌"; position:relative; left:-6px; margin-right:-10px; color:var(--sel-fg);
+  }
+
+  /* totals two-column native/home */
+  .totals { margin-top:10px; border-top:1px dashed #33260f; padding-top:8px; }
+  .trow { display:grid; grid-template-columns:90px 1fr 1fr; padding:1px 0; }
+  .trow .lab { color:var(--amber-lo); }
+  .trow .val { font-variant-numeric:tabular-nums; }
+  .trow.head .val,.trow.head .lab { color:var(--dim); font-size:12px; letter-spacing:.06em; }
+
+  /* live status line with braille spinner */
+  .status {
+    display:flex; align-items:center; gap:9px; margin:11px 0 3px;
+    padding:7px 12px; border:1px solid #33260f; border-radius:8px;
+    background:rgba(0,0,0,.18); color:var(--amber-lo); font-size:13px;
+  }
+  .spinner::after {
+    content:"⠋"; color:var(--amber-hi);
+    animation:braille .9s steps(1,end) infinite;
+  }
+  .shimmer {
+    margin-left:auto; width:140px; height:5px; border-radius:3px;
+    background:linear-gradient(90deg, #2a1f0e 0%, var(--amber) 50%, #2a1f0e 100%);
+    background-size:200% 100%; animation:shimmer 1.4s linear infinite;
+  }
+
+  /* footer keybar (Textual style) */
+  .keybar {
+    display:flex; flex-wrap:wrap; gap:14px; padding:9px 16px;
+    border-top:1px solid #2a1f0e; background:rgba(0,0,0,.22);
+    color:var(--amber-lo); font-size:12.5px;
+  }
+  .keybar b { color:var(--sel-fg); background:var(--amber-lo);
+              border-radius:4px; padding:0 6px; margin-right:5px; font-weight:600; }
+
+  /* ---- 3) command input (rounded, blinking cursor) ---- */
+  .prompt {
+    margin-top:12px; display:flex; align-items:center; gap:10px;
+    border:1px solid var(--frame); border-radius:10px; padding:10px 14px;
+    background:rgba(233,178,90,0.03);
+  }
+  .prompt .chev { color:var(--amber-hi); }
+  .prompt .ph { color:var(--dim); }
+  .cursor { width:9px; height:18px; background:var(--amber-hi); display:inline-block;
+            margin-left:1px; animation:blink 1.05s steps(1) infinite; vertical-align:-3px; }
+
+  /* ---- animations ---- */
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  @keyframes blink { 0%,50%{opacity:1} 51%,100%{opacity:0} }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  @keyframes braille {
+    0%{content:"⠋"} 12%{content:"⠙"} 25%{content:"⠹"} 37%{content:"⠸"}
+    50%{content:"⠼"} 62%{content:"⠴"} 75%{content:"⠦"} 87%{content:"⠧"} 100%{content:"⠇"}
+  }
+
+  .legend { width:min(980px,100%); display:grid; grid-template-columns:1fr 1fr; gap:8px 26px; }
+  .legend .it { font-size:12.5px; color:var(--dim); line-height:1.45; }
+  .legend .it b { color:var(--amber-lo); font-weight:600; }
+  @media (max-width:680px){ .legend{ grid-template-columns:1fr; } .grid3{ grid-template-columns:1fr 50px 120px } }
+</style>
+</head>
+<body>
+
+  <div class="caption">
+    <h1>expense · Rung-3 interactive TUI <span class="tag">(Textual / Ink class — “Claude Code level”)</span></h1>
+    <p>Same amber language as the static mockups, but this is a <b>persistent app</b>: committed output stays in
+       scrollback while a <b>live region</b> is re-rendered in place — selectable rows, a real expand/collapse tree,
+       a live spinner, a footer keybar, and a command input. None of this is possible with one-shot printing.</p>
+  </div>
+
+  <div class="term">
+    <div class="titlebar">
+      <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      <div class="title"><b>expense</b> — interactive · textual</div>
+      <div class="conn"><span class="live-dot">●</span> connected · engine ok · BCP · 2026-03</div>
+    </div>
+
+    <div class="screen">
+
+      <!-- 1) committed scrollback (dim): the Static log above the live region -->
+      <div class="scrollback">
+        <div><span class="cmd">$ expense</span></div>
+        <div class="warm">warm replica &nbsp;<span class="mut">✓ synced 1,204 rows · token cur</span></div>
+        <div class="sb-table">
+          <div class="sb-row"><span>inbox · 5 drafts</span><span class="mut">Ready 1 · incomplete 3 · promoted 1</span></div>
+          <div class="sb-row"><span>· Uber aeropuerto</span><span class="amt">−45.00</span></div>
+          <div class="sb-row"><span>· Compra ferretería</span><span class="amt">—</span></div>
+          <div class="sb-row"><span class="mut">… opened “Outstanding Amounts” ↓</span></div>
+        </div>
+      </div>
+
+      <div class="divider">live region — re-rendered in place</div>
+
+      <!-- 2) the live, interactive region -->
+      <div class="live">
+        <div class="tabs">
+          <span class="tab">Inbox <span class="k">1</span></span>
+          <span class="tab">Ledger <span class="k">2</span></span>
+          <span class="tab active">Outstanding <span class="k">3</span></span>
+          <span class="tab">Add <span class="k">4</span></span>
+        </div>
+
+        <div class="live-head">
+          OUTSTANDING AMOUNTS <span class="sub">· this month · 2026-03 (current)</span>
+          <span class="badge"><span class="live-dot">●</span> LIVE</span>
+        </div>
+
+        <div class="body">
+          <div class="sect">Bank accounts</div>
+          <div class="grid3">
+            <div class="h">Name</div><div class="h">Cur</div><div class="h" style="text-align:right">Balance</div>
+            <div class="nm">BCP Soles</div><div class="cur">PEN</div><div class="bal pos">+12,450.00</div>
+            <div class="nm">Visa</div><div class="cur">PEN</div><div class="bal neg">−1,832.50</div>
+            <div class="nm">Ahorros</div><div class="cur">USD</div><div class="bal pos">+3,200.00</div>
+          </div>
+
+          <div class="sect">People</div>
+          <div class="grid3">
+            <div class="nm">Socio · Juan</div><div class="cur">PEN</div><div class="bal neg">−1,500.00</div>
+            <div class="nm">Proveedor Nextnet</div><div class="cur">PEN</div><div class="bal pos">+800.00</div>
+          </div>
+
+          <div class="sect">Categories — spent this month &nbsp;<span style="color:var(--dim);text-transform:none;letter-spacing:0">(→/← to expand · ↑↓ to move)</span></div>
+          <div class="tree">
+            <div class="node"><span class="caret">▼</span><span class="label">Comida</span><span class="amt neg">−432.50</span></div>
+            <div class="node sub"><span class="caret"></span><span class="label">#casa</span><span class="amt neg">−250.00</span></div>
+            <div class="node sub"><span class="caret"></span><span class="label">#club</span><span class="amt neg">−182.50</span></div>
+            <div class="node"><span class="caret">▶</span><span class="label">Vivienda</span><span class="amt neg">−2,500.00</span></div>
+
+            <!-- focused / selected node (inverse highlight = the live cursor) -->
+            <div class="node focus"><span class="caret">▼</span><span class="label">Transporte</span><span class="amt neg">−360.00</span></div>
+            <div class="node sub"><span class="caret"></span><span class="label">#obra</span><span class="amt neg">−180.00</span></div>
+            <div class="node sub"><span class="caret"></span><span class="label">(no hashtags)</span><span class="amt neg">−180.00</span></div>
+
+            <div class="node"><span class="caret">▶</span><span class="label">Servicios</span><span class="amt neg">−120.00</span></div>
+          </div>
+
+          <div class="totals">
+            <div class="trow head"><span class="lab">TOTALS</span><span class="val">native</span><span class="val">home</span></div>
+            <div class="trow"><span class="lab">inflow</span><span class="val pos">PEN 6,519.00</span><span class="val pos">PEN 6,519.00</span></div>
+            <div class="trow"><span class="lab">outflow</span><span class="val neg">PEN 3,412.50 · USD 120</span><span class="val neg">PEN 3,856.50</span></div>
+            <div class="trow"><span class="lab">net</span><span class="val">—</span><span class="val pos">PEN 2,662.50</span></div>
+          </div>
+
+          <!-- live status: braille spinner + shimmer = work happening in place -->
+          <div class="status">
+            <span class="spinner"></span>
+            <span>refreshing FX rates · USD→PEN 3.71 · recomputing home totals…</span>
+            <span class="shimmer"></span>
+          </div>
+        </div>
+
+        <div class="keybar">
+          <span><b>↑↓</b>navigate</span>
+          <span><b>→←</b>expand</span>
+          <span><b>↵</b>drill in</span>
+          <span><b>/</b>filter</span>
+          <span><b>r</b>refresh</span>
+          <span><b>1-4</b>switch view</span>
+          <span><b>q</b>quit</span>
+        </div>
+      </div>
+
+      <!-- 3) persistent command input -->
+      <div class="prompt">
+        <span class="chev">›</span>
+        <span class="ph">type a command — e.g. “add −180 Almuerzo @BCP #trabajo” or “/”</span>
+        <span class="cursor"></span>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="it"><b>Persistent app, not a command.</b> View tabs (Inbox/Ledger/Outstanding/Add) switch live — the process stays running and holds state.</div>
+    <div class="it"><b>Scrollback + live region.</b> Past output (dim, top) stays in history; the bright bordered region below is re-rendered in place. Claude Code’s exact pattern.</div>
+    <div class="it"><b>Real expand/collapse tree.</b> The ▼/▶ carets actually toggle; the highlighted row is a live cursor you move with ↑↓. Impossible in static print.</div>
+    <div class="it"><b>Live feedback.</b> Braille spinner + shimmer show work happening (FX refresh) without clearing the screen.</div>
+    <div class="it"><b>Footer keybar.</b> Context keybindings, Textual/Claude-Code style.</div>
+    <div class="it"><b>Honest limits.</b> Rounded line-corners ✓. The terminal’s dark canvas is the user’s theme; soft CSS glow/shadow here is illustrative only. Built in Python with <b>Textual</b> (Rich’s sibling).</div>
+  </div>
+
+</body>
+</html>

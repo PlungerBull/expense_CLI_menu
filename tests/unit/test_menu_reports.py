@@ -208,6 +208,53 @@ def test_menu_keyboard_interrupt_exits(configured, monkeypatch):
     assert not route.called
 
 
+# --------------------------------------------- dashboard umbrella (delegation)
+
+_DASHBOARD_RESPONSE = {
+    "month": "2026-05",
+    "accounts": [],
+    "categories": [],
+    "totals": {},
+}
+
+
+@respx.mock
+def test_umbrella_routes_dashboard_current_month(configured, monkeypatch):
+    """Reports is the umbrella: the Dashboard entry hits GET /v1/dashboard."""
+    route = respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(200, json=_DASHBOARD_RESPONSE)
+    )
+    script = _PromptScript(
+        [
+            "Outstanding Amounts (current month)",
+            "",  # pause
+            "← Back",
+        ]
+    )
+    _patch_questionary(monkeypatch, script)
+    menu_reports.run_reports_menu(_make_ctx())
+    assert route.called
+    assert "include_archived" not in route.calls.last.request.url.params
+
+
+@respx.mock
+def test_umbrella_routes_dashboard_archived(configured, monkeypatch):
+    route = respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(200, json=_DASHBOARD_RESPONSE)
+    )
+    script = _PromptScript(
+        [
+            "Outstanding Amounts (with archived panels)",
+            "",  # pause
+            "← Back",
+        ]
+    )
+    _patch_questionary(monkeypatch, script)
+    menu_reports.run_reports_menu(_make_ctx())
+    assert route.called
+    assert route.calls.last.request.url.params.get("include_archived") == "true"
+
+
 # --------------------------------------------------------------- single month
 
 
@@ -239,9 +286,9 @@ def test_single_month_with_breakdown_resolves_names(configured, monkeypatch, cap
     # Hashtag sub-rows now render as indented rows in the categories table:
     # the combo name lives in the Name column and amounts in Spent/Home cells.
     assert "Food + Club" in out
-    assert "-30000" in out
+    assert "-300.00" in out
     assert "(no hashtags)" in out
-    assert "-20000" in out
+    assert "-200.00" in out
 
 
 @respx.mock
@@ -333,8 +380,8 @@ def test_range_expanded_shows_resolved_subrows(configured, monkeypatch, capsys):
     # Single-id row stays as just the resolved name.
     assert "Food " in out
     # Numbers from the breakdown should appear.
-    assert "-10000" in out
-    assert "-35000" in out
+    assert "-100.00" in out
+    assert "-350.00" in out
 
 
 # --------------------------------------------------------------- span guards

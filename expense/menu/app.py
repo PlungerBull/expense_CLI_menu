@@ -17,7 +17,6 @@ from expense.menu.groups.activity_log import run_activity_log_menu
 from expense.menu.groups.auth import run_auth_menu
 from expense.menu.groups.categories import run_categories_menu
 from expense.menu.groups.config import run_config_menu
-from expense.menu.groups.dashboard import run_dashboard_menu
 from expense.menu.groups.hashtags import run_hashtags_menu
 from expense.menu.groups.inbox import run_inbox_menu
 from expense.menu.groups.log import run_log_flow
@@ -35,7 +34,6 @@ _GROUP_HANDLERS: dict[str, Callable[[typer.Context], None]] = {
     "Log a transaction": run_log_flow,
     "Inbox": run_inbox_menu,
     "Transactions": run_transactions_menu,
-    "Dashboard": run_dashboard_menu,
     "Reports": run_reports_menu,
     "Accounts": run_accounts_menu,
     "Categories": run_categories_menu,
@@ -53,7 +51,6 @@ _GROUP_PHASES: dict[str, str] = {
     "Log a transaction": "9.5.2",
     "Inbox": "9.5.3",
     "Transactions": "9.5.4",
-    "Dashboard": "9.5.5",
     "Config": "9.5.6",
     "Auth & profile": "9.5.7",
     "Reports": "9.5.8",
@@ -76,7 +73,6 @@ def _root_choices() -> list:
         "Log a transaction",
         "Inbox",
         "Transactions",
-        "Dashboard",
         "Reports",
         "Reconciliations",
         sep,

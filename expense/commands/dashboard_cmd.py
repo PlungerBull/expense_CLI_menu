@@ -3,9 +3,9 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.cache import queries
-from expense.commands._resource import render_table, render_totals
-from expense.context import get_verbose
+from expense.cache import ensure_synced, queries
+from expense.commands._resource import format_cents, render_table, render_totals
+from expense.context import get_no_cache, get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
 
@@ -21,7 +21,7 @@ def _format_month(month: dict | None) -> str:
 
 
 def _fmt_amount(cents: object) -> str:
-    return "(null)" if cents is None else str(cents)
+    return format_cents(cents)
 
 
 def _render_account_table(items: list[dict] | None, *, empty_message: str) -> None:
@@ -194,6 +194,7 @@ def dashboard(
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
 
     params: dict = {}
     if include_archived:
@@ -201,5 +202,15 @@ def dashboard(
 
     with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
         body = client.get("/dashboard", params=params or None)
+        # The dashboard renders a per-category hashtag breakdown whose names
+        # resolve against the local replica. Warm it (best-effort) so a cold
+        # cache shows names instead of raw UUIDs — but never let a sync hiccup
+        # break a dashboard we've already fetched. Skipped for --json (raw
+        # passthrough) and stateless mode (name maps are empty by design).
+        if not no_cache and not json_output:
+            try:
+                ensure_synced(client, cfg)
+            except Exception:
+                pass
 
     _render_dashboard(body, json_mode=json_output)

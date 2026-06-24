@@ -1,10 +1,18 @@
 """Menu flows for the Reports group (Step 9.5.8).
 
-Wraps `expense reports monthly` for single-month and range variants. Adds
-two display toggles ("show hashtag breakdown?" / "expand by hashtag?") that
-the flat command exposes today only as defaults — the engine round-trip is
-identical, the toggle controls rendering. Hashtag names are resolved
-client-side against the local cache (`expense.cache.queries.list_hashtags`).
+The umbrella over both reporting endpoints: the point-in-time **Outstanding
+Amounts** snapshot (`GET /v1/dashboard`, account balances + current-month
+panels) and the historical **Monthly report** trends (`GET /v1/reports/monthly`,
+single month or a multi-month range). Two distinct engine contracts, one menu —
+the separator keeps the snapshot-vs-trends distinction visible.
+
+The Outstanding Amounts entries delegate to the dashboard group's flow
+functions; the monthly-report entries wrap `expense reports monthly` and add
+two display
+toggles ("show hashtag breakdown?" / "expand by hashtag?") that the flat
+command exposes today only as defaults — the engine round-trip is identical,
+the toggle controls rendering. Hashtag names are resolved client-side against
+the local cache (`expense.cache.queries.list_hashtags`).
 """
 
 from datetime import date as date_cls
@@ -14,8 +22,9 @@ import typer
 
 from expense import config as config_module
 from expense.commands import reports_cmd
-from expense.context import get_verbose
+from expense.context import get_no_cache, get_verbose
 from expense.menu.groups import _common as common
+from expense.menu.groups import dashboard as dashboard_group
 from expense.menu.term import clear_screen
 
 BACK_LABEL = "← Back"
@@ -29,6 +38,9 @@ def run_reports_menu(ctx: typer.Context) -> None:
             choice = questionary.select(
                 "Reports — what do you like to view?",
                 choices=[
+                    "Outstanding Amounts (current month)",
+                    "Outstanding Amounts (with archived panels)",
+                    questionary.Separator("───────────────"),
                     "Monthly report (single month)",
                     "Monthly report (range)",
                     BACK_LABEL,
@@ -67,6 +79,7 @@ def run_single_month(ctx: typer.Context) -> None:
 
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
     year, month = int(ym.split("-")[0]), int(ym.split("-")[1])
     try:
         reports_cmd.run_single_month(
@@ -76,6 +89,7 @@ def run_single_month(ctx: typer.Context) -> None:
             verbose=verbose,
             json_mode=False,
             show_hashtags=show,
+            no_cache=no_cache,
         )
     except typer.Exit:
         pass
@@ -116,6 +130,7 @@ def run_range(ctx: typer.Context) -> None:
 
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
     try:
         reports_cmd.run_range(
             cfg,
@@ -124,6 +139,7 @@ def run_range(ctx: typer.Context) -> None:
             verbose=verbose,
             json_mode=False,
             expand_hashtags=expand,
+            no_cache=no_cache,
         )
     except typer.Exit:
         pass
@@ -131,6 +147,8 @@ def run_range(ctx: typer.Context) -> None:
 
 
 _HANDLERS = {
+    "Outstanding Amounts (current month)": dashboard_group.run_current_month,
+    "Outstanding Amounts (with archived panels)": dashboard_group.run_with_archived,
     "Monthly report (single month)": run_single_month,
     "Monthly report (range)": run_range,
 }

@@ -63,6 +63,9 @@ Deletes, reverts, archives prompt for confirmation unless `--yes` is passed.
 **Config isolation**
 Auth token + engine URL live in `~/.expense-config`. Never checked in, never shared across machines. The GitHub repo (`PlungerBull/expense_CLI_menu`) is **public** by deliberate choice — which makes this rule non-negotiable: any secret committed is immediately public and permanent in git history. GitHub push protection is enabled as defense-in-depth, but the primary safeguard is that credentials never enter the repo in the first place.
 
+**Mock new views before building them**
+Any new user-facing view or screen — a menu, dashboard, list, form, report, or TUI screen, anything the user will see — starts as an **HTML mockup in [docs/mockups/](docs/mockups/)**, shown to the user for **explicit approval before any UI code is written**. Never assume layout, fields, or behavior: when a detail is unspecified or ambiguous, **stop and ask**. Approval of a mockup approves *that* view; a materially different view needs a fresh mockup.
+
 ## Build phases (current status)
 
 See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 9 (CLI-complete gate closed 2026-05-10): every engine endpoint with a CLI surface is wrapped, surface coverage is regression-armored by [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py), and the freshman flow is wired as a live contract test. Step 9.5 (interactive shell) is complete: all 14 menu groups are wired and the freshman-flow menu gate ([tests/contract/test_freshman_flow_menu.py](tests/contract/test_freshman_flow_menu.py)) closed it (Step 9.5.16). Next is post-Step-9 ergonomics (quick-add parser, shell completions — see [docs/roadmap.md](docs/roadmap.md)).
@@ -93,7 +96,7 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 9.5.2 | Menu — Log a transaction (root shortcut) | Done |
 | 9.5.3 | Menu — Inbox | Done |
 | 9.5.4 | Menu — Transactions | Done |
-| 9.5.5 | Menu — Dashboard | Done |
+| 9.5.5 | Menu — Outstanding Amounts (the `dashboard` wrapper) | Done |
 | 9.5.6 | Menu — Config | Done |
 | 9.5.7 | Menu — Auth & profile | Done |
 | 9.5.8 | Menu — Reports (with hashtag tree) | Done |

@@ -4,7 +4,7 @@ from uuid import uuid4
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import cache_after_write
+from expense.commands._resource import cache_after_write, format_field_value
 from expense.context import get_verbose
 from expense.dates import now_local_iso, to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -16,8 +16,7 @@ def _render_transaction(body: dict, *, json_mode: bool) -> None:
         typer.echo(json.dumps(body, indent=2))
         return
     for key, value in body.items():
-        display = value if value is not None else "(null)"
-        typer.echo(f"  {key}: {display}")
+        typer.echo(f"  {key}: {format_field_value(key, value)}")
 
 
 @handle_errors

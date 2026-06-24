@@ -3,12 +3,13 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import render_table, render_totals
+from expense.cache import ensure_synced
+from expense.commands._resource import format_cents, render_table, render_totals
 from expense.commands.dashboard_cmd import (
     hashtag_label,
     load_hashtag_name_map,
 )
-from expense.context import get_verbose
+from expense.context import get_no_cache, get_verbose
 from expense.dates import parse_year_month
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -34,7 +35,7 @@ def _months_between(from_ym: tuple[int, int], to_ym: tuple[int, int]) -> int:
 
 
 def _fmt_amount(cents: object) -> str:
-    return "(null)" if cents is None else str(cents)
+    return format_cents(cents)
 
 
 def _render_single_month_categories(categories: list[dict] | None, *, show_hashtags: bool) -> None:
@@ -157,7 +158,7 @@ def _render_range_table(body: dict, *, json_mode: bool, expand_hashtags: bool = 
     name_col_w = max(name_widths)
 
     def fmt_cell(val: int | None) -> str:
-        return "(null)" if val is None else str(val)
+        return format_cents(val)
 
     col_widths: list[int] = []
     for label in month_labels:
@@ -204,11 +205,22 @@ def run_single_month(
     verbose: bool = False,
     json_mode: bool = False,
     show_hashtags: bool = True,
+    no_cache: bool = False,
 ) -> None:
     """Engine round-trip + render for a single month. Shared by flat + menu."""
     params = {"year": str(year), "month": str(month)}
-    with ExpenseClient(cfg, verbose=verbose) as client:
+    # Hashtag-breakdown names resolve against the local replica. Warm it
+    # (best-effort, after the report itself is fetched) so a cold cache shows
+    # names instead of raw UUIDs without a sync hiccup breaking the report.
+    # Only needed when the breakdown renders; skipped in stateless mode.
+    warm = show_hashtags and not json_mode and not no_cache
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
         body = client.get("/reports/monthly", params=params)
+        if warm:
+            try:
+                ensure_synced(client, cfg)
+            except Exception:
+                pass
     _render_single_month(body, json_mode=json_mode, show_hashtags=show_hashtags)
 
 
@@ -220,6 +232,7 @@ def run_range(
     verbose: bool = False,
     json_mode: bool = False,
     expand_hashtags: bool = False,
+    no_cache: bool = False,
 ) -> None:
     """Engine round-trip + render for a month range. Shared by flat + menu.
 
@@ -231,8 +244,16 @@ def run_range(
         "to_year": str(to_ym[0]),
         "to_month": str(to_ym[1]),
     }
-    with ExpenseClient(cfg, verbose=verbose) as client:
+    # See run_single_month: best-effort replica warm, after the report fetch,
+    # only when the hashtag breakdown (which needs name resolution) is rendered.
+    warm = expand_hashtags and not json_mode and not no_cache
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
         body = client.get("/reports/monthly", params=params)
+        if warm:
+            try:
+                ensure_synced(client, cfg)
+            except Exception:
+                pass
     _render_range_table(body, json_mode=json_mode, expand_hashtags=expand_hashtags)
 
 
@@ -280,10 +301,18 @@ def monthly(
 
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
+    no_cache = get_no_cache(ctx)
 
     if date is not None:
         year, month = parse_year_month(date, param_hint="--date")
-        run_single_month(cfg, year=year, month=month, verbose=verbose, json_mode=json_output)
+        run_single_month(
+            cfg,
+            year=year,
+            month=month,
+            verbose=verbose,
+            json_mode=json_output,
+            no_cache=no_cache,
+        )
         return
 
     assert date_from is not None and date_to is not None
@@ -301,4 +330,11 @@ def monthly(
             param_hint="--from/--to",
         )
 
-    run_range(cfg, from_ym=from_ym, to_ym=to_ym, verbose=verbose, json_mode=json_output)
+    run_range(
+        cfg,
+        from_ym=from_ym,
+        to_ym=to_ym,
+        verbose=verbose,
+        json_mode=json_output,
+        no_cache=no_cache,
+    )

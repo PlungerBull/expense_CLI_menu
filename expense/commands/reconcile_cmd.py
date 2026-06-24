@@ -9,6 +9,7 @@ from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
     cache_after_write,
+    format_field_value,
     render_pagination_hint,
     require_yes,
     run_toggle,
@@ -68,8 +69,7 @@ def _render_reconciliation(body: dict, *, json_mode: bool) -> None:
     for key, value in body.items():
         if key == "transactions":
             continue
-        display = value if value is not None else "(null)"
-        typer.echo(f"  {key}: {display}")
+        typer.echo(f"  {key}: {format_field_value(key, value)}")
 
 
 def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
@@ -84,8 +84,7 @@ def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
         if index > 0:
             typer.echo("")
         for key, value in item.items():
-            display = value if value is not None else "(null)"
-            typer.echo(f"  {key}: {display}")
+            typer.echo(f"  {key}: {format_field_value(key, value)}")
         marker = _format_source_marker(item)
         if marker:
             typer.echo(f"  {marker}")
@@ -120,8 +119,7 @@ def _render_reconciliation_detail(body: dict, *, json_mode: bool) -> None:
         if index > 0:
             typer.echo("")
         for key, value in tx.items():
-            display = value if value is not None else "(null)"
-            typer.echo(f"    {key}: {display}")
+            typer.echo(f"    {key}: {format_field_value(key, value)}")
 
     if body.get("transactions_truncated"):
         recon_id = body.get("id", "<id>")

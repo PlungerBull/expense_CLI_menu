@@ -178,6 +178,9 @@ def test_list_happy(configured):
     result = runner.invoke(cli_app, ["--no-cache", "transactions", "list"])
     assert result.exit_code == 0, result.output
     assert "coffee" in result.output
+    # Amount renders as grouped major units, not raw cents.
+    assert "5.00" in result.output
+    assert "500" not in result.output
     assert dict(route.calls.last.request.url.params) == {}
 
 
@@ -284,6 +287,8 @@ def test_get_happy(configured):
     result = runner.invoke(cli_app, ["--no-cache", "transactions", "get", "abc"])
     assert result.exit_code == 0, result.output
     assert "coffee" in result.output
+    # The single-record dump formats *_cents fields as major units.
+    assert "amount_cents: 5.00" in result.output
 
 
 @respx.mock

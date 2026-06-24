@@ -88,7 +88,6 @@ def test_every_group_advertises_its_phase():
         "Log a transaction",
         "Inbox",
         "Transactions",
-        "Dashboard",
         "Reports",
         "Reconciliations",
         "Accounts",

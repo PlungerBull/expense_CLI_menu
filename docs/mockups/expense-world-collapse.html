@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — all views · types · Claude-Code collapse</title>
+<style>
+  :root{
+    --bg:#0a0805; --term-bg:#0e0a05;
+    --frame:#b9802f; --frame-dim:#5e4520;
+    --amber:#e3a849; --amber-hi:#f6c772; --amber-lo:#a87f3e;
+    --dim:#6f5630; --dimmer:#4d3c22;
+    --sel-bg:#e9b25a; --sel-fg:#1c1305; --pos:#f2cd84;
+    --action:#dd9168; --glow:rgba(233,178,90,.18);
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       gap:30px;padding:38px 20px 80px;font-family:var(--mono);color:var(--amber);-webkit-font-smoothing:antialiased}
+
+  /* interaction-type legend */
+  .key{width:min(940px,100%);border:1px solid #2a1f0e;border-radius:12px;padding:14px 18px;
+       background:rgba(233,178,90,.02)}
+  .key h2{margin:0 0 9px;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--amber-hi)}
+  .key .row{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:12.5px;color:var(--dim);align-items:center}
+  .key .row b{color:var(--amber-lo)}
+
+  .type{font-size:10.5px;letter-spacing:.13em;font-weight:600;padding:2px 8px;border-radius:999px;text-transform:uppercase}
+  .type.read{border:1px solid var(--frame-dim);color:var(--amber-lo)}
+  .type.form{background:var(--amber);color:var(--sel-fg)}
+  .type.action{border:1px solid var(--action);color:var(--action)}
+  .type.nav{border:1px dashed var(--frame-dim);color:var(--dim)}
+
+  .lbl{width:min(940px,100%);display:flex;align-items:center;gap:12px;
+       font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber-lo)}
+  .lbl span{color:var(--dim);letter-spacing:.04em;text-transform:none;font-size:12.5px}
+
+  .term{width:min(940px,100%);background:
+      radial-gradient(120% 70% at 50% -10%,rgba(233,178,90,.05),transparent 60%),var(--term-bg);
+      border:1px solid #241a0d;border-radius:14px;
+      box-shadow:0 26px 70px -34px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.02) inset;
+      overflow:hidden;font-size:14px;line-height:1.5}
+  .titlebar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#120d07;border-bottom:1px solid #221809}
+  .dots{display:flex;gap:7px}.dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#e0654b}.dot.y{background:#dca23a}.dot.g{background:#3fa66a}
+  .ttl{color:var(--dim);font-size:12.5px}.ttl b{color:var(--amber-lo);font-weight:600}
+  .screen{padding:15px 18px 18px}
+  .typed{color:var(--dim);font-size:13.5px;margin-bottom:12px}.typed b{color:var(--amber-lo)}
+  .live-dot{color:#6cc08a;display:inline-block;animation:pulse 1.8s ease-in-out infinite}
+
+  /* header / breadcrumb */
+  .header{border:1px solid var(--frame);border-radius:12px;overflow:hidden;
+      background:linear-gradient(180deg,rgba(233,178,90,.06),rgba(233,178,90,.012));box-shadow:0 0 30px -14px var(--glow)}
+  .brand{display:flex;align-items:center;gap:16px;padding:13px 18px 9px}
+  .mark{font-size:28px;color:var(--amber-hi);line-height:1}
+  .wordmark{font-size:21px;font-weight:700;letter-spacing:.26em;color:var(--amber-hi)}
+  .tagline{font-size:12.5px;color:var(--amber-lo);margin-top:3px}
+  .statusbar{display:flex;flex-wrap:wrap;gap:6px 20px;padding:9px 18px;border-top:1px solid #2a1f0e;
+      background:rgba(0,0,0,.18);font-size:12.5px;color:var(--amber-lo)}
+  .statusbar b{color:var(--amber)} .statusbar .s{color:var(--dim)}
+  .crumb{display:flex;align-items:center;gap:10px;border:1px solid var(--frame);border-radius:10px;padding:10px 16px;
+      color:var(--amber-lo);background:linear-gradient(180deg,rgba(233,178,90,.05),rgba(233,178,90,.01))}
+  .crumb .home{color:var(--amber-hi);font-weight:700;letter-spacing:.14em}
+  .crumb .sep{color:var(--frame-dim)} .crumb .here{color:var(--amber)}
+  .crumb .right{margin-left:auto;color:var(--dim);font-size:12.5px}
+
+  /* menu */
+  .menu{margin-top:13px}
+  .group{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin:13px 4px 4px}
+  .group:first-child{margin-top:2px}
+  .item{display:flex;align-items:center;gap:12px;padding:6px 12px;border-radius:8px}
+  .item .k{width:16px;color:var(--amber-lo);text-align:center;font-size:13px}
+  .item .nm{color:var(--amber);min-width:200px}
+  .item .ds{color:var(--dim);font-size:12.5px}
+  .item .badge{margin-left:auto;font-size:11px;color:var(--amber-lo);border:1px solid var(--frame-dim);border-radius:999px;padding:1px 8px}
+  .item.focus{background:var(--sel-bg)}.item.focus *{color:var(--sel-fg)!important}
+  .item.focus::before{content:"▌";color:var(--sel-fg);margin-left:-8px;margin-right:-4px}
+  .hint{margin-top:14px;padding-top:10px;border-top:1px solid #241a0c;display:flex;flex-wrap:wrap;gap:16px;color:var(--amber-lo);font-size:12.5px}
+  .hint b,.keybar b{color:var(--sel-fg);background:var(--amber-lo);border-radius:4px;padding:0 6px;margin-right:5px;font-weight:600}
+
+  /* interface shell */
+  .iface{margin-top:12px;border:1px solid var(--frame-dim);border-radius:12px;background:rgba(233,178,90,.018);overflow:hidden}
+  .ihead{padding:11px 16px 9px;color:var(--amber-hi);letter-spacing:.05em;display:flex;align-items:center;gap:10px}
+  .ihead .sub{color:var(--amber-lo);letter-spacing:0}
+  .ihead .pill{margin-left:auto;font-size:11px;letter-spacing:.13em;border:1px solid var(--frame-dim);border-radius:999px;padding:2px 9px;color:var(--amber-hi)}
+  .ibody{padding:4px 16px 10px}
+  .sect{color:var(--amber-lo);font-size:11px;letter-spacing:.16em;text-transform:uppercase;margin:12px 0 5px;display:flex;align-items:center;gap:10px}
+  .sect .h{margin-left:auto;text-transform:none;letter-spacing:0;color:var(--dim)}
+  .neg{color:var(--amber)} .pos{color:var(--pos)} .amt{text-align:right;font-variant-numeric:tabular-nums}
+  .grid3{display:grid;grid-template-columns:1fr 56px 140px}
+  .grid3 .h{color:var(--dim);font-size:12px} .grid3 .nm{color:var(--amber)} .grid3 .cur{color:var(--amber-lo)}
+  .grid3 .bal{text-align:right;font-variant-numeric:tabular-nums}
+
+  /* ---- CLAUDE-CODE COLLAPSE (verbosity collapse, not tree nav) ---- */
+  .collapse{margin-top:2px}
+  .cat{padding:3px 8px;border-radius:7px}
+  .cat.focus{background:rgba(233,178,90,.07);box-shadow:inset 0 0 0 1px rgba(185,128,47,.25)}
+  .cline{display:flex;align-items:center;gap:10px}
+  .cline .dot2{color:var(--amber-lo)} .cline .nm{color:var(--amber)} .cline .amt{margin-left:auto;font-variant-numeric:tabular-nums}
+  .csum{color:var(--dim);font-size:12.5px;padding-left:22px;margin-top:1px}
+  .csum b{color:var(--sel-fg);background:var(--amber-lo);border-radius:4px;padding:0 5px;font-weight:600}
+  .cdetail{padding:2px 0 2px 22px;border-left:1px solid #2a1f0c;margin-left:7px}
+  .cl2{display:flex;gap:10px;color:var(--amber-lo);padding:1px 0}
+  .cl2 .con{color:var(--dimmer)} .cl2 .amt{margin-left:auto;font-variant-numeric:tabular-nums}
+  .chint{color:var(--dim);font-size:12px;padding-top:2px}
+  .chint b{color:var(--sel-fg);background:var(--amber-lo);border-radius:4px;padding:0 5px;font-weight:600}
+
+  .totals{margin-top:11px;border-top:1px dashed #33260f;padding-top:8px}
+  .trow{display:grid;grid-template-columns:88px 1fr 1fr;padding:1px 0}
+  .trow .lab{color:var(--amber-lo)} .trow .val{font-variant-numeric:tabular-nums}
+  .trow.head .val,.trow.head .lab{color:var(--dim);font-size:12px}
+
+  /* tables */
+  .filters{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px;font-size:12.5px;color:var(--amber-lo)}
+  .filters .c{border:1px solid var(--frame-dim);border-radius:999px;padding:1px 10px}.filters .c.on{background:var(--amber-lo);color:var(--sel-fg)}
+  .tbl{--cols:1fr}
+  .tbl .row{display:grid;grid-template-columns:var(--cols);gap:14px;padding:3px 8px;border-radius:6px;align-items:center;position:relative}
+  .tbl .row.head{color:var(--dim);font-size:12px}
+  .tbl .rule{height:1px;background:#2a1f0c;margin:3px 4px 4px}
+  .tbl .g{color:var(--amber-lo);text-align:center}.tbl .mut{color:var(--dim)}.tbl .nm{color:var(--amber)}
+  .tbl .row.focus{background:var(--sel-bg)}.tbl .row.focus *{color:var(--sel-fg)!important}
+  .tbl .row.focus::before{content:"▌";color:var(--sel-fg);position:absolute;left:-6px}
+  .tbl .row.arch{opacity:.5}
+  .sw{display:inline-block;width:16px;height:10px;border-radius:2px;vertical-align:middle}
+  .legend{margin-top:9px;padding-top:8px;border-top:1px solid #241a0c;display:flex;gap:18px;color:var(--amber-lo);font-size:12px}
+  .legend .right{margin-left:auto;color:var(--dim)}
+
+  /* chips */
+  .chips{display:flex;flex-wrap:wrap;gap:9px;padding:6px 0 4px}
+  .hchip{border:1px solid var(--frame-dim);border-radius:999px;padding:4px 13px;color:var(--amber)}
+  .hchip.focus{background:var(--sel-bg);color:var(--sel-fg)}
+  .hchip.arch{opacity:.45;text-decoration:line-through}
+  .hchip .ct{color:var(--amber-lo);font-size:11px;margin-left:7px}.hchip.focus .ct{color:var(--sel-fg)}
+
+  /* forms */
+  .form{padding-top:4px}
+  .frow{display:grid;grid-template-columns:120px 1fr auto;gap:14px;align-items:center;padding:5px 10px;border-radius:7px}
+  .frow .fl{color:var(--amber-lo)} .frow .fv{color:var(--amber)} .frow .fv.todo{color:var(--dim)}
+  .frow .fh{color:var(--dim);font-size:12px;text-align:right} .frow .ok{color:#6cc08a;margin-left:8px}
+  .frow.focus{background:var(--sel-bg)} .frow.focus .fl,.frow.focus .fv,.frow.focus .fh{color:var(--sel-fg)}
+  .cur{display:inline-block;width:8px;height:15px;background:var(--sel-fg);margin-left:2px;vertical-align:-2px;animation:blink 1.05s steps(1) infinite}
+  .tri{display:inline-flex;gap:8px}.tri .o{color:var(--sel-fg);opacity:.55}.tri .o.sel{opacity:1;text-decoration:underline}
+  .fdiv{display:flex;align-items:center;gap:10px;margin:9px 2px 4px;color:var(--dim);font-size:11px;letter-spacing:.18em;text-transform:uppercase}
+  .fdiv::after{content:"";flex:1;height:1px;background:#241a0c}
+  .submit{margin:10px 2px 2px;display:flex;align-items:center;gap:12px}
+  .btn{background:var(--amber);color:var(--sel-fg);font-weight:600;border-radius:7px;padding:5px 14px}
+  .submit .muted{color:var(--dim);font-size:12.5px}
+
+  /* confirm modal */
+  .modalwrap{position:relative;padding:20px 16px}
+  .dimbg{color:var(--dimmer);font-size:13px;line-height:1.5;filter:blur(.3px)}
+  .modal{margin:14px auto 4px;max-width:560px;border:1px solid var(--action);border-radius:12px;
+      background:#140d06;box-shadow:0 18px 50px -20px #000;overflow:hidden}
+  .modal .mh{padding:11px 16px;color:var(--action);letter-spacing:.05em;border-bottom:1px solid #2a1f0e}
+  .modal .mb{padding:13px 16px;color:var(--amber-lo);font-size:13.5px;line-height:1.55}
+  .modal .mb b{color:var(--amber)}
+  .modal .mf{display:flex;gap:10px;padding:11px 16px;border-top:1px solid #2a1f0e;background:rgba(0,0,0,.2)}
+  .modal .yes{background:var(--action);color:#1c1305;font-weight:600;border-radius:7px;padding:4px 14px}
+  .modal .no{border:1px solid var(--frame-dim);color:var(--amber-lo);border-radius:7px;padding:4px 14px}
+
+  .keybar{display:flex;flex-wrap:wrap;gap:15px;padding:9px 16px;border-top:1px solid #2a1f0e;background:rgba(0,0,0,.22);color:var(--amber-lo);font-size:12.5px}
+  .keybar .off{opacity:.4}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+  @media(max-width:640px){.item .ds,.frow .fh{display:none}.item .nm{min-width:0}}
+</style>
+</head>
+<body>
+
+  <!-- LEGEND of interaction types -->
+  <div class="key">
+    <h2>three interaction types</h2>
+    <div class="row">
+      <span><span class="type read">read</span> &nbsp;<b>browse / inspect</b> — no input. lists, dashboard, detail. <i>the bulk of the app.</i></span>
+    </div>
+    <div class="row" style="margin-top:7px">
+      <span><span class="type form">form</span> &nbsp;<b>fill fields to create/edit</b> — the only screens that need real input widgets.</span>
+    </div>
+    <div class="row" style="margin-top:7px">
+      <span><span class="type action">action</span> &nbsp;<b>one-key confirm</b> — promote / delete / archive. a yes-no modal, not a form.</span>
+    </div>
+  </div>
+
+  <!-- HOME -->
+  <div class="lbl"><span class="type nav">nav</span> home <span>· type `expense world`</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="typed">$ <b>expense world</b></div>
+      <div class="header">
+        <div class="brand"><div class="mark">◈</div><div><div class="wordmark">EXPENSE&nbsp;WORLD</div><div class="tagline">your money, in the terminal</div></div></div>
+        <div class="statusbar"><span><span class="live-dot">●</span> <b>connected</b></span><span class="s">accounts <b>BCP · Visa · Ahorros</b></span><span class="s">month <b>2026-03</b></span><span class="s">⟳ synced <b>2m ago</b></span></div>
+      </div>
+      <div class="menu">
+        <div class="group">Capture &amp; ledger</div>
+        <div class="item"><span class="k">1</span><span class="nm">Log a transaction</span><span class="ds">quick add to the ledger</span><span class="type form" style="margin-left:auto">form</span></div>
+        <div class="item focus"><span class="k">2</span><span class="nm">Inbox</span><span class="ds">drafts awaiting promotion</span><span class="badge">5 · 1 ready</span></div>
+        <div class="item"><span class="k">3</span><span class="nm">Transactions</span><span class="ds">the posted ledger</span><span class="type read" style="margin-left:auto">read</span></div>
+        <div class="item"><span class="k">4</span><span class="nm">Reconciliations</span><span class="ds">match bank statements</span></div>
+        <div class="group">Reports</div>
+        <div class="item"><span class="k">5</span><span class="nm">Reports</span><span class="ds">Outstanding Amounts · monthly</span><span class="type read" style="margin-left:auto">read</span></div>
+        <div class="group">Manage</div>
+        <div class="item"><span class="k">6</span><span class="nm">Accounts</span><span class="ds">banks &amp; people</span></div>
+        <div class="item"><span class="k">7</span><span class="nm">Categories</span><span class="ds">spending buckets</span></div>
+        <div class="item"><span class="k">8</span><span class="nm">Hashtags</span><span class="ds">cross-cutting tags</span></div>
+        <div class="group">System</div>
+        <div class="item"><span class="k">9</span><span class="nm">Config · Auth · Sync · Activity · Rates</span><span class="ds">settings &amp; housekeeping</span></div>
+      </div>
+      <div class="hint"><span><b>↑↓</b>move</span><span><b>1-9</b>jump</span><span><b>↵</b>open</span><span><b>q</b>quit</span></div>
+    </div>
+  </div>
+
+  <!-- OUTSTANDING AMOUNTS — Claude-Code collapse -->
+  <div class="lbl"><span class="type read">read</span> outstanding amounts <span>· Claude-Code collapse — summaries you expand with ctrl+r</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>Reports</span><span class="sep">▸</span><span class="here">Outstanding Amounts</span><span class="right"><span class="live-dot">●</span> 2026-03 · synced 2m ago</span></div>
+      <div class="iface">
+        <div class="ihead">OUTSTANDING AMOUNTS <span class="sub">· this month (current)</span><span class="pill">balances + spend</span></div>
+        <div class="ibody">
+          <div class="sect">Bank accounts</div>
+          <div class="grid3">
+            <div class="h">Name</div><div class="h">Cur</div><div class="h" style="text-align:right">Balance</div>
+            <div class="nm">BCP Soles</div><div class="cur">PEN</div><div class="bal pos">+12,450.00</div>
+            <div class="nm">Visa</div><div class="cur">PEN</div><div class="bal neg">−1,832.50</div>
+            <div class="nm">Ahorros</div><div class="cur">USD</div><div class="bal pos">+3,200.00</div>
+          </div>
+
+          <div class="sect">Categories — spent this month <span class="h">ctrl+r expands the focused row · detail stays tucked away</span></div>
+          <div class="collapse">
+            <!-- collapsed: a one-line summary + ctrl+r hint (Claude-Code idiom) -->
+            <div class="cat focus">
+              <div class="cline"><span class="dot2">⏺</span><span class="nm">Comida</span><span class="amt neg">−432.50</span></div>
+              <div class="csum">⎿ 2 tags hidden · press <b>ctrl+r</b> to expand</div>
+            </div>
+            <!-- expanded: detail revealed, with the ⎿ connector + collapse hint -->
+            <div class="cat">
+              <div class="cline"><span class="dot2">⏺</span><span class="nm">Transporte</span><span class="amt neg">−360.00</span></div>
+              <div class="cdetail">
+                <div class="cl2"><span class="con">⎿</span><span>#obra</span><span class="amt neg">−180.00</span></div>
+                <div class="cl2"><span class="con">&nbsp;&nbsp;</span><span>(no hashtags)</span><span class="amt neg">−180.00</span></div>
+                <div class="chint">press <b>ctrl+r</b> to collapse</div>
+              </div>
+            </div>
+            <div class="cat">
+              <div class="cline"><span class="dot2">⏺</span><span class="nm">Vivienda</span><span class="amt neg">−2,500.00</span></div>
+              <div class="csum">⎿ untagged · nothing to expand</div>
+            </div>
+            <div class="cat">
+              <div class="cline"><span class="dot2">⏺</span><span class="nm">Servicios</span><span class="amt neg">−120.00</span></div>
+              <div class="csum">⎿ 1 tag hidden · press <b>ctrl+r</b> to expand</div>
+            </div>
+          </div>
+
+          <div class="totals">
+            <div class="trow head"><span class="lab">TOTALS</span><span class="val">native</span><span class="val">home</span></div>
+            <div class="trow"><span class="lab">inflow</span><span class="val pos">PEN 6,519.00</span><span class="val pos">PEN 6,519.00</span></div>
+            <div class="trow"><span class="lab">outflow</span><span class="val neg">PEN 3,412.50 · USD 120</span><span class="val neg">PEN 3,856.50</span></div>
+            <div class="trow"><span class="lab">net</span><span class="val">—</span><span class="val pos">PEN 2,662.50</span></div>
+          </div>
+        </div>
+        <div class="keybar"><span><b>↑↓</b>focus row</span><span><b>ctrl+r</b>expand/collapse</span><span><b>ctrl+e</b>expand all</span><span><b>a</b>archived panels</span><span><b>esc</b>back</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INBOX -->
+  <div class="lbl"><span class="type read">read</span> inbox <span>· list = read · its Add/Edit = form · Promote/Delete = action</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>Capture &amp; ledger</span><span class="sep">▸</span><span class="here">Inbox</span><span class="right"><span class="live-dot">●</span> 5 drafts</span></div>
+      <div class="iface">
+        <div class="ihead">INBOX <span class="sub">· capture now, complete later</span><span class="pill">1 ready · 3 incomplete · 1 promoted</span></div>
+        <div class="ibody">
+          <div class="filters"><span class="c on">All</span><span class="c">Ready</span><span class="c">Overdue</span><span class="c">+ deleted</span></div>
+          <div class="tbl" style="--cols:18px 1.4fr 1.2fr 92px 96px 88px 80px 46px">
+            <div class="row head"><span class="g">rdy</span><span>Title</span><span>Description</span><span class="amt">Amount</span><span>Date</span><span>Account</span><span>Category</span><span>St</span></div>
+            <div class="rule"></div>
+            <div class="row focus"><span class="g">▶</span><span class="nm">Almuerzo con clie…</span><span class="mut">Reunión obra Ar…</span><span class="amt neg">−180.00</span><span>2026-03-20</span><span>BCP Soles</span><span>Comida</span><span>pend</span></div>
+            <div class="row"><span class="g mut">·</span><span class="nm">Uber aeropuerto</span><span class="mut">—</span><span class="amt neg">−45.00</span><span>2026-03-21</span><span>BCP Soles</span><span class="mut">—</span><span>pend</span></div>
+            <div class="row"><span class="g mut">·</span><span class="nm">Compra ferretería</span><span class="mut">material obra</span><span class="amt mut">—</span><span class="mut">—</span><span class="mut">—</span><span class="mut">—</span><span>pend</span></div>
+            <div class="row"><span class="g mut">·</span><span class="nm">Adelanto socio</span><span class="mut">—</span><span class="amt pos">+2,000.00</span><span>2026-04-01</span><span>BCP Soles</span><span>Ingresos</span><span>pend</span></div>
+            <div class="row"><span class="g">✓</span><span class="nm">Pago internet</span><span class="mut">Movistar</span><span class="amt neg">−120.00</span><span>2026-03-15</span><span>BCP Soles</span><span>Servicios</span><span>prom</span></div>
+          </div>
+          <div class="legend"><span>▶ ready · · incomplete · ✓ promoted</span><span class="right">showing 5 of 5</span></div>
+        </div>
+        <div class="keybar"><span><b>↑↓</b>move</span><span><b>↵</b>view</span><span><b>e</b>edit <span class="type form">form</span></span><span><b>p</b>promote <span class="type action">action</span></span><span><b>d</b>delete <span class="type action">action</span></span><span><b>esc</b>back</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRANSACTIONS -->
+  <div class="lbl"><span class="type read">read</span> transactions <span>· the posted ledger · Edit opens a form</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>Capture &amp; ledger</span><span class="sep">▸</span><span class="here">Transactions</span><span class="right"><span class="live-dot">●</span> 47 in March</span></div>
+      <div class="iface">
+        <div class="ihead">LEDGER <span class="sub">· posted transactions</span><span class="pill">filtered: March 2026</span></div>
+        <div class="ibody">
+          <div class="filters"><span class="c on">date 2026-03</span><span class="c">account</span><span class="c">category</span><span class="c">tag</span><span class="c">cleared</span><span class="c">/ search</span></div>
+          <div class="tbl" style="--cols:30px 1.2fr 1.1fr 96px 96px 88px 78px 110px">
+            <div class="row head"><span class="g">cl</span><span>Title</span><span>Description</span><span class="amt">Amount</span><span>Date</span><span>Account</span><span>Cat</span><span>Tags</span></div>
+            <div class="rule"></div>
+            <div class="row"><span class="g">✓</span><span class="nm">Sueldo marzo</span><span class="mut">Planilla Korak…</span><span class="amt pos">+6,519.00</span><span>2026-03-05</span><span>BCP Soles</span><span>Ingreso</span><span>#trabajo</span></div>
+            <div class="row"><span class="g">✓</span><span class="nm">Alquiler oficina</span><span class="mut">Miraflores</span><span class="amt neg">−2,500.00</span><span>2026-03-03</span><span>BCP Soles</span><span>Vivienda</span><span class="mut">—</span></div>
+            <div class="row"><span class="g">✓ L →</span><span class="nm">Ahorros</span><span class="mut">transfer leg</span><span class="amt neg">−1,000.00</span><span>2026-03-10</span><span>BCP Soles</span><span>Transfer</span><span class="mut">—</span></div>
+            <div class="row focus"><span class="g">·</span><span class="nm">Supermercado</span><span class="mut">Wong + Plaza V…</span><span class="amt neg">−432.50</span><span>2026-03-12</span><span>BCP Soles</span><span>Comida</span><span>#casa,#club</span></div>
+            <div class="row"><span class="g">✓ L</span><span class="nm">Gasolina</span><span class="mut">reconciled</span><span class="amt neg">−180.00</span><span>2026-03-14</span><span>Visa</span><span>Transp.</span><span class="mut">—</span></div>
+          </div>
+          <div class="legend"><span>✓ cleared · · not cleared · L locked · → transfer</span><span class="right">showing 5 of 47</span></div>
+        </div>
+        <div class="keybar"><span><b>↑↓</b>move</span><span><b>↵</b>view</span><span><b>e</b>edit <span class="type form">form</span></span><span class="off"><b>e</b>(locked rows read-only)</span><span><b>f</b>filter</span><span><b>esc</b>back</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACCOUNTS -->
+  <div class="lbl"><span class="type read">read</span> accounts <span>· banks &amp; people · New/Edit open small forms</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>Manage</span><span class="sep">▸</span><span class="here">Accounts</span><span class="right"><span class="live-dot">●</span> 5 active · 1 archived</span></div>
+      <div class="iface">
+        <div class="ihead">ACCOUNTS <span class="sub">· balances in native currency</span><span class="pill">home totals → Outstanding</span></div>
+        <div class="ibody">
+          <div class="tbl" style="--cols:1.4fr 70px 50px 44px 130px 78px">
+            <div class="row head"><span>Name</span><span>Type</span><span>Cur</span><span>Color</span><span class="amt">Balance</span><span>Status</span></div>
+            <div class="rule"></div>
+            <div class="row focus"><span class="nm">BCP Soles</span><span>bank</span><span>PEN</span><span><span class="sw" style="background:#4a90d9"></span></span><span class="amt pos">+12,450.00</span><span>active</span></div>
+            <div class="row"><span class="nm">Visa</span><span>bank</span><span>PEN</span><span><span class="sw" style="background:#d96a5a"></span></span><span class="amt neg">−1,832.50</span><span>active</span></div>
+            <div class="row"><span class="nm">Ahorros</span><span>bank</span><span>USD</span><span><span class="sw" style="background:#5ab87a"></span></span><span class="amt pos">+3,200.00</span><span>active</span></div>
+            <div class="row"><span class="nm">Socio · Juan</span><span>person</span><span>PEN</span><span><span class="sw" style="background:#b07cd9"></span></span><span class="amt neg">−1,500.00</span><span>active</span></div>
+            <div class="row"><span class="nm">Proveedor Nextnet</span><span>person</span><span>PEN</span><span><span class="sw" style="background:#d9a93a"></span></span><span class="amt pos">+800.00</span><span>active</span></div>
+            <div class="row arch"><span class="nm">Old BCP</span><span>bank</span><span>PEN</span><span><span class="sw" style="background:#8a8a8a"></span></span><span class="amt mut">0.00</span><span>archived</span></div>
+          </div>
+          <div class="legend"><span>person accounts carry a balance (owes / owed)</span><span class="right">showing 6 of 6</span></div>
+        </div>
+        <div class="keybar"><span><b>↑↓</b>move</span><span><b>↵</b>view</span><span><b>n</b>new <span class="type form">form</span></span><span><b>e</b>edit <span class="type form">form</span></span><span><b>a</b>archive <span class="type action">action</span></span><span><b>esc</b>back</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CATEGORIES -->
+  <div class="lbl"><span class="type read">read</span> categories <span>· spending buckets · New/Edit open small forms</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>Manage</span><span class="sep">▸</span><span class="here">Categories</span><span class="right"><span class="live-dot">●</span> 7 total</span></div>
+      <div class="iface">
+        <div class="ihead">CATEGORIES <span class="sub">· buckets for every transaction</span><span class="pill">2 system · locked</span></div>
+        <div class="ibody">
+          <div class="tbl" style="--cols:44px 1.5fr 90px 80px">
+            <div class="row head"><span>Color</span><span>Name</span><span>System</span><span>Status</span></div>
+            <div class="rule"></div>
+            <div class="row focus"><span><span class="sw" style="background:#d9744a"></span></span><span class="nm">Comida</span><span class="mut">—</span><span>active</span></div>
+            <div class="row"><span><span class="sw" style="background:#5a9bd9"></span></span><span class="nm">Vivienda</span><span class="mut">—</span><span>active</span></div>
+            <div class="row"><span><span class="sw" style="background:#6ab85a"></span></span><span class="nm">Transporte</span><span class="mut">—</span><span>active</span></div>
+            <div class="row"><span><span class="sw" style="background:#b07cd9"></span></span><span class="nm">Servicios</span><span class="mut">—</span><span>active</span></div>
+            <div class="row"><span><span class="sw" style="background:#5ab8a0"></span></span><span class="nm">Ingresos</span><span class="mut">—</span><span>active</span></div>
+            <div class="row"><span><span class="sw" style="background:#8a8a8a"></span></span><span class="nm">@Transfer</span><span>system 🔒</span><span>active</span></div>
+            <div class="row"><span><span class="sw" style="background:#8a8a8a"></span></span><span class="nm">@Debt</span><span>system 🔒</span><span>active</span></div>
+          </div>
+          <div class="legend"><span>system categories cannot be renamed or deleted</span><span class="right">showing 7 of 7</span></div>
+        </div>
+        <div class="keybar"><span><b>↑↓</b>move</span><span><b>n</b>new <span class="type form">form</span></span><span><b>e</b>edit <span class="type form">form</span></span><span><b>a</b>archive <span class="type action">action</span></span><span><b>esc</b>back</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HASHTAGS -->
+  <div class="lbl"><span class="type read">read</span> hashtags <span>· cross-cutting tags · New/Rename = tiny form</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>Manage</span><span class="sep">▸</span><span class="here">Hashtags</span><span class="right"><span class="live-dot">●</span> 6 active · 1 archived</span></div>
+      <div class="iface">
+        <div class="ihead">HASHTAGS <span class="sub">· tag across categories &amp; accounts</span><span class="pill">drive the breakdown</span></div>
+        <div class="ibody">
+          <div class="chips">
+            <span class="hchip focus">#trabajo<span class="ct">18</span></span><span class="hchip">#casa<span class="ct">42</span></span>
+            <span class="hchip">#club<span class="ct">9</span></span><span class="hchip">#obra<span class="ct">23</span></span>
+            <span class="hchip">#viaje<span class="ct">7</span></span><span class="hchip">#regalo<span class="ct">4</span></span>
+            <span class="hchip arch">#black-friday<span class="ct">0</span></span>
+          </div>
+          <div class="legend"><span>count = transactions tagged</span><span class="right">7 total</span></div>
+        </div>
+        <div class="keybar"><span><b>←→↑↓</b>move</span><span><b>↵</b>view tagged</span><span><b>n</b>new <span class="type form">form</span></span><span><b>r</b>rename <span class="type form">form</span></span><span><b>a</b>archive <span class="type action">action</span></span><span><b>esc</b>back</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG A TRANSACTION — THE form -->
+  <div class="lbl"><span class="type form">form</span> log a transaction <span>· the one genuinely fiddly form (reused for Inbox-add &amp; Transaction-edit)</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>Capture &amp; ledger</span><span class="sep">▸</span><span class="here">Log a transaction</span><span class="right"><span class="live-dot">●</span> BCP Soles · 2026-03</span></div>
+      <div class="iface">
+        <div class="ihead">LOG A TRANSACTION <span class="sub">· step by step</span><span class="pill">required ✓ · choosing cleared</span></div>
+        <div class="ibody form">
+          <div class="frow"><span class="fl">Title</span><span class="fv">Almuerzo con cliente<span class="ok">✓</span></span><span class="fh">required</span></div>
+          <div class="frow"><span class="fl">Amount</span><span class="fv neg">−180.00<span class="ok">✓</span></span><span class="fh">signed · negative = expense</span></div>
+          <div class="frow"><span class="fl">Account</span><span class="fv">BCP Soles<span class="ok">✓</span></span><span class="fh">required</span></div>
+          <div class="frow"><span class="fl">Category</span><span class="fv">Comida<span class="ok">✓</span></span><span class="fh">required</span></div>
+          <div class="frow"><span class="fl">Hashtags</span><span class="fv">#trabajo</span><span class="fh">optional · multi-select</span></div>
+          <div class="fdiv">optional fields</div>
+          <div class="frow"><span class="fl">Description</span><span class="fv">Reunión obra Arequipa</span><span class="fh"></span></div>
+          <div class="frow focus"><span class="fl">Cleared?</span><span class="fv tri"><span class="o">unset</span><span class="o">cleared</span><span class="o sel">‹ not cleared ›</span></span><span class="fh">posted at the bank?</span></div>
+          <div class="frow"><span class="fl">Exchange rate</span><span class="fv todo">auto (engine fetches)</span><span class="fh">override only if needed</span></div>
+          <div class="frow"><span class="fl">Transfer?</span><span class="fv todo">no</span><span class="fh">pairs two accounts, opposite signs</span></div>
+          <div class="submit"><span class="btn">▸ Review &amp; submit</span><span class="muted">all required fields complete</span></div>
+        </div>
+        <div class="keybar"><span><b>←→</b>choose</span><span><b>↵</b>next</span><span><b>⌫</b>back</span><span><b>tab</b>skip optional</span><span><b>esc</b>cancel</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW CATEGORY — a tiny form (to show how small most forms are) -->
+  <div class="lbl"><span class="type form">form</span> new category <span>· what a “small form” looks like — name + color, that’s it</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>Manage</span><span class="sep">▸</span><span>Categories</span><span class="sep">▸</span><span class="here">New</span></div>
+      <div class="iface">
+        <div class="ihead">NEW CATEGORY <span class="sub">· 2 fields</span></div>
+        <div class="ibody form">
+          <div class="frow focus"><span class="fl">Name</span><span class="fv">Educación<span class="cur"></span></span><span class="fh">required · unique</span></div>
+          <div class="frow"><span class="fl">Color</span><span class="fv"><span class="sw" style="background:#d98a3a;width:18px;height:12px"></span> &nbsp;#d98a3a</span><span class="fh">pick a swatch</span></div>
+          <div class="submit"><span class="btn">▸ Create</span><span class="muted">↵ to submit</span></div>
+        </div>
+        <div class="keybar"><span><b>↵</b>next / submit</span><span><b>tab</b>fields</span><span><b>esc</b>cancel</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROMOTE — an ACTION (confirm modal) -->
+  <div class="lbl"><span class="type action">action</span> promote item <span>· not a form — a one-key yes/no confirm over the list</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="modalwrap">
+      <div class="dimbg">
+        ◈ EXPENSE WORLD ▸ Capture &amp; ledger ▸ Inbox<br><br>
+        &nbsp;&nbsp;▶ Almuerzo con cliente&nbsp;&nbsp;−180.00&nbsp;&nbsp;2026-03-20&nbsp;&nbsp;BCP Soles&nbsp;&nbsp;Comida<br>
+        &nbsp;&nbsp;· Uber aeropuerto&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;−45.00&nbsp;&nbsp;2026-03-21&nbsp;&nbsp;BCP Soles<br>
+        &nbsp;&nbsp;· Compra ferretería&nbsp;&nbsp;&nbsp;&nbsp;—
+      </div>
+      <div class="modal">
+        <div class="mh">⚠  Promote to ledger?</div>
+        <div class="mb">This creates a real transaction from <b>“Almuerzo con cliente”</b> and soft-deletes the inbox draft.
+          The item is <b>ready</b> (title, amount, account, category, date all set).</div>
+        <div class="mf"><span class="yes">↵ Yes, promote</span><span class="no">esc · No</span></div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
