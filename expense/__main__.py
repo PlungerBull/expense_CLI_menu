@@ -21,6 +21,7 @@ from expense.commands import (
 )
 from expense.context import AppContext
 from expense.menu import menu_command
+from expense.tui import world_command
 
 app = typer.Typer(
     help="The Hands — expense_world_engine CLI.",
@@ -88,6 +89,7 @@ app.command("dashboard")(dashboard_cmd.dashboard)
 app.command("sync")(sync_cmd.sync)
 app.command("import")(import_cmd.run_import)
 app.command("menu")(menu_command)
+app.command("world")(world_command)
 
 
 if __name__ == "__main__":

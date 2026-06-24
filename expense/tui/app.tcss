@@ -1,0 +1,49 @@
+/* App-wide styling. Colors come from theme variables (see theme.py) so a
+   theme swap recolors everything — no hardcoded hex here. */
+
+Screen {
+    background: $background;
+}
+
+/* ---- home ---- */
+#brand {
+    padding: 1 2 0 2;
+    color: $foreground;
+    text-style: bold;
+}
+#status {
+    padding: 0 2 1 2;
+    color: $text-muted;
+}
+#menu {
+    height: 1fr;
+    margin: 0 1 1 1;
+    border: round $surface;
+    background: $surface;
+    padding: 0 1;
+}
+
+/* ---- section interface (Outstanding Amounts) ---- */
+#crumb {
+    padding: 1 2;
+    color: $text-muted;
+    border-bottom: solid $surface;
+}
+#content {
+    height: 1fr;
+    padding: 1 2;
+}
+.section-title {
+    color: $foreground;
+    text-style: bold;
+    margin: 0 0 1 0;
+}
+.sect {
+    color: $accent;
+    text-style: bold;
+    margin: 1 0 0 0;
+}
+.error {
+    color: $error;
+    text-style: bold;
+}
