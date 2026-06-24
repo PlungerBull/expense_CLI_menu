@@ -1,0 +1,184 @@
+"""Pure parsing: RawRow -> ParsedRow | SkippedRow. No I/O, no HTTP.
+
+Handles Excel serial dates, decimal->signed-cents conversion (float-artifact
+safe via Decimal), currency validation, and the per-row USD exchange rate read
+straight from the T.C. (tipo de cambio) column.
+"""
+
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
+from expense.import_ import mapping
+from expense.import_.reader import RawRow, SheetData
+
+EXCEL_EPOCH = date(1899, 12, 30)
+
+
+@dataclass(frozen=True)
+class ParsedRow:
+    line: int
+    title: str
+    category: str
+    hashtag: str
+    date_iso: str
+    amount_cents: int
+    currency: str
+    account: str
+    description: str | None
+    exchange_rate: float | None
+
+
+@dataclass(frozen=True)
+class SkippedRow:
+    line: int
+    reason: str
+    detail: str = ""
+
+
+class ImportFormatError(Exception):
+    """The header row is missing one or more required columns."""
+
+
+def build_column_index(headers: list[object]) -> dict[str, int]:
+    """Map each canonical field to its column index by matching header labels."""
+    norm = [mapping.normalize_header(h) for h in headers]
+    index: dict[str, int] = {}
+    for field, label in mapping.FIELD_HEADERS.items():
+        if label in norm:
+            index[field] = norm.index(label)
+    missing = mapping.REQUIRED_FIELDS - index.keys()
+    if missing:
+        wanted = ", ".join(sorted(mapping.FIELD_HEADERS[m] for m in missing))
+        found = ", ".join(str(h) for h in headers if h is not None)
+        raise ImportFormatError(
+            f"Spreadsheet is missing required column(s): {wanted}. Found headers: {found}"
+        )
+    return index
+
+
+def _clean(value: object) -> str | None:
+    """Trim a cell; treat ``''`` and the literal ``'None'`` as empty."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if s == "" or s.casefold() == "none":
+        return None
+    return s
+
+
+def serial_to_iso(serial: object) -> str:
+    """Excel serial day number -> ``YYYY-MM-DD`` (epoch 1899-12-30)."""
+    days = int(float(serial))
+    return (EXCEL_EPOCH + timedelta(days=days)).isoformat()
+
+
+def to_iso_date(value: object) -> str | None:
+    """Coerce a date cell (datetime, date, or Excel serial) to ``YYYY-MM-DD``."""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    try:
+        return serial_to_iso(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def amount_to_cents(value: object) -> int:
+    """Signed decimal -> signed integer cents, float-artifact safe.
+
+    ``-132.80000000000001`` -> ``-13280``.
+    """
+    cents = Decimal(str(value)).scaleb(2)
+    return int(cents.to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def parse_rate(value: object) -> float | None:
+    """Parse the T.C. cell into a positive rate. None if absent/non-numeric.
+
+    A non-positive rate is returned as-is (0.0 or negative) so the caller can
+    reject it distinctly from a missing one.
+    """
+    try:
+        return round(float(value), 6)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | SkippedRow:
+    def cell(field: str) -> object:
+        i = index.get(field)
+        if i is None or i >= len(raw.cells):
+            return None
+        return raw.cells[i]
+
+    title = _clean(cell("title"))
+    account = _clean(cell("account"))
+    category = _clean(cell("category"))
+    hashtag = _clean(cell("hashtag"))
+    currency_raw = _clean(cell("currency"))
+
+    if title is None:
+        return SkippedRow(raw.line, "missing-title")
+    if account is None:
+        return SkippedRow(raw.line, "missing-account")
+    if category is None:
+        return SkippedRow(raw.line, "missing-category")
+    if hashtag is None:
+        return SkippedRow(raw.line, "missing-hashtag")
+    if currency_raw is None:
+        return SkippedRow(raw.line, "missing-currency")
+
+    currency = currency_raw.upper()
+    if currency not in mapping.VALID_CURRENCIES:
+        return SkippedRow(raw.line, "unknown-currency", currency)
+
+    date_iso = to_iso_date(cell("date"))
+    if date_iso is None:
+        return SkippedRow(raw.line, "bad-date", str(cell("date")))
+
+    try:
+        amount_cents = amount_to_cents(cell("amount"))
+    except (InvalidOperation, ValueError, TypeError):
+        return SkippedRow(raw.line, "bad-amount", str(cell("amount")))
+    if amount_cents == 0:
+        return SkippedRow(raw.line, "zero-amount")
+
+    exchange_rate: float | None = None
+    if currency == "USD":
+        rate = parse_rate(cell("rate"))
+        if rate is None:
+            return SkippedRow(raw.line, "usd-no-rate", str(cell("rate")))
+        if rate <= 0:
+            return SkippedRow(raw.line, "bad-rate", str(cell("rate")))
+        exchange_rate = rate
+
+    return ParsedRow(
+        line=raw.line,
+        title=title,
+        category=category,
+        hashtag=hashtag,
+        date_iso=date_iso,
+        amount_cents=amount_cents,
+        currency=currency,
+        account=account,
+        description=_clean(cell("description")),
+        exchange_rate=exchange_rate,
+    )
+
+
+def parse_sheet(sheet: SheetData) -> tuple[list[ParsedRow], list[SkippedRow]]:
+    """Parse every data row. Fully-empty rows are ignored (not reported)."""
+    index = build_column_index(sheet.headers)
+    parsed: list[ParsedRow] = []
+    skipped: list[SkippedRow] = []
+    for raw in sheet.rows:
+        if all(_clean(c) is None for c in raw.cells):
+            continue
+        result = parse_row(raw, index)
+        if isinstance(result, ParsedRow):
+            parsed.append(result)
+        else:
+            skipped.append(result)
+    return parsed, skipped

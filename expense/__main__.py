@@ -9,6 +9,7 @@ from expense.commands import (
     config_cmd,
     dashboard_cmd,
     hashtags_cmd,
+    import_cmd,
     inbox_cmd,
     log_cmd,
     ping_cmd,
@@ -85,6 +86,7 @@ app.command("whoami")(auth_cmd.whoami)
 app.command("log")(log_cmd.log)
 app.command("dashboard")(dashboard_cmd.dashboard)
 app.command("sync")(sync_cmd.sync)
+app.command("import")(import_cmd.run_import)
 app.command("menu")(menu_command)
 
 
