@@ -63,6 +63,45 @@ def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
     render_pagination_hint(body, items)
 
 
+def fetch_hashtags(
+    cfg,
+    *,
+    include_archived: bool = False,
+    include_deleted: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+    no_cache: bool = False,
+    verbose: bool = False,
+    cold_start_notice: bool = True,
+    notice_stream=None,
+) -> dict:
+    """GET /v1/hashtags → the raw engine/replica body. Pure data, no render.
+
+    Shared by the flat `hashtags list` command and the TUI's Hashtags screen.
+    """
+    if no_cache:
+        params: dict = {}
+        if include_archived:
+            params["include_archived"] = "true"
+        if include_deleted:
+            params["include_deleted"] = "true"
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            return client.get(f"/{_RESOURCE}", params=params or None)
+
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
+        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
+    return cache_pkg.list_hashtags(
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @app.command("list")
 @handle_errors
 def list_(
@@ -80,32 +119,15 @@ def list_(
     Example: expense hashtags list --include-archived
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        params: dict = {}
-        if include_archived:
-            params["include_archived"] = "true"
-        if include_deleted:
-            params["include_deleted"] = "true"
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}", params=params or None)
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.list_hashtags(
-            include_archived=include_archived,
-            include_deleted=include_deleted,
-            limit=limit,
-            offset=offset,
-        )
-
+    body = fetch_hashtags(
+        cfg,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        limit=limit,
+        offset=offset,
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
     _render_hashtag_list(body, json_mode=json_output)
 
 

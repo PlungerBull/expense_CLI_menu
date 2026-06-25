@@ -11,6 +11,8 @@ from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
 from expense.tui.screens.accounts import AccountsScreen
+from expense.tui.screens.categories import CategoriesScreen
+from expense.tui.screens.hashtags import HashtagsScreen
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
 from expense.tui.screens.transactions import TransactionsScreen
@@ -29,8 +31,8 @@ _MENU: list[tuple[str | None, str]] = [
     ("soon", "Monthly report"),
     (None, "Manage"),
     ("accounts", "Accounts"),
-    ("soon", "Categories"),
-    ("soon", "Hashtags"),
+    ("categories", "Categories"),
+    ("hashtags", "Hashtags"),
     (None, "System"),
     ("soon", "Config · Auth · Sync · Activity · Rates"),
 ]
@@ -61,5 +63,9 @@ class HomeScreen(Screen):
             self.app.push_screen(TransactionsScreen())
         elif kind == "accounts":
             self.app.push_screen(AccountsScreen())
+        elif kind == "categories":
+            self.app.push_screen(CategoriesScreen())
+        elif kind == "hashtags":
+            self.app.push_screen(HashtagsScreen())
         elif kind == "soon":
             self.notify("Coming in a later phase.", title="Not wired yet")
