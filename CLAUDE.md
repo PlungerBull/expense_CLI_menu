@@ -63,8 +63,8 @@ Deletes, reverts, archives prompt for confirmation unless `--yes` is passed.
 **Config isolation**
 Auth token + engine URL live in `~/.expense-config`. Never checked in, never shared across machines. The GitHub repo (`PlungerBull/expense_CLI_menu`) is **public** by deliberate choice — which makes this rule non-negotiable: any secret committed is immediately public and permanent in git history. GitHub push protection is enabled as defense-in-depth, but the primary safeguard is that credentials never enter the repo in the first place.
 
-**Mock new views before building them**
-Any new user-facing view or screen — a menu, dashboard, list, form, report, or TUI screen, anything the user will see — starts as an **HTML mockup in [docs/mockups/](docs/mockups/)**, shown to the user for **explicit approval before any UI code is written**. Never assume layout, fields, or behavior: when a detail is unspecified or ambiguous, **stop and ask**. Approval of a mockup approves *that* view; a materially different view needs a fresh mockup.
+**Mock every screen before building it — every time**
+Before writing or changing UI code for any user-facing view or screen — a menu, dashboard, list, form, report, or TUI screen, anything the user will see — first present its **HTML mockup in [docs/mockups/](docs/mockups/)** and wait for the user's review. Do this **every time you pick up a screen, even one approved before** — a prior approval is not a standing license to skip the review; the user re-reads the mockup each session to make specific observations. Never assume layout, fields, or behavior: when a detail is unspecified or ambiguous, **stop and ask**.
 
 ## Build phases (current status)
 

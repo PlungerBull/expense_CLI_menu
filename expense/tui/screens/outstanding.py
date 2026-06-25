@@ -1,12 +1,12 @@
 """Outstanding Amounts screen — current-month balances + spend.
 
 Reads live data via the shared `dashboard_cmd.fetch_dashboard` (the fetch/print
-split), off the UI thread in a worker so the screen never freezes. Rendering is
-a pure `dashboard_renderables(body)` helper (Rich renderables) so it's unit-
-testable without an event loop or a live engine.
+split), off the UI thread in a worker so the screen never freezes.
 
-Phase 0 renders the category → hashtag breakdown as a flat, fully-expanded
-indented list; the interactive `▼/▶` tree lands in Phase 1.
+Accounts / people / totals are static Rich tables. The category → hashtag
+breakdown is an interactive `CategoriesView`: arrow-key navigation with `▼/▶`
+expand/collapse per category. Render helpers and `CategoriesView._build` are
+pure (no event loop), so formatting + collapse are unit-testable directly.
 """
 
 import io
@@ -17,6 +17,7 @@ from rich.table import Table
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, LoadingIndicator, Static
@@ -41,24 +42,6 @@ def _accounts_table(items: list[dict]) -> RenderableType:
     return t
 
 
-def _categories_table(categories: list[dict]) -> RenderableType:
-    if not categories:
-        return Text("  (no categories)", style="dim")
-    name_map = dashboard_cmd.load_hashtag_name_map()
-    t = Table(box=box.SIMPLE, pad_edge=False, expand=False)
-    t.add_column("Name")
-    t.add_column("Spent", justify="right")
-    for cat in categories:
-        t.add_row(cat.get("name") or "(unnamed)", format_cents(cat.get("spent_cents")))
-        for sub in cat.get("hashtag_breakdown") or []:
-            ids = sub.get("hashtag_ids") or []
-            t.add_row(
-                "  " + dashboard_cmd.hashtag_label(ids, name_map),
-                format_cents(sub.get("spent_cents")),
-            )
-    return t
-
-
 def _totals_table(totals: dict | None) -> RenderableType:
     if not isinstance(totals, dict):
         return Text("  (no totals)", style="dim")
@@ -75,23 +58,82 @@ def _totals_table(totals: dict | None) -> RenderableType:
     return t
 
 
-def dashboard_renderables(body: dict) -> list[tuple[str, RenderableType]]:
-    """Pure data → (css-class, renderable) pairs. No widgets, no event loop."""
-    month = dashboard_cmd._format_month(body.get("month"))
-    out: list[tuple[str, RenderableType]] = [
-        ("section-title", Text.from_markup(f"Outstanding Amounts  ·  {month}  (current month)")),
-        ("sect", Text("Bank accounts")),
-        ("", _accounts_table(body.get("bank_accounts") or [])),
+class CategoriesView(Static):
+    """Interactive category tree: `↑↓` move, `→/←` expand/collapse, `enter` toggle.
+
+    The cursor moves over categories; a category with a hashtag breakdown shows a
+    `▼/▶` caret and reveals its (indented, dimmed) sub-rows when expanded.
+    """
+
+    can_focus = True
+    BINDINGS = [
+        Binding("down,j", "move(1)", "Navigate"),
+        Binding("up,k", "move(-1)", show=False),
+        Binding("right,l", "expand", "Expand"),
+        Binding("left,h", "collapse", "Collapse"),
+        Binding("enter,space", "toggle", show=False),
     ]
-    people = body.get("people") or []
-    if people:
-        out.append(("sect", Text("People")))
-        out.append(("", _accounts_table(people)))
-    out.append(("sect", Text("Categories — spent this month")))
-    out.append(("", _categories_table(body.get("categories") or [])))
-    out.append(("sect", Text("Totals")))
-    out.append(("", _totals_table(body.get("totals"))))
-    return out
+
+    def __init__(self, categories: list[dict], name_map: dict[str, str]) -> None:
+        super().__init__()
+        self._cats = categories
+        self._name_map = name_map
+        self._collapsed: set[int] = set()
+        self._cursor = 0
+
+    def on_mount(self) -> None:
+        self._render_tree()
+        self.focus()
+
+    @staticmethod
+    def _has_kids(cat: dict) -> bool:
+        return bool(cat.get("hashtag_breakdown"))
+
+    def _render_tree(self) -> None:
+        self.update(self._build())
+
+    def _build(self) -> RenderableType:
+        if not self._cats:
+            return Text("  (no categories)", style="dim")
+        t = Table(box=None, expand=True, pad_edge=False, show_header=False)
+        t.add_column("name", ratio=1, no_wrap=True)
+        t.add_column("amt", justify="right", no_wrap=True)
+        for i, cat in enumerate(self._cats):
+            kids = self._has_kids(cat)
+            caret = ("▶ " if i in self._collapsed else "▼ ") if kids else "  "
+            row_style = "reverse" if i == self._cursor else ""
+            t.add_row(
+                caret + (cat.get("name") or "(unnamed)"),
+                format_cents(cat.get("spent_cents")),
+                style=row_style,
+            )
+            if kids and i not in self._collapsed:
+                for sub in cat["hashtag_breakdown"]:
+                    ids = sub.get("hashtag_ids") or []
+                    t.add_row(
+                        "    " + dashboard_cmd.hashtag_label(ids, self._name_map),
+                        format_cents(sub.get("spent_cents")),
+                        style="dim",
+                    )
+        return t
+
+    def action_move(self, delta: int) -> None:
+        if not self._cats:
+            return
+        self._cursor = max(0, min(len(self._cats) - 1, self._cursor + delta))
+        self._render_tree()
+
+    def action_expand(self) -> None:
+        self._collapsed.discard(self._cursor)
+        self._render_tree()
+
+    def action_collapse(self) -> None:
+        self._collapsed.add(self._cursor)
+        self._render_tree()
+
+    def action_toggle(self) -> None:
+        self._collapsed.symmetric_difference_update({self._cursor})
+        self._render_tree()
 
 
 class OutstandingScreen(Screen):
@@ -141,9 +183,21 @@ class OutstandingScreen(Screen):
     def _populate(self, body: dict) -> None:
         content = self.query_one("#content", VerticalScroll)
         content.remove_children()
-        content.mount(
-            *(
-                Static(renderable, classes=css or None)
-                for css, renderable in dashboard_renderables(body)
-            )
+        month = dashboard_cmd._format_month(body.get("month"))
+        title = Text(f"Outstanding Amounts  ·  {month}  (current month)")
+        widgets: list[Static] = [
+            Static(title, classes="section-title"),
+            Static(Text("Bank accounts"), classes="sect"),
+            Static(_accounts_table(body.get("bank_accounts") or [])),
+        ]
+        people = body.get("people") or []
+        if people:
+            widgets.append(Static(Text("People"), classes="sect"))
+            widgets.append(Static(_accounts_table(people)))
+        widgets.append(Static(Text("Categories — spent this month"), classes="sect"))
+        widgets.append(
+            CategoriesView(body.get("categories") or [], dashboard_cmd.load_hashtag_name_map())
         )
+        widgets.append(Static(Text("Totals"), classes="sect"))
+        widgets.append(Static(_totals_table(body.get("totals"))))
+        content.mount(*widgets)

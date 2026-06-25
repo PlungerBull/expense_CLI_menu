@@ -1,8 +1,8 @@
-"""Phase 0 smoke tests for the `expense world` TUI.
+"""Smoke tests for the `expense world` TUI.
 
 Drives Textual headlessly via `App.run_test()` wrapped in `asyncio.run` (no
-pytest-asyncio dependency). Network is never touched: the pure renderable
-builder is tested directly, and the nav test stubs `fetch_dashboard`.
+pytest-asyncio dependency). Network is never touched: pure render helpers and
+`CategoriesView._build` are tested directly; the nav test stubs `fetch_dashboard`.
 """
 
 import asyncio
@@ -14,7 +14,12 @@ from textual.widgets import OptionList
 from expense.commands import dashboard_cmd
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.home import HomeScreen
-from expense.tui.screens.outstanding import OutstandingScreen, dashboard_renderables
+from expense.tui.screens.outstanding import (
+    CategoriesView,
+    OutstandingScreen,
+    _accounts_table,
+    _totals_table,
+)
 
 SAMPLE = {
     "month": {"year": 2026, "month": 3},
@@ -27,7 +32,8 @@ SAMPLE = {
             "name": "Comida",
             "spent_cents": -43250,
             "hashtag_breakdown": [{"hashtag_ids": ["x"], "spent_cents": -25000}],
-        }
+        },
+        {"name": "Vivienda", "spent_cents": -250000, "hashtag_breakdown": []},
     ],
     "totals": {
         "inflow_cents": 651900,
@@ -40,22 +46,34 @@ SAMPLE = {
 }
 
 
-def _render(parts) -> str:
+def _text(renderable) -> str:
     con = Console(file=io.StringIO(), width=80)
-    for _css, renderable in parts:
-        con.print(renderable)
+    con.print(renderable)
     return con.file.getvalue()
 
 
-def test_dashboard_renderables_formats_and_resolves(monkeypatch):
-    monkeypatch.setattr(dashboard_cmd, "load_hashtag_name_map", lambda: {"x": "trabajo"})
-    out = _render(dashboard_renderables(SAMPLE))
-    assert "2026-03" in out
-    assert "BCP Soles" in out and "12,450.00" in out  # grouped major units
-    assert "Socio Juan" in out and "-1,500.00" in out
-    assert "Comida" in out and "-432.50" in out
-    assert "trabajo" in out  # hashtag id resolved to name
-    assert "inflow" in out and "net" in out
+def test_static_sections_format():
+    accounts = _text(_accounts_table(SAMPLE["bank_accounts"]))
+    assert "BCP Soles" in accounts and "12,450.00" in accounts  # grouped major units
+    totals = _text(_totals_table(SAMPLE["totals"]))
+    assert "inflow" in totals and "net" in totals and "6,519.00" in totals
+
+
+def test_categories_view_formats_and_resolves(monkeypatch):
+    view = CategoriesView(SAMPLE["categories"], {"x": "trabajo"})
+    out = _text(view._build())
+    assert "▼ Comida" in out and "-432.50" in out  # caret + amount
+    assert "trabajo" in out and "-250.00" in out  # hashtag id resolved + child amount
+    assert "Vivienda" in out  # leaf category (no caret/children)
+
+
+def test_categories_view_collapse_hides_children():
+    view = CategoriesView(SAMPLE["categories"], {"x": "trabajo"})
+    assert "trabajo" in _text(view._build())  # expanded by default
+    view._collapsed.add(0)
+    collapsed = _text(view._build())
+    assert "▶ Comida" in collapsed  # caret flips
+    assert "trabajo" not in collapsed  # child row hidden
 
 
 def test_app_launches_home_with_outstanding_option():
@@ -76,26 +94,25 @@ def test_app_launches_home_with_outstanding_option():
     asyncio.run(scenario())
 
 
-def test_outstanding_screen_populates_from_fetch(monkeypatch):
+def test_outstanding_screen_populates_and_tree_collapses(monkeypatch):
     monkeypatch.setattr(dashboard_cmd, "fetch_dashboard", lambda *a, **k: SAMPLE)
-    monkeypatch.setattr(dashboard_cmd, "load_hashtag_name_map", lambda: {})
+    monkeypatch.setattr(dashboard_cmd, "load_hashtag_name_map", lambda: {"x": "trabajo"})
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             await app.push_screen(OutstandingScreen())
-            statics = 0
+            view = None
             for _ in range(50):
                 await pilot.pause(0.02)
-                statics = len(app.screen.query("#content Static"))
-                loaders = len(app.screen.query("#content LoadingIndicator"))
-                if statics >= 7 and loaders == 0:
+                found = app.screen.query(CategoriesView)
+                if found and not app.screen.query("#content LoadingIndicator"):
+                    view = found.first()
                     break
-            assert isinstance(app.screen, OutstandingScreen)
-            # worker fetched + populate replaced the loading indicator with the
-            # rendered sections (accounts / people / categories / totals).
-            assert statics >= 7
-            assert len(app.screen.query("#content LoadingIndicator")) == 0
+            assert view is not None  # worker fetched + populate mounted the tree
+            assert view._collapsed == set()
+            await pilot.press("left")  # collapse focused category
+            assert view._collapsed == {0}
 
     asyncio.run(scenario())
