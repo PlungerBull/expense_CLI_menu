@@ -33,6 +33,13 @@ Screen {
     height: 1fr;
     padding: 1 2;
 }
+/* bound the section content to a readable card width so amounts sit in a tidy
+   right-aligned column rather than spreading across a wide terminal. */
+#card {
+    width: 1fr;
+    max-width: 64;
+    height: auto;
+}
 .section-title {
     color: $foreground;
     text-style: bold;

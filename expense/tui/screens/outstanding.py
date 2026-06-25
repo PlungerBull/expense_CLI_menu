@@ -18,7 +18,7 @@ from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, LoadingIndicator, Static
 
@@ -29,7 +29,7 @@ from expense.commands._resource import format_cents
 def _accounts_table(items: list[dict]) -> RenderableType:
     if not items:
         return Text("  (none)", style="dim")
-    t = Table(box=box.SIMPLE, pad_edge=False, expand=False)
+    t = Table(box=box.SIMPLE, pad_edge=False, expand=True)
     t.add_column("Name")
     t.add_column("Cur")
     t.add_column("Balance", justify="right")
@@ -45,7 +45,7 @@ def _accounts_table(items: list[dict]) -> RenderableType:
 def _totals_table(totals: dict | None) -> RenderableType:
     if not isinstance(totals, dict):
         return Text("  (no totals)", style="dim")
-    t = Table(box=box.SIMPLE, pad_edge=False, expand=False)
+    t = Table(box=box.SIMPLE, pad_edge=False, expand=True)
     t.add_column("Totals")
     t.add_column("native", justify="right")
     t.add_column("home", justify="right")
@@ -200,4 +200,6 @@ class OutstandingScreen(Screen):
         )
         widgets.append(Static(Text("Totals"), classes="sect"))
         widgets.append(Static(_totals_table(body.get("totals"))))
-        content.mount(*widgets)
+        # Bound everything to a card so amounts form a tidy right-aligned column
+        # instead of flying to the far edge of a wide terminal.
+        content.mount(Vertical(*widgets, id="card"))
