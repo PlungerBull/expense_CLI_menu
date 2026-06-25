@@ -33,12 +33,34 @@ Screen {
     height: 1fr;
     padding: 1 2;
 }
-/* bound the section content to a readable card width so amounts sit in a tidy
-   right-aligned column rather than spreading across a wide terminal. */
+/* the section content card; its max-width is set per-screen (SectionScreen.
+   CARD_WIDTH) so amounts sit in a tidy column rather than spreading wide. */
 #card {
     width: 1fr;
-    max-width: 64;
     height: auto;
+}
+.legend {
+    color: $text-muted;
+    margin-top: 1;
+}
+
+/* record detail modal */
+RecordModal {
+    align: center middle;
+}
+#modal {
+    width: auto;
+    max-width: 90%;
+    height: auto;
+    max-height: 80%;
+    border: round $surface;
+    background: $panel;
+    padding: 1 2;
+}
+.modal-title {
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
 }
 .section-title {
     color: $foreground;

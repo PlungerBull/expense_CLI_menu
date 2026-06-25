@@ -92,6 +92,51 @@ def _render_inbox_list(body: dict, *, json_mode: bool) -> None:
     render_pagination_hint(body, items)
 
 
+def fetch_inbox(
+    cfg,
+    *,
+    ready: bool = False,
+    overdue: bool = False,
+    include_deleted: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+    debit_as_negative: bool = False,
+    no_cache: bool = False,
+    verbose: bool = False,
+    cold_start_notice: bool = True,
+    notice_stream=None,
+) -> dict:
+    """GET /v1/inbox → the raw engine/replica body. Pure data, no rendering.
+
+    Shared by the flat `inbox list` command and the TUI's Inbox screen. Reads the
+    local replica by default (warming it first); `no_cache` round-trips the
+    engine. `cold_start_notice`/`notice_stream` let a non-terminal caller (TUI)
+    silence the stderr sync chatter.
+    """
+    if no_cache:
+        params: dict = {}
+        if ready:
+            params["ready"] = "true"
+        if include_deleted:
+            params["include_deleted"] = "true"
+        if overdue:
+            params["overdue"] = "true"
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        if debit_as_negative:
+            params["debit_as_negative"] = "true"
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            return client.get(f"/{_RESOURCE}", params=params or None)
+
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
+        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
+    return cache_pkg.list_inbox(
+        ready=ready, overdue=overdue, include_deleted=include_deleted, limit=limit, offset=offset
+    )
+
+
 @app.command("list")
 @handle_errors
 def list_(
@@ -111,37 +156,17 @@ def list_(
     Example: expense inbox list --ready
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        params: dict = {}
-        if ready:
-            params["ready"] = "true"
-        if include_deleted:
-            params["include_deleted"] = "true"
-        if overdue:
-            params["overdue"] = "true"
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-        if debit_as_negative:
-            params["debit_as_negative"] = "true"
-
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}", params=params or None)
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.list_inbox(
-            ready=ready,
-            overdue=overdue,
-            include_deleted=include_deleted,
-            limit=limit,
-            offset=offset,
-        )
-
+    body = fetch_inbox(
+        cfg,
+        ready=ready,
+        overdue=overdue,
+        include_deleted=include_deleted,
+        limit=limit,
+        offset=offset,
+        debit_as_negative=debit_as_negative,
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
     _render_inbox_list(body, json_mode=json_output)
 
 

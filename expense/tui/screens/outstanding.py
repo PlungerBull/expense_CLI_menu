@@ -12,18 +12,16 @@ pure (no event loop), so formatting + collapse are unit-testable directly.
 import io
 
 from rich import box
-from rich.console import Group, RenderableType
+from rich.console import RenderableType
 from rich.table import Table
 from rich.text import Text
-from textual import work
-from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
-from textual.screen import Screen
-from textual.widgets import Footer, LoadingIndicator, Static
+from textual.widget import Widget
+from textual.widgets import Static
 
 from expense.commands import dashboard_cmd
 from expense.commands._resource import format_cents
+from expense.tui.screens._base import SectionScreen
 
 
 def _accounts_table(items: list[dict]) -> RenderableType:
@@ -136,56 +134,28 @@ class CategoriesView(Static):
         self._render_tree()
 
 
-class OutstandingScreen(Screen):
-    BINDINGS = [
-        ("escape", "app.pop_screen", "Back"),
-        ("r", "refresh", "Refresh"),
-    ]
+class OutstandingScreen(SectionScreen):
+    """Current-month balances + spend. Only supplies the breadcrumb, the fetch,
+    and the widgets; SectionScreen owns the worker/card/loading/error/refresh."""
 
-    def compose(self) -> ComposeResult:
-        yield Static("◈ EXPENSE WORLD   ▸ Reports ▸ Outstanding Amounts", id="crumb")
-        yield VerticalScroll(LoadingIndicator(), id="content")
-        yield Footer()
+    crumb = ("Reports", "Outstanding Amounts")
 
-    def on_mount(self) -> None:
-        self.load_dashboard()
-
-    def action_refresh(self) -> None:
-        content = self.query_one("#content", VerticalScroll)
-        content.remove_children()
-        content.mount(LoadingIndicator())
-        self.load_dashboard()
-
-    @work(thread=True, exclusive=True)
-    def load_dashboard(self) -> None:
+    def fetch(self) -> dict:
         from expense import config as config_module
 
-        try:
-            cfg = config_module.ensure_loaded()
-            body = dashboard_cmd.fetch_dashboard(
-                cfg,
-                verbose=self.app._verbose,
-                no_cache=self.app._no_cache,
-                cold_start_notice=False,
-                notice_stream=io.StringIO(),
-            )
-        except Exception as exc:  # surface engine/config errors in-app, don't crash
-            self.app.call_from_thread(self._show_error, str(exc))
-            return
-        self.app.call_from_thread(self._populate, body)
+        cfg = config_module.ensure_loaded()
+        return dashboard_cmd.fetch_dashboard(
+            cfg,
+            verbose=self.app._verbose,
+            no_cache=self.app._no_cache,
+            cold_start_notice=False,
+            notice_stream=io.StringIO(),
+        )
 
-    def _show_error(self, message: str) -> None:
-        content = self.query_one("#content", VerticalScroll)
-        content.remove_children()
-        banner = Group(Text("Could not load dashboard.", style="bold"), Text(message))
-        content.mount(Static(banner, classes="error"))
-
-    def _populate(self, body: dict) -> None:
-        content = self.query_one("#content", VerticalScroll)
-        content.remove_children()
+    def build(self, body: dict) -> list[Widget]:
         month = dashboard_cmd._format_month(body.get("month"))
         title = Text(f"Outstanding Amounts  ·  {month}  (current month)")
-        widgets: list[Static] = [
+        widgets: list[Widget] = [
             Static(title, classes="section-title"),
             Static(Text("Bank accounts"), classes="sect"),
             Static(_accounts_table(body.get("bank_accounts") or [])),
@@ -200,6 +170,4 @@ class OutstandingScreen(Screen):
         )
         widgets.append(Static(Text("Totals"), classes="sect"))
         widgets.append(Static(_totals_table(body.get("totals"))))
-        # Bound everything to a card so amounts form a tidy right-aligned column
-        # instead of flying to the far edge of a wide terminal.
-        content.mount(Vertical(*widgets, id="card"))
+        return widgets
