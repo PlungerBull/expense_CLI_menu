@@ -48,6 +48,26 @@ Screen {
     padding: 1 2;
 }
 
+/* forms */
+#form {
+    padding: 1 2;
+    width: 1fr;
+    max-width: 72;
+    height: auto;
+}
+#form Label {
+    margin-top: 1;
+    color: $text-muted;
+}
+#form Input,
+#form Select {
+    width: 1fr;
+    max-width: 60;
+}
+#form Button {
+    margin-top: 2;
+}
+
 /* record detail modal */
 RecordModal {
     align: center middle;

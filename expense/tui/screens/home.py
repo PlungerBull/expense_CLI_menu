@@ -14,6 +14,7 @@ from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.categories import CategoriesScreen
 from expense.tui.screens.hashtags import HashtagsScreen
 from expense.tui.screens.inbox import InboxScreen
+from expense.tui.screens.log_transaction import LogTransactionScreen
 from expense.tui.screens.outstanding import OutstandingScreen
 from expense.tui.screens.transactions import TransactionsScreen
 
@@ -22,7 +23,7 @@ _BANNER = "◈  EXPENSE WORLD"
 # (id, label) — id None renders a non-selectable group header.
 _MENU: list[tuple[str | None, str]] = [
     (None, "Capture & ledger"),
-    ("soon", "Log a transaction"),
+    ("log", "Log a transaction"),
     ("inbox", "Inbox"),
     ("transactions", "Transactions"),
     ("soon", "Reconciliations"),
@@ -57,6 +58,8 @@ class HomeScreen(Screen):
         kind = opt_id.split(":", 1)[0]
         if kind == "outstanding":
             self.app.push_screen(OutstandingScreen())
+        elif kind == "log":
+            self.app.push_screen(LogTransactionScreen())
         elif kind == "inbox":
             self.app.push_screen(InboxScreen())
         elif kind == "transactions":
