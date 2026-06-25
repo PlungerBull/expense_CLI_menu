@@ -16,7 +16,11 @@ from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import Static
 
-Row = tuple[object, Sequence[str]]
+# A row is (key, cells) or (key, cells, base_style). `key` identifies the row;
+# `cells` may be plain strings or Rich renderables (e.g. a colored swatch);
+# `base_style` is an optional Rich style applied when the row is not the cursor
+# (e.g. "dim" for archived rows).
+Row = tuple
 
 
 class CursorList(Static):
@@ -64,14 +68,22 @@ class CursorList(Static):
     def _refresh(self) -> None:
         self.update(self._build())
 
+    @staticmethod
+    def _cell(value: object) -> object:
+        # pass Rich renderables (e.g. a Text swatch) through; stringify the rest.
+        return value if isinstance(value, (str, Text)) else str(value)
+
     def _build(self) -> RenderableType:
         if not self._rows:
             return Text("  " + self._empty, style="dim")
         t = Table(box=box.SIMPLE, expand=True, pad_edge=False)
         for i, header in enumerate(self._headers):
             t.add_column(header, justify="right" if i in self._align else "left", no_wrap=True)
-        for r, (_key, cells) in enumerate(self._rows):
-            t.add_row(*[str(c) for c in cells], style="reverse" if r == self._cursor else "")
+        for r, row in enumerate(self._rows):
+            cells = row[1]
+            base = row[2] if len(row) > 2 else ""
+            style = "reverse" if r == self._cursor else base
+            t.add_row(*[self._cell(c) for c in cells], style=style)
         return t
 
     def action_move(self, delta: int) -> None:
@@ -82,5 +94,4 @@ class CursorList(Static):
 
     def action_select(self) -> None:
         if self._rows:
-            key, _cells = self._rows[self._cursor]
-            self.post_message(self.Selected(key, self._cursor))
+            self.post_message(self.Selected(self._rows[self._cursor][0], self._cursor))

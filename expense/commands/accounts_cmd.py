@@ -78,6 +78,43 @@ def _render_account_list(body: dict, *, json_mode: bool) -> None:
     render_pagination_hint(body, items)
 
 
+def fetch_accounts(
+    cfg,
+    *,
+    include_archived: bool = False,
+    include_deleted: bool = False,
+    include_people: bool = False,
+    no_cache: bool = False,
+    verbose: bool = False,
+    cold_start_notice: bool = True,
+    notice_stream=None,
+):
+    """GET /v1/accounts → the raw engine/replica body (a flat list). Pure data.
+
+    Shared by the flat `accounts list` command and the TUI's Accounts screen.
+    Reads the local replica by default (warming it first); `no_cache` round-trips
+    the engine. Cached reads return current_balance_home_cents=null.
+    """
+    if no_cache:
+        params: dict = {}
+        if include_archived:
+            params["include_archived"] = "true"
+        if include_deleted:
+            params["include_deleted"] = "true"
+        if include_people:
+            params["include_people"] = "true"
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            return client.get(f"/{_RESOURCE}", params=params or None)
+
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
+        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
+    return cache_pkg.list_accounts(
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        include_people=include_people,
+    )
+
+
 @app.command("list")
 @handle_errors
 def list_(
@@ -96,29 +133,14 @@ def list_(
     Example: expense accounts list --include-archived
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        params: dict = {}
-        if include_archived:
-            params["include_archived"] = "true"
-        if include_deleted:
-            params["include_deleted"] = "true"
-        if include_people:
-            params["include_people"] = "true"
-
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}", params=params or None)
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.list_accounts(
-            include_archived=include_archived,
-            include_deleted=include_deleted,
-            include_people=include_people,
-        )
-
+    body = fetch_accounts(
+        cfg,
+        include_archived=include_archived,
+        include_deleted=include_deleted,
+        include_people=include_people,
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
     _render_account_list(body, json_mode=json_output)
 
 

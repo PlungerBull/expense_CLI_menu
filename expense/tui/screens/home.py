@@ -10,6 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
+from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
 from expense.tui.screens.transactions import TransactionsScreen
@@ -27,7 +28,7 @@ _MENU: list[tuple[str | None, str]] = [
     ("outstanding", "Outstanding Amounts"),
     ("soon", "Monthly report"),
     (None, "Manage"),
-    ("soon", "Accounts"),
+    ("accounts", "Accounts"),
     ("soon", "Categories"),
     ("soon", "Hashtags"),
     (None, "System"),
@@ -58,5 +59,7 @@ class HomeScreen(Screen):
             self.app.push_screen(InboxScreen())
         elif kind == "transactions":
             self.app.push_screen(TransactionsScreen())
+        elif kind == "accounts":
+            self.app.push_screen(AccountsScreen())
         elif kind == "soon":
             self.notify("Coming in a later phase.", title="Not wired yet")
