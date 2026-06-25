@@ -46,12 +46,46 @@ class SectionScreen(Screen):
 
     @work(thread=True, exclusive=True)
     def _load(self) -> None:
+        if self._will_cold_start():
+            self.app.call_from_thread(
+                self._set_loading,
+                "Syncing your data — first run, this can take a moment…",
+            )
         try:
             data = self.fetch()
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             self.app.call_from_thread(self._error, str(exc))
             return
         self.app.call_from_thread(self._show, data)
+
+    def _will_cold_start(self) -> bool:
+        """Cheap check: will the upcoming fetch trigger a full first-run sync?
+
+        Lets the screen swap the bare spinner for a "Syncing…" note so a slow
+        cold-start doesn't look like a hang. Best-effort; False on any doubt.
+        """
+        if getattr(self.app, "_no_cache", False):
+            return False
+        try:
+            from expense import config as config_module
+            from expense.cache import db, state
+
+            config_module.ensure_loaded()
+            conn = db.connect()
+            try:
+                cur = state.read(conn)
+            finally:
+                conn.close()
+            return cur.user_id is None or cur.sync_token is None
+        except Exception:
+            return False
+
+    def _set_loading(self, message: str) -> None:
+        content = self.query_one("#content", VerticalScroll)
+        content.remove_children()
+        content.mount(
+            Vertical(Static(message, classes="sync-note"), LoadingIndicator(), id="loadbox")
+        )
 
     def _show(self, data: object) -> None:
         content = self.query_one("#content", VerticalScroll)

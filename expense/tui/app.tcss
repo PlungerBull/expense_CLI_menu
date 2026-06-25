@@ -43,6 +43,10 @@ Screen {
     color: $text-muted;
     margin-top: 1;
 }
+.sync-note {
+    color: $text-muted;
+    padding: 1 2;
+}
 
 /* record detail modal */
 RecordModal {
