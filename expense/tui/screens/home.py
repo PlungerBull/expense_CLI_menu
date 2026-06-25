@@ -12,6 +12,7 @@ from textual.widgets.option_list import Option
 
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
+from expense.tui.screens.transactions import TransactionsScreen
 
 _BANNER = "◈  EXPENSE WORLD"
 
@@ -20,7 +21,7 @@ _MENU: list[tuple[str | None, str]] = [
     (None, "Capture & ledger"),
     ("soon", "Log a transaction"),
     ("inbox", "Inbox"),
-    ("soon", "Transactions"),
+    ("transactions", "Transactions"),
     ("soon", "Reconciliations"),
     (None, "Reports"),
     ("outstanding", "Outstanding Amounts"),
@@ -55,5 +56,7 @@ class HomeScreen(Screen):
             self.app.push_screen(OutstandingScreen())
         elif kind == "inbox":
             self.app.push_screen(InboxScreen())
+        elif kind == "transactions":
+            self.app.push_screen(TransactionsScreen())
         elif kind == "soon":
             self.notify("Coming in a later phase.", title="Not wired yet")

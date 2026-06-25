@@ -132,6 +132,78 @@ def _parse_hashtag_ids(raw: str) -> list[str]:
     return [piece.strip() for piece in raw.split(",") if piece.strip()]
 
 
+def fetch_transactions(
+    cfg,
+    *,
+    account: str | None = None,
+    category: str | None = None,
+    hashtag: str | None = None,
+    reconciliation: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    cleared: bool | None = None,
+    search: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    include_deleted: bool = False,
+    debit_as_negative: bool = False,
+    no_cache: bool = False,
+    verbose: bool = False,
+    cold_start_notice: bool = True,
+    notice_stream=None,
+) -> dict:
+    """GET /v1/transactions → the raw engine/replica body. Pure data, no render.
+
+    Shared by the flat `transactions list` command and the TUI's Transactions
+    screen. Reads the local replica by default (warming it first); `no_cache`
+    round-trips the engine. `cold_start_notice`/`notice_stream` let a
+    non-terminal caller (TUI) silence the stderr sync chatter.
+    """
+    if no_cache:
+        params: dict = {}
+        if account is not None:
+            params["account_id"] = account
+        if category is not None:
+            params["category_id"] = category
+        if hashtag is not None:
+            params["hashtag_id"] = hashtag
+        if reconciliation is not None:
+            params["reconciliation_id"] = reconciliation
+        if date_from is not None:
+            params["date_from"] = date_from
+        if date_to is not None:
+            params["date_to"] = date_to
+        if cleared is not None:
+            params["cleared"] = "true" if cleared else "false"
+        if search is not None:
+            params["search"] = search
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        if include_deleted:
+            params["include_deleted"] = "true"
+        if debit_as_negative:
+            params["debit_as_negative"] = "true"
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            return client.get(f"/{_RESOURCE}", params=params or None)
+
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
+        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
+    return cache_pkg.list_transactions(
+        account_id=account,
+        category_id=category,
+        hashtag_id=hashtag,
+        reconciliation_id=reconciliation,
+        date_from=date_from,
+        date_to=date_to,
+        cleared=cleared,
+        search=search,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @app.command("list")
 @handle_errors
 def list_(
@@ -162,54 +234,23 @@ def list_(
     Example: expense transactions list --account-id <id> --from 2026-04-01 --to 2026-04-30
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        params: dict = {}
-        if account is not None:
-            params["account_id"] = account
-        if category is not None:
-            params["category_id"] = category
-        if hashtag is not None:
-            params["hashtag_id"] = hashtag
-        if reconciliation is not None:
-            params["reconciliation_id"] = reconciliation
-        if date_from is not None:
-            params["date_from"] = date_from
-        if date_to is not None:
-            params["date_to"] = date_to
-        if cleared is not None:
-            params["cleared"] = "true" if cleared else "false"
-        if search is not None:
-            params["search"] = search
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-        if include_deleted:
-            params["include_deleted"] = "true"
-        if debit_as_negative:
-            params["debit_as_negative"] = "true"
-
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}", params=params or None)
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.list_transactions(
-            account_id=account,
-            category_id=category,
-            hashtag_id=hashtag,
-            reconciliation_id=reconciliation,
-            date_from=date_from,
-            date_to=date_to,
-            cleared=cleared,
-            search=search,
-            limit=limit,
-            offset=offset,
-        )
-
+    body = fetch_transactions(
+        cfg,
+        account=account,
+        category=category,
+        hashtag=hashtag,
+        reconciliation=reconciliation,
+        date_from=date_from,
+        date_to=date_to,
+        cleared=cleared,
+        search=search,
+        limit=limit,
+        offset=offset,
+        include_deleted=include_deleted,
+        debit_as_negative=debit_as_negative,
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
     _render_transaction_list(body, json_mode=json_output)
 
 
