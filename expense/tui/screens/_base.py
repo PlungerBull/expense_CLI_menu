@@ -38,10 +38,10 @@ class SectionScreen(Screen):
     def on_mount(self) -> None:
         self._load()
 
-    def action_reload(self) -> None:
+    async def action_reload(self) -> None:
         content = self.query_one("#content", VerticalScroll)
-        content.remove_children()
-        content.mount(LoadingIndicator())
+        await content.remove_children()
+        await content.mount(LoadingIndicator())
         self._load()
 
     @work(thread=True, exclusive=True)
@@ -80,26 +80,100 @@ class SectionScreen(Screen):
         except Exception:
             return False
 
-    def _set_loading(self, message: str) -> None:
+    async def _set_loading(self, message: str) -> None:
         content = self.query_one("#content", VerticalScroll)
-        content.remove_children()
-        content.mount(
+        await content.remove_children()
+        await content.mount(
             Vertical(Static(message, classes="sync-note"), LoadingIndicator(), id="loadbox")
         )
 
-    def _show(self, data: object) -> None:
+    async def _show(self, data: object) -> None:
         content = self.query_one("#content", VerticalScroll)
-        content.remove_children()
+        await content.remove_children()
         card = Vertical(*self.build(data), id="card")
         if self.CARD_WIDTH is not None:
             card.styles.max_width = self.CARD_WIDTH
-        content.mount(card)
+        await content.mount(card)
 
-    def _error(self, message: str) -> None:
+    async def _error(self, message: str) -> None:
         content = self.query_one("#content", VerticalScroll)
-        content.remove_children()
+        await content.remove_children()
         banner = Group(Text("Could not load.", style="bold"), Text(message))
-        content.mount(Static(banner, classes="error"))
+        await content.mount(Static(banner, classes="error"))
+
+    # ---- shared write helpers (Phase 2) ----------------------------------
+    def selected_record(self) -> dict | None:
+        """The record under the list cursor (screens keep `_by_id`)."""
+        from expense.tui.widgets.cursor_list import CursorList
+
+        try:
+            cursor_list = self.query_one(CursorList)
+        except Exception:
+            return None
+        return getattr(self, "_by_id", {}).get(cursor_list.cursor_key)
+
+    @work(thread=True)
+    def run_write(self, method: str, path: str, *, success: str = "Done.") -> None:
+        """POST/DELETE an engine endpoint off the UI thread, refresh the replica,
+        then reload the screen. Idempotency + error envelope come from the client.
+        """
+        import io
+
+        from expense import config as config_module
+        from expense.cache import refresh_after_write
+        from expense.http import ExpenseClient
+
+        cfg = config_module.ensure_loaded()
+        try:
+            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
+                if method == "POST":
+                    client.post(path)
+                elif method == "DELETE":
+                    client.delete(path)
+                else:
+                    raise ValueError(f"unsupported write method: {method}")
+                refresh_after_write(
+                    client,
+                    cfg,
+                    no_cache=self.app._no_cache,
+                    no_sync_after=False,
+                    notice_stream=io.StringIO(),
+                )
+        except Exception as exc:
+            self.app.call_from_thread(self.notify, str(exc), title="Failed", severity="error")
+            return
+        self.app.call_from_thread(self._after_write, success)
+
+    def _after_write(self, message: str) -> None:
+        self.notify(message)
+        self._load()  # re-fetch; _show awaits the swap so there's no card clash
+
+    def confirm_write(
+        self, title: str, message: str, method: str, path: str, *, success: str = "Done."
+    ) -> None:
+        """Push a yes/no modal; on yes, run the write + refresh + reload."""
+        from expense.tui.screens.modals import ConfirmModal
+
+        def _cb(confirmed: bool | None) -> None:
+            if confirmed:
+                self.run_write(method, path, success=success)
+
+        self.app.push_screen(ConfirmModal(title, message), _cb)
+
+    def archive_selected(self, resource: str, label: str) -> None:
+        """Archive (or unarchive) the cursor record — POST /{resource}/{id}/{verb}."""
+        item = self.selected_record()
+        if not item:
+            return
+        verb = "unarchive" if item.get("is_archived") else "archive"
+        name = item.get("name") or item.get("title") or "—"
+        self.confirm_write(
+            f"{verb.capitalize()} {label}?",
+            f"{verb.capitalize()} “{name}”.",
+            "POST",
+            f"/{resource}/{item['id']}/{verb}",
+            success=f"{verb.capitalize()}d.",
+        )
 
     # ---- subclass hooks --------------------------------------------------
     def fetch(self) -> object:

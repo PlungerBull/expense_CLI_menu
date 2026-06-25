@@ -37,3 +37,33 @@ class RecordModal(ModalScreen):
 
     def action_close(self) -> None:
         self.dismiss()
+
+
+class ConfirmModal(ModalScreen[bool]):
+    """Yes/no confirmation. `y`/`enter` confirm, `n`/`esc` cancel. Dismisses with
+    the boolean result (use `push_screen(modal, callback)` to act on it)."""
+
+    BINDINGS = [
+        ("y,enter", "confirm", "Yes"),
+        ("n,escape", "cancel", "No"),
+    ]
+
+    def __init__(self, title: str, message: str) -> None:
+        super().__init__()
+        self._title = title
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static(Text(self._title), classes="modal-title"),
+            Static(Text(self._message)),
+            Static(Text("[y / enter] confirm    [n / esc] cancel", style="dim")),
+            id="modal",
+        )
+        yield Footer()
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)

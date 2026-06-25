@@ -60,7 +60,11 @@ def inbox_rows(items: list[dict], accounts: dict, categories: dict, ready_ids: s
 class InboxScreen(SectionScreen):
     crumb = ("Capture & ledger", "Inbox")
     CARD_WIDTH = 100
-    BINDINGS = [("f", "cycle_filter", "Filter")]
+    BINDINGS = [
+        ("f", "cycle_filter", "Filter"),
+        ("p", "promote", "Promote"),
+        ("d", "delete", "Delete"),
+    ]
 
     def __init__(self) -> None:
         super().__init__()
@@ -112,6 +116,32 @@ class InboxScreen(SectionScreen):
         i = _FILTERS.index(self._filter)
         self._filter = _FILTERS[(i + 1) % len(_FILTERS)]
         self.action_reload()
+
+    def action_promote(self) -> None:
+        item = self.selected_record()
+        if not item:
+            return
+        title = item.get("title") or "—"
+        self.confirm_write(
+            "Promote to ledger?",
+            f"Create a real transaction from “{title}” and soft-delete the draft. "
+            "The engine rejects items missing required fields.",
+            "POST",
+            f"/inbox/{item['id']}/promote",
+            success="Promoted to ledger.",
+        )
+
+    def action_delete(self) -> None:
+        item = self.selected_record()
+        if not item:
+            return
+        self.confirm_write(
+            "Delete inbox item?",
+            f"Soft-delete the draft “{item.get('title') or '—'}”.",
+            "DELETE",
+            f"/inbox/{item['id']}",
+            success="Deleted.",
+        )
 
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
         item = self._by_id.get(event.key)

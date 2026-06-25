@@ -34,10 +34,14 @@ def hashtag_rows(items: list[dict]) -> list:
 class HashtagsScreen(SectionScreen):
     crumb = ("Manage", "Hashtags")
     CARD_WIDTH = 48
+    BINDINGS = [("a", "archive", "Archive")]
 
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
+
+    def action_archive(self) -> None:
+        self.archive_selected("hashtags", "hashtag")
 
     def fetch(self) -> list:
         from expense import config as config_module

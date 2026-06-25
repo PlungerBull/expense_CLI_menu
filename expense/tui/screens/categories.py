@@ -37,10 +37,14 @@ def category_rows(items: list[dict]) -> list:
 class CategoriesScreen(SectionScreen):
     crumb = ("Manage", "Categories")
     CARD_WIDTH = 60
+    BINDINGS = [("a", "archive", "Archive")]
 
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
+
+    def action_archive(self) -> None:
+        self.archive_selected("categories", "category")
 
     def fetch(self) -> list:
         from expense import config as config_module

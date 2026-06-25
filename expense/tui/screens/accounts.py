@@ -43,10 +43,14 @@ def account_rows(items: list[dict]) -> list:
 class AccountsScreen(SectionScreen):
     crumb = ("Manage", "Accounts")
     CARD_WIDTH = 80
+    BINDINGS = [("a", "archive", "Archive")]
 
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
+
+    def action_archive(self) -> None:
+        self.archive_selected("accounts", "account")
 
     def fetch(self) -> list:
         from expense import config as config_module
