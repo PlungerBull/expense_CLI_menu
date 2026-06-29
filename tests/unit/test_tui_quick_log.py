@@ -98,6 +98,45 @@ def test_quick_log_full_flow_submits_payload(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_quick_log_guards_double_submit(monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen()
+            await app.push_screen(screen)
+            await pilot.pause(0.05)
+            screen._values.update(title="x", amount=-500, account="acc1", category="cat1")
+            screen.action_submit()
+            screen.action_submit()  # in flight → ignored
+            screen.action_submit()
+            for _ in range(40):
+                await pilot.pause(0.02)
+                if _FakeClient.calls:
+                    break
+            await pilot.pause(0.1)
+            assert len(_FakeClient.calls) == 1  # exactly one transaction created
+
+    asyncio.run(scenario())
+
+
+def test_suggest_window_keeps_highlight_visible():
+    import io
+
+    from rich.console import Console
+
+    screen = QuickAddLogScreen()
+    screen._current = 4  # category (an entity field)
+    screen._suggestions = [(f"c{i}", f"Cat{i}") for i in range(20)]
+    screen._suggest_idx = 17
+    con = Console(file=io.StringIO(), width=60)
+    con.print(screen._suggest_renderable())
+    out = con.file.getvalue()
+    assert "Cat17" in out  # highlighted row is within the scrolled window
+    assert "more" in out  # overflow indicator shown
+
+
 def test_quick_log_rejects_zero_and_unknown_account(monkeypatch):
     _patch(monkeypatch)
 

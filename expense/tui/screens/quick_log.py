@@ -48,7 +48,7 @@ _HINTS = {
     "amount": "signed decimal · − expense / + income · in the account's currency",
     "account": "pick an existing account · ↑↓ highlight · enter select",
     "category": "pick an existing category · ↑↓ highlight · enter select",
-    "hashtags": "pick existing tags · enter adds & stays · empty enter moves on",
+    "hashtags": "type a tag · ↑↓ highlight · enter adds & stays · empty enter = done (optional)",
     "note": "optional · enter creates the transaction · (ctrl+s anytime)",
 }
 
@@ -91,6 +91,7 @@ class QuickAddLogScreen(Screen):
         self._hashtags: list = []  # (id, name)
         self._suggestions: list = []
         self._suggest_idx = 0
+        self._submitting = False  # one-shot guard against duplicate creates
 
     # ---- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -265,14 +266,25 @@ class QuickAddLogScreen(Screen):
             return Text("")
         if not self._suggestions:
             return Text("  no matches — pick something that exists", style="dim")
-        rows = []
-        for idx, ent in enumerate(self._suggestions[:8]):
-            name = ent[1]
+        window = 8
+        total = len(self._suggestions)
+        # scroll the window so the highlighted row stays visible
+        start = 0
+        if total > window:
+            start = max(0, min(self._suggest_idx - window // 2, total - window))
+        rows: list = []
+        if start > 0:
+            rows.append(Text(f"  ↑ {start} more", style="dim"))
+        for idx in range(start, min(start + window, total)):
+            ent = self._suggestions[idx]
             extra = f"  {ent[2]}" if len(ent) > 2 else ""
-            line = Text(f"  {name}{extra}")
+            line = Text(f"  {ent[1]}{extra}")
             if idx == self._suggest_idx:
                 line.stylize("reverse")
             rows.append(line)
+        remaining = total - min(start + window, total)
+        if remaining > 0:
+            rows.append(Text(f"  ↓ {remaining} more", style="dim"))
         return Group(*rows)
 
     def _summary_renderable(self) -> RenderableType:
@@ -297,6 +309,8 @@ class QuickAddLogScreen(Screen):
         self.app.pop_screen()
 
     def action_submit(self) -> None:
+        if self._submitting:
+            return  # a create is already in flight — ignore extra enters
         for key in _REQUIRED:
             if key not in self._values:
                 self.notify(f"{key.capitalize()} is required.", severity="error")
@@ -313,9 +327,11 @@ class QuickAddLogScreen(Screen):
             payload["description"] = self._values["note"]
         if self._values.get("hashtags"):
             payload["hashtag_ids"] = self._values["hashtags"]
+        self._submitting = True
+        self.query_one("#hint", Static).update(Text("Creating transaction…", style="dim"))
         self._submit(payload)
 
-    @work(thread=True)
+    @work(thread=True, exclusive=True)
     def _submit(self, payload: dict) -> None:
         from expense import config as config_module
         from expense.cache import refresh_after_write
@@ -333,9 +349,14 @@ class QuickAddLogScreen(Screen):
                     notice_stream=io.StringIO(),
                 )
         except Exception as exc:
-            self.app.call_from_thread(self.notify, str(exc), title="Failed", severity="error")
+            self.app.call_from_thread(self._failed, str(exc))
             return
         self.app.call_from_thread(self._done)
+
+    def _failed(self, message: str) -> None:
+        self._submitting = False  # let them fix and retry
+        self.notify(message, title="Failed", severity="error")
+        self._refresh_view()
 
     def _done(self) -> None:
         self.notify("Transaction created.")
