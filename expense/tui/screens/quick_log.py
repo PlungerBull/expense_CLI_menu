@@ -49,7 +49,7 @@ _HINTS = {
     "account": "pick an existing account · ↑↓ highlight · enter select",
     "category": "pick an existing category · ↑↓ highlight · enter select",
     "hashtags": "pick existing tags · enter adds & stays · empty enter moves on",
-    "note": "optional · enter to save · empty enter to skip",
+    "note": "optional · enter creates the transaction · (ctrl+s anytime)",
 }
 
 
@@ -175,6 +175,7 @@ class QuickAddLogScreen(Screen):
         elif key == "category":
             pool = [(i, n) for (i, n) in self._categories if needle in n.lower()]
         elif key == "hashtags":
+            needle = needle.lstrip("#")  # users type "#dog"; stored names have no "#"
             chosen = set(self._values.get("hashtags", []))
             pool = [(i, n) for (i, n) in self._hashtags if needle in n.lower() and i not in chosen]
         else:
@@ -241,7 +242,8 @@ class QuickAddLogScreen(Screen):
         elif key == "note":
             if text:
                 self._values["note"] = self._display["note"] = text
-            self._advance()
+            self.action_submit()  # note is the last field → enter creates
+            return
         self._refresh_view()
 
     def _advance(self) -> None:

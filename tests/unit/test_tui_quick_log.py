@@ -82,10 +82,9 @@ def test_quick_log_full_flow_submits_payload(monkeypatch):
             _enter(screen, "-99.92")  # amount
             _enter(screen, "BCP P")  # account → BCP PEN
             _enter(screen, "Masco")  # category → Mascotas
-            _enter(screen, "dog")  # hashtag add (stays)
+            _enter(screen, "#dog")  # hashtag add (leading # stripped → matches "dog")
             _enter(screen, "")  # hashtags done → advance to note
-            _enter(screen, "")  # note skip
-            screen.action_submit()
+            _enter(screen, "")  # note empty → enter creates (last field)
             for _ in range(40):
                 await pilot.pause(0.02)
                 if _FakeClient.calls:
