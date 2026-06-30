@@ -43,7 +43,7 @@ def account_rows(items: list[dict]) -> list:
 class AccountsScreen(SectionScreen):
     crumb = ("Manage", "Accounts")
     CARD_WIDTH = 80
-    BINDINGS = [("a", "archive", "Archive")]
+    BINDINGS = [("a", "archive", "Archive"), ("n", "new", "New")]
 
     def __init__(self) -> None:
         super().__init__()
@@ -51,6 +51,11 @@ class AccountsScreen(SectionScreen):
 
     def action_archive(self) -> None:
         self.archive_selected("accounts", "account")
+
+    def action_new(self) -> None:
+        from expense.tui.screens.create_forms import NewAccountScreen
+
+        self.app.push_screen(NewAccountScreen(), lambda _result: self._load())
 
     def fetch(self) -> list:
         from expense import config as config_module

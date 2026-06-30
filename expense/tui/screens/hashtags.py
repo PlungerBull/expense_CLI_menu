@@ -34,7 +34,7 @@ def hashtag_rows(items: list[dict]) -> list:
 class HashtagsScreen(SectionScreen):
     crumb = ("Manage", "Hashtags")
     CARD_WIDTH = 48
-    BINDINGS = [("a", "archive", "Archive")]
+    BINDINGS = [("a", "archive", "Archive"), ("n", "new", "New")]
 
     def __init__(self) -> None:
         super().__init__()
@@ -42,6 +42,11 @@ class HashtagsScreen(SectionScreen):
 
     def action_archive(self) -> None:
         self.archive_selected("hashtags", "hashtag")
+
+    def action_new(self) -> None:
+        from expense.tui.screens.create_forms import NewHashtagScreen
+
+        self.app.push_screen(NewHashtagScreen(), lambda _result: self._load())
 
     def fetch(self) -> list:
         from expense import config as config_module
