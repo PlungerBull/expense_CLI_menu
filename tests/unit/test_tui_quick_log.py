@@ -36,7 +36,8 @@ def test_amount_to_text_roundtrips():
 
 
 class _FakeClient:
-    calls: list = []
+    calls: list = []  # POST (path, body)
+    puts: list = []  # PUT (path, body)
 
     def __init__(self, *a, **k):
         pass
@@ -51,14 +52,22 @@ class _FakeClient:
         _FakeClient.calls.append((path, json_body))
         return {}
 
+    def put(self, path, json_body=None):
+        _FakeClient.puts.append((path, json_body))
+        return {}
+
 
 def _patch(monkeypatch):
     _FakeClient.calls = []
+    _FakeClient.puts = []
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
     monkeypatch.setattr(
         "expense.commands.categories_cmd.fetch_categories", lambda *a, **k: CATEGORIES
     )
     monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", lambda *a, **k: HASHTAGS)
+    monkeypatch.setattr("expense.tui.screens.quick_log.load_account_name_map", lambda: {})
+    monkeypatch.setattr("expense.tui.screens.quick_log.load_category_name_map", lambda: {})
+    monkeypatch.setattr("expense.tui.screens.quick_log.load_hashtag_name_map", lambda: {})
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
     monkeypatch.setattr("expense.http.ExpenseClient", _FakeClient)
     monkeypatch.setattr("expense.cache.refresh_after_write", lambda *a, **k: None)
@@ -82,6 +91,26 @@ async def _wait_post(pilot):
         await pilot.pause(0.02)
         if _FakeClient.calls:
             return
+
+
+async def _wait_put(pilot):
+    for _ in range(40):
+        await pilot.pause(0.02)
+        if _FakeClient.puts:
+            return
+
+
+TXN = {
+    "id": "tx1",
+    "date": "2026-06-20T00:00:00Z",
+    "title": "Farmacia",
+    "amount_cents": -4250,
+    "account_id": "acc1",
+    "category_id": "cat1",
+    "cleared": False,
+    "hashtag_ids": ["h1"],
+    "description": "receta",
+}
 
 
 def test_quick_log_normal_flow_submits_payload(monkeypatch):
@@ -175,6 +204,60 @@ def test_suggest_window_keeps_highlight_visible():
     con.print(screen._suggest_renderable())
     out = con.file.getvalue()
     assert "Cat17" in out and "more" in out
+
+
+def test_edit_prefills_and_puts_only_changed_fields(monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen(record=TXN, resource="transactions")
+            await app.push_screen(screen)
+            await _wait_loaded(screen, pilot)
+            assert screen._mode == "edit"
+            assert screen._values["title"] == "Farmacia" and screen._values["amount"] == -4250
+            # change just the title, then save
+            screen._current = screen._sequence().index("title")
+            _enter(screen, "Farmacia Inkafarma")
+            screen.action_submit()
+            await _wait_put(pilot)
+            path, body = _FakeClient.puts[0]
+            assert path == "/transactions/tx1"
+            assert body == {"title": "Farmacia Inkafarma"}  # diff only
+            assert not _FakeClient.calls  # never POSTs in edit mode
+
+    asyncio.run(scenario())
+
+
+def test_edit_no_changes_does_not_submit(monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen(record=TXN, resource="transactions")
+            await app.push_screen(screen)
+            await _wait_loaded(screen, pilot)
+            screen.action_submit()  # nothing changed
+            await pilot.pause(0.1)
+            assert not _FakeClient.puts and not _FakeClient.calls
+
+    asyncio.run(scenario())
+
+
+def test_edit_transfer_leg_locks_amount_account_date():
+    leg = {**TXN, "transfer_transaction_id": "sibling1"}
+    screen = QuickAddLogScreen(record=leg, resource="transactions")
+    assert screen._locked == {"amount", "account", "date"}
+    # the first editable field skips the locked date → title
+    assert screen._sequence()[screen._first_editable()] == "title"
+
+
+def test_edit_inbox_sequence_has_no_hashtags():
+    screen = QuickAddLogScreen(record={"id": "i1", "title": "x"}, resource="inbox")
+    assert "hashtags" not in screen._sequence()
+    assert "cleared" in screen._sequence()
 
 
 def test_quick_log_rejects_zero_and_unknown_account(monkeypatch):

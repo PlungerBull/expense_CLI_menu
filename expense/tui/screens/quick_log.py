@@ -1,18 +1,22 @@
-"""Log a transaction — quick-add bar (Phase 2).
+"""Log / edit a transaction — quick-add bar (Phase 2).
 
-One input bar cycles through fields; a summary fills below as you go. Entity
-fields (account/category/hashtags/transfer-to) show a live-filtered suggestion
-list — pick existing entities only.
+One input bar cycles through fields; a summary fills below. Entity fields
+(account/category/hashtags/transfer-to) show a live-filtered suggestion list —
+pick existing entities only.
 
-Normal flow: Date › Title › Amount › Account › Transfer to? › Category ›
-Hashtags › Note. Filling "Transfer to?" makes it a transfer instead: the field
-set becomes … Account › Transfer to › To amount › Note (no category/hashtags —
-the engine assigns @Transfer / @Debt). The To amount is the opposite sign of
-Amount (auto-mirrored for same-currency accounts).
+CREATE (record=None): Date › Title › Amount › Account › Transfer to? › Category ›
+Hashtags › Note. Filling "Transfer to?" makes it a transfer (… › To amount ›
+Note; no category/hashtags — the engine assigns @Transfer/@Debt). To amount is
+the opposite sign of Amount (auto-mirrored for same-currency accounts).
 
-`enter` saves & advances · `ctrl+↑/↓` jump fields to re-edit · `↑/↓` move the
-suggestion highlight · `ctrl+s` creates. Sign is explicit (− expense / +
-income); currency is derived from the account.
+EDIT (record + resource): the same bar pre-filled. Sequence: Date › Title ›
+Amount › Account › Category › Cleared › Hashtags › Note. Transfer legs lock
+amount/account/date (shown faded, skipped). `ctrl+s` PUTs only the changed
+fields.
+
+`enter` saves & advances · `ctrl+↑/↓` jump fields · `↑/↓` move the suggestion
+highlight · `ctrl+s` submits. Sign explicit (− expense / + income); currency
+derived from the account.
 """
 
 import io
@@ -30,7 +34,12 @@ from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Static
 
 from expense.commands import accounts_cmd, categories_cmd, hashtags_cmd
-from expense.commands._resource import format_cents
+from expense.commands._resource import (
+    format_cents,
+    load_account_name_map,
+    load_category_name_map,
+)
+from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.dates import to_canonical_aware
 from expense.tui.widgets.header import Breadcrumb
 
@@ -42,21 +51,34 @@ _LABELS = {
     "transfer_to": "TRANSFER TO?",
     "to_amount": "TO AMOUNT",
     "category": "CATEGORY",
+    "cleared": "CLEARED?",
     "hashtags": "HASHTAGS",
     "note": "NOTE",
 }
-_ENTITY = {"account", "transfer_to", "category", "hashtags"}  # account-pool / cat / tag
+_ENTITY = {"account", "transfer_to", "category", "hashtags"}
 _AMOUNTS = {"amount", "to_amount"}
 _HINTS = {
-    "date": "YYYY-MM-DD · enter to accept today, or type a date",
+    "date": "YYYY-MM-DD · enter to accept, or type a date",
     "title": "free text · enter to save",
     "amount": "signed decimal · − expense / + income · in the account's currency",
     "account": "pick an existing account · ↑↓ highlight · enter select",
     "transfer_to": "optional · pick a destination account → transfer · empty enter = skip",
     "to_amount": "opposite sign of Amount · same currency is auto-filled · overwrite if needed",
     "category": "pick an existing category · ↑↓ highlight · enter select",
+    "cleared": "type yes / no / unset · has it posted at the bank?",
     "hashtags": "type a tag · ↑↓ highlight · enter adds & stays · empty enter = done (optional)",
-    "note": "optional · enter creates the transaction · (ctrl+s anytime)",
+    "note": "optional · enter saves · (ctrl+s anytime)",
+}
+# engine field name for each form key
+_ENGINE_FIELD = {
+    "date": "date",
+    "title": "title",
+    "amount": "amount_cents",
+    "account": "account_id",
+    "category": "category_id",
+    "cleared": "cleared",
+    "hashtags": "hashtag_ids",
+    "note": "description",
 }
 
 
@@ -78,41 +100,94 @@ def amount_to_text(cents: int) -> str:
 
 
 class QuickAddLogScreen(Screen):
-    crumb = ("Capture & ledger", "Log a transaction")
     BINDINGS = [
         ("escape", "cancel", "Cancel"),
-        ("ctrl+s", "submit", "Create"),
+        ("ctrl+s", "submit", "Save"),
         ("up", "suggest(-1)", "↑"),
         ("down", "suggest(1)", "↓"),
         ("ctrl+up", "field(-1)", "Prev field"),
         ("ctrl+down", "field(1)", "Next field"),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, *, record: dict | None = None, resource: str | None = None) -> None:
         super().__init__()
+        self._mode = "edit" if record else "create"
+        self._resource = resource or "transactions"
+        self._record = record or {}
         self._current = 0
-        self._values: dict = {"date": date_cls.today().isoformat()}
-        self._display: dict = {"date": self._values["date"]}
-        self._accounts: list = []  # (id, name, currency)
-        self._categories: list = []  # (id, name)
-        self._hashtags: list = []  # (id, name)
+        self._accounts: list = []
+        self._categories: list = []
+        self._hashtags: list = []
         self._suggestions: list = []
         self._suggest_idx = 0
         self._submitting = False
+        self._locked: set[str] = set()
+        self._original: dict = {}
 
-    # ---- field sequence (dynamic: transfer swaps the tail) ---------------
+        if self._mode == "edit":
+            self.crumb = (
+                ("Capture & ledger", "Inbox", "Edit draft")
+                if self._resource == "inbox"
+                else ("Capture & ledger", "Transactions", "Edit")
+            )
+            self._prefill(self._record)
+        else:
+            self.crumb = ("Capture & ledger", "Log a transaction")
+            self._values = {"date": date_cls.today().isoformat()}
+            self._display = {"date": self._values["date"]}
+
+    # ---- edit pre-fill ---------------------------------------------------
+    def _prefill(self, rec: dict) -> None:
+        self._values = {}
+        self._display = {}
+        date = (rec.get("date") or "")[:10]
+        if date:
+            self._values["date"] = self._display["date"] = date
+        if rec.get("title"):
+            self._values["title"] = self._display["title"] = rec["title"]
+        if rec.get("amount_cents") is not None:
+            self._values["amount"] = rec["amount_cents"]
+            self._display["amount"] = format_cents(rec["amount_cents"])
+        if rec.get("account_id"):
+            self._values["account"] = rec["account_id"]
+            self._display["account"] = rec["account_id"][:8]  # resolved once entities load
+        if rec.get("category_id"):
+            self._values["category"] = rec["category_id"]
+            self._display["category"] = rec["category_id"][:8]
+        cleared = rec.get("cleared")
+        if cleared is not None:
+            self._values["cleared"] = cleared
+            self._display["cleared"] = "yes" if cleared else "no"
+        tags = rec.get("hashtag_ids") or []
+        if tags:
+            self._values["hashtags"] = list(tags)
+            self._display["hashtags"] = " ".join("#" + t[:6] for t in tags)
+        if rec.get("description"):
+            self._values["note"] = self._display["note"] = rec["description"]
+        self._original = dict(self._values)
+        # transfer legs lock amount/account/date (engine read-only); reconciliation
+        # locks rely on the engine's 422 (not reliably detectable from the row).
+        if rec.get("transfer_transaction_id"):
+            self._locked = {"amount", "account", "date"}
+
+    # ---- field sequence --------------------------------------------------
     def _is_transfer(self) -> bool:
-        return bool(self._values.get("transfer_to"))
+        return self._mode == "create" and bool(self._values.get("transfer_to"))
 
     def _sequence(self) -> list[str]:
+        if self._mode == "edit":
+            seq = ["date", "title", "amount", "account", "category", "cleared"]
+            if self._resource == "transactions":  # inbox drafts have no hashtags
+                seq.append("hashtags")
+            seq.append("note")
+            return seq
         seq = ["date", "title", "amount", "account", "transfer_to"]
-        if self._is_transfer():
-            seq += ["to_amount", "note"]
-        else:
-            seq += ["category", "hashtags", "note"]
-        return seq
+        tail = ["to_amount", "note"] if self._is_transfer() else ["category", "hashtags", "note"]
+        return seq + tail
 
     def _required(self) -> tuple[str, ...]:
+        if self._mode == "edit":
+            return ()  # diff-based; the record is already valid
         if self._is_transfer():
             return ("title", "amount", "account", "transfer_to", "to_amount")
         return ("title", "amount", "account", "category")
@@ -125,17 +200,24 @@ class QuickAddLogScreen(Screen):
     # ---- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Breadcrumb(self.crumb, id="crumb")
-        yield Horizontal(Label("DATE", id="field"), Input(id="bar"), id="inputbar")
+        yield Horizontal(Label("", id="field"), Input(id="bar"), id="inputbar")
         yield Static("", id="hint")
         yield Static("", id="suggest")
         yield Static("", id="summary")
         yield Footer()
 
     def on_mount(self) -> None:
+        self._current = self._first_editable()
         self._refresh_bar()
         self._refresh_view()
         self.query_one("#bar", Input).focus()
         self._load_entities()
+
+    def _first_editable(self) -> int:
+        for i, key in enumerate(self._sequence()):
+            if key not in self._locked:
+                return i
+        return 0
 
     @work(thread=True)
     def _load_entities(self) -> None:
@@ -162,12 +244,28 @@ class QuickAddLogScreen(Screen):
             if c.get("id") and not c.get("is_system")
         ]
         hashtags = [(t["id"], t.get("name") or "(unnamed)") for t in tags if t.get("id")]
-        self.app.call_from_thread(self._set_entities, accounts, categories, hashtags)
+        # full maps (incl system/archived) for resolving pre-filled edit values
+        maps = (load_account_name_map(), load_category_name_map(), load_hashtag_name_map())
+        self.app.call_from_thread(self._set_entities, accounts, categories, hashtags, maps)
 
-    def _set_entities(self, accounts, categories, hashtags) -> None:
+    def _set_entities(self, accounts, categories, hashtags, maps) -> None:
         self._accounts, self._categories, self._hashtags = accounts, categories, hashtags
+        self._acc_names, self._cat_names, self._tag_names_map = maps
+        if self._mode == "edit":  # resolve pre-filled ids → names
+            if "account" in self._values:
+                self._display["account"] = self._resolve(self._values["account"], self._acc_names)
+            if "category" in self._values:
+                self._display["category"] = self._resolve(self._values["category"], self._cat_names)
+            if self._values.get("hashtags"):
+                self._display["hashtags"] = " ".join(
+                    "#" + self._resolve(t, self._tag_names_map) for t in self._values["hashtags"]
+                )
         self._recompute_suggestions(self.query_one("#bar", Input).value)
         self._refresh_view()
+
+    @staticmethod
+    def _resolve(id_: str, names: dict) -> str:
+        return names.get(id_, id_[:8])
 
     def _account_currency(self, account_id) -> str | None:
         return next((c for (i, n, c) in self._accounts if i == account_id), None)
@@ -179,19 +277,31 @@ class QuickAddLogScreen(Screen):
         bar = self.query_one("#bar", Input)
         if key in _AMOUNTS and key in self._values:
             bar.value = amount_to_text(self._values[key])
+        elif key == "cleared":
+            bar.value = self._display.get("cleared", "unset")
         elif key in ("date", "title", "note"):
             bar.value = str(self._values.get(key, "") or "")
         else:  # entity fields re-pick from scratch
             bar.value = ""
         self._recompute_suggestions(bar.value)
 
+    def _step_field(self, delta: int) -> int:
+        seq = self._sequence()
+        step = 1 if delta > 0 else -1
+        j = self._current
+        while 0 <= j + step < len(seq):
+            j += step
+            if seq[j] not in self._locked:
+                return j
+        return self._current  # no editable field that way
+
     def action_field(self, delta: int) -> None:
-        self._current = max(0, min(len(self._sequence()) - 1, self._current + delta))
+        self._current = self._step_field(delta)
         self._refresh_bar()
         self._refresh_view()
 
     def _advance(self) -> None:
-        self._current = min(len(self._sequence()) - 1, self._current + 1)
+        self._current = self._step_field(1)
         self._refresh_bar()
 
     def action_suggest(self, delta: int) -> None:
@@ -259,22 +369,40 @@ class QuickAddLogScreen(Screen):
             self._values[key] = picked[0]
             self._display[key] = picked[1]
             self._advance()
+        elif key == "cleared":
+            self._commit_cleared(text)
         elif key == "transfer_to":
             self._commit_transfer_to(text)
         elif key == "to_amount":
             self._commit_to_amount(text)
         elif key == "hashtags":
             self._commit_hashtag(text)
-            return  # _commit_hashtag advances or stays itself
+            return
         elif key == "note":
             if text:
                 self._values["note"] = self._display["note"] = text
-            self.action_submit()  # note is last → enter creates
+            self.action_submit()  # note is last → enter submits
             return
         self._refresh_view()
 
+    def _commit_cleared(self, text: str) -> None:
+        t = text.strip().lower()
+        if t in ("", "unset", "u", "none"):
+            self._values["cleared"] = None
+            self._display["cleared"] = "unset"
+        elif t in ("yes", "y", "true", "1", "cleared"):
+            self._values["cleared"] = True
+            self._display["cleared"] = "yes"
+        elif t in ("no", "n", "false", "0"):
+            self._values["cleared"] = False
+            self._display["cleared"] = "no"
+        else:
+            self.notify("Cleared: type yes / no / unset.", severity="error")
+            return
+        self._advance()
+
     def _commit_transfer_to(self, text: str) -> None:
-        if not text:  # optional → skip, stay a normal entry
+        if not text:
             for k in ("transfer_to", "to_amount"):
                 self._values.pop(k, None)
                 self._display.pop(k, None)
@@ -289,7 +417,6 @@ class QuickAddLogScreen(Screen):
             return
         self._values["transfer_to"] = picked[0]
         self._display["transfer_to"] = picked[1]
-        # same currency → auto-mirror To amount (opposite sign); else leave to user
         from_cur = self._account_currency(self._values.get("account"))
         to_cur = picked[2] if len(picked) > 2 else None
         amount = self._values.get("amount")
@@ -311,9 +438,8 @@ class QuickAddLogScreen(Screen):
             return
         amount = self._values.get("amount", 0)
         magnitude = abs(raw)
-        cents = magnitude if amount < 0 else -magnitude  # opposite sign of Amount
-        self._values["to_amount"] = cents
-        self._display["to_amount"] = format_cents(cents)
+        self._values["to_amount"] = magnitude if amount < 0 else -magnitude
+        self._display["to_amount"] = format_cents(self._values["to_amount"])
         self._advance()
 
     def _commit_hashtag(self, text: str) -> None:
@@ -326,14 +452,14 @@ class QuickAddLogScreen(Screen):
             self.notify(f"No hashtag matches “{text}”.", severity="error")
             return
         self._values.setdefault("hashtags", []).append(picked[0])
-        self._display["hashtags"] = " ".join("#" + n for n in self._tag_names())
+        self._display["hashtags"] = " ".join("#" + n for n in self._tag_display_names())
         self.query_one("#bar", Input).value = ""
         self._recompute_suggestions("")
-        self._refresh_view()  # stay on hashtags
+        self._refresh_view()
 
-    def _tag_names(self) -> list[str]:
-        by_id = dict((i, n) for (i, n) in self._hashtags)
-        return [by_id.get(i, i[:8]) for i in self._values.get("hashtags", [])]
+    def _tag_display_names(self) -> list[str]:
+        names = getattr(self, "_tag_names_map", {}) or dict(self._hashtags)
+        return [names.get(i, i[:8]) for i in self._values.get("hashtags", [])]
 
     # ---- render ----------------------------------------------------------
     def _refresh_view(self) -> None:
@@ -375,28 +501,46 @@ class QuickAddLogScreen(Screen):
         t.add_column("v")
         for key in seq:
             shown = self._display.get(key)
-            if shown:
+            locked = key in self._locked
+            if locked:
+                value = Text(f"{shown or '—'}  read-only", style="dim")
+            elif shown:
                 value = Text(str(shown))
             else:
                 tag = "  *" if key in required else "  (optional)"
                 value = Text("—" + tag, style="dim")
-            label_text = Text(_LABELS[key].lower())
-            if key == current_key:
-                label_text.stylize("bold")
-            t.add_row(label_text, value)
+            label = Text(_LABELS[key].lower(), style="dim" if locked else "")
+            if key == current_key and not locked:
+                label.stylize("bold")
+            t.add_row(label, value)
         return t
 
     # ---- actions ---------------------------------------------------------
     def action_cancel(self) -> None:
-        self.app.pop_screen()
+        self.dismiss()
 
     def action_submit(self) -> None:
         if self._submitting:
             return
-        for key in self._required():
-            if key not in self._values:
-                self.notify(f"{_LABELS[key].title()} is required.", severity="error")
+        if self._mode == "edit":
+            payload = self._edit_payload()
+            if not payload:
+                self.notify("No changes to save.")
                 return
+            method, path, busy = "PUT", f"/{self._resource}/{self._record['id']}", "Saving…"
+        else:
+            for key in self._required():
+                if key not in self._values:
+                    self.notify(f"{_LABELS[key].title()} is required.", severity="error")
+                    return
+            payload = self._create_payload()
+            method, path = "POST", "/transactions"
+            busy = "Creating transfer…" if self._is_transfer() else "Creating transaction…"
+        self._submitting = True
+        self.query_one("#hint", Static).update(Text(busy, style="dim"))
+        self._submit(method, path, payload)
+
+    def _create_payload(self) -> dict:
         date = to_canonical_aware(self._values.get("date") or date_cls.today().isoformat())
         if self._is_transfer():
             payload = {
@@ -424,13 +568,26 @@ class QuickAddLogScreen(Screen):
                 payload["hashtag_ids"] = self._values["hashtags"]
         if self._values.get("note"):
             payload["description"] = self._values["note"]
-        self._submitting = True
-        verb = "transfer" if self._is_transfer() else "transaction"
-        self.query_one("#hint", Static).update(Text(f"Creating {verb}…", style="dim"))
-        self._submit(payload)
+        return payload
+
+    def _edit_payload(self) -> dict:
+        payload: dict = {}
+        for key, engine_field in _ENGINE_FIELD.items():
+            if key in self._locked or self._values.get(key) == self._original.get(key):
+                continue
+            new = self._values.get(key)
+            if key == "date":
+                payload["date"] = to_canonical_aware(new) if new else None
+            elif key == "note":
+                payload["description"] = new or None
+            elif key == "hashtags":
+                payload["hashtag_ids"] = new or []
+            else:
+                payload[engine_field] = new
+        return payload
 
     @work(thread=True, exclusive=True)
-    def _submit(self, payload: dict) -> None:
+    def _submit(self, method: str, path: str, payload: dict) -> None:
         from expense import config as config_module
         from expense.cache import refresh_after_write
         from expense.http import ExpenseClient
@@ -438,7 +595,10 @@ class QuickAddLogScreen(Screen):
         cfg = config_module.ensure_loaded()
         try:
             with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                client.post("/transactions", json_body=payload)
+                if method == "PUT":
+                    client.put(path, json_body=payload)
+                else:
+                    client.post(path, json_body=payload)
                 refresh_after_write(
                     client,
                     cfg,
@@ -457,8 +617,11 @@ class QuickAddLogScreen(Screen):
         self._refresh_view()
 
     def _done(self) -> None:
-        self.notify("Transfer created." if self._is_transfer() else "Transaction created.")
-        self.app.pop_screen()
+        if self._mode == "edit":
+            self.notify("Saved.")
+        else:
+            self.notify("Transfer created." if self._is_transfer() else "Transaction created.")
+        self.dismiss()
 
 
 def _items(body: object) -> list:

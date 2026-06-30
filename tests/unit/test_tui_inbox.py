@@ -4,7 +4,7 @@ import asyncio
 
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.inbox import InboxScreen, inbox_rows
-from expense.tui.screens.modals import RecordModal
+from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.widgets.cursor_list import CursorList
 
 ITEMS = [
@@ -61,6 +61,10 @@ def test_inbox_screen_lists_and_opens_detail(monkeypatch):
     monkeypatch.setattr(ic, "fetch_inbox", lambda *a, **k: {"items": ITEMS})
     monkeypatch.setattr(inbox_mod, "load_account_name_map", lambda: ACCOUNTS)
     monkeypatch.setattr(inbox_mod, "load_category_name_map", lambda: CATEGORIES)
+    # the edit screen loads entities on mount — stub those too
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: [])
+    monkeypatch.setattr("expense.commands.categories_cmd.fetch_categories", lambda *a, **k: [])
+    monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", lambda *a, **k: [])
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
@@ -75,8 +79,10 @@ def test_inbox_screen_lists_and_opens_detail(monkeypatch):
                     cl = found.first()
                     break
             assert cl is not None  # worker fetched + populate mounted the list
-            await pilot.press("enter")  # open the read-only detail modal
+            await pilot.press("enter")  # opens the edit screen (inbox draft)
             await pilot.pause(0.05)
-            assert isinstance(app.screen, RecordModal)
+            assert isinstance(app.screen, QuickAddLogScreen)
+            assert app.screen._mode == "edit" and app.screen._resource == "inbox"
+            assert "hashtags" not in app.screen._sequence()  # drafts have no hashtags
 
     asyncio.run(scenario())

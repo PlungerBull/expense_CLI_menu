@@ -23,7 +23,7 @@ from expense.commands._resource import (
 )
 from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.tui.screens._base import SectionScreen
-from expense.tui.screens.modals import RecordModal
+from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.widgets.cursor_list import CursorList
 
 _HEADERS = ["Title", "Description", "Amount", "Date", "Account", "Cat", "Tags"]
@@ -105,4 +105,7 @@ class TransactionsScreen(SectionScreen):
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
         item = self._by_id.get(event.key)
         if item:
-            self.app.push_screen(RecordModal(f"Transaction · {item.get('title') or '—'}", item))
+            self.app.push_screen(
+                QuickAddLogScreen(record=item, resource="transactions"),
+                lambda _result: self._load(),  # refresh the list after editing
+            )

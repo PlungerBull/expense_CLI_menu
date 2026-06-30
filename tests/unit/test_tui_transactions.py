@@ -3,7 +3,7 @@
 import asyncio
 
 from expense.tui.app import ExpenseApp
-from expense.tui.screens.modals import RecordModal
+from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.screens.transactions import TransactionsScreen, transaction_rows
 from expense.tui.widgets.cursor_list import CursorList
 
@@ -51,6 +51,10 @@ def test_transactions_screen_lists_and_opens_detail(monkeypatch):
     monkeypatch.setattr(tx_mod, "load_account_name_map", lambda: ACCOUNTS)
     monkeypatch.setattr(tx_mod, "load_category_name_map", lambda: CATEGORIES)
     monkeypatch.setattr(tx_mod, "load_hashtag_name_map", lambda: HASHTAGS)
+    # the edit screen loads entities on mount — stub those too
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: [])
+    monkeypatch.setattr("expense.commands.categories_cmd.fetch_categories", lambda *a, **k: [])
+    monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", lambda *a, **k: [])
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
@@ -65,8 +69,9 @@ def test_transactions_screen_lists_and_opens_detail(monkeypatch):
                     cl = found.first()
                     break
             assert cl is not None
-            await pilot.press("enter")
+            await pilot.press("enter")  # opens the edit screen, pre-filled
             await pilot.pause(0.05)
-            assert isinstance(app.screen, RecordModal)
+            assert isinstance(app.screen, QuickAddLogScreen)
+            assert app.screen._mode == "edit" and app.screen._values["amount"] == 651900
 
     asyncio.run(scenario())
