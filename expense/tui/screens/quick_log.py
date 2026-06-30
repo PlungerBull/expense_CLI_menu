@@ -96,7 +96,6 @@ class QuickAddLogScreen(Screen):
         self._accounts: list = []  # (id, name, currency)
         self._categories: list = []  # (id, name)
         self._hashtags: list = []  # (id, name)
-        self._transfer_category_id: str | None = None  # required-but-overridden for transfers
         self._suggestions: list = []
         self._suggest_idx = 0
         self._submitting = False
@@ -163,25 +162,10 @@ class QuickAddLogScreen(Screen):
             if c.get("id") and not c.get("is_system")
         ]
         hashtags = [(t["id"], t.get("name") or "(unnamed)") for t in tags if t.get("id")]
-        # The @Transfer system category id — required on the request even though
-        # the engine overrides it; fall back to any category if not present.
-        transfer_cat = next(
-            (
-                c["id"]
-                for c in cats
-                if c.get("id")
-                and (
-                    c.get("system_key") == "transfer"
-                    or (c.get("name") or "").strip() == "@Transfer"
-                )
-            ),
-            next((c["id"] for c in cats if c.get("id")), None),
-        )
-        self.app.call_from_thread(self._set_entities, accounts, categories, hashtags, transfer_cat)
+        self.app.call_from_thread(self._set_entities, accounts, categories, hashtags)
 
-    def _set_entities(self, accounts, categories, hashtags, transfer_cat) -> None:
+    def _set_entities(self, accounts, categories, hashtags) -> None:
         self._accounts, self._categories, self._hashtags = accounts, categories, hashtags
-        self._transfer_category_id = transfer_cat
         self._recompute_suggestions(self.query_one("#bar", Input).value)
         self._refresh_view()
 
@@ -420,8 +404,7 @@ class QuickAddLogScreen(Screen):
                 "title": self._values["title"],
                 "amount_cents": self._values["amount"],
                 "account_id": self._values["account"],
-                "category_id": self._transfer_category_id,  # required; engine overrides
-                "date": date,
+                "date": date,  # no category_id — engine assigns @Transfer / @Debt
                 "transfer": {
                     "id": str(uuid.uuid4()),
                     "account_id": self._values["transfer_to"],

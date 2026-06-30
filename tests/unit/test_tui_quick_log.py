@@ -134,7 +134,7 @@ def test_quick_log_transfer_flow_submits_pair(monkeypatch):
             path, body = _FakeClient.calls[0]
             assert path == "/transactions"
             assert body["amount_cents"] == -50000 and body["account_id"] == "acc1"
-            assert body["category_id"] == "catT"  # required; engine overrides
+            assert "category_id" not in body  # engine assigns it for transfers
             assert body["transfer"]["account_id"] == "acc3"
             assert body["transfer"]["amount_cents"] == 50000  # opposite sign
             assert "hashtag_ids" not in body  # transfers skip hashtags
