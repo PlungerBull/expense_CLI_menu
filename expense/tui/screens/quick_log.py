@@ -1,14 +1,18 @@
-"""Log a transaction — quick-add bar (Phase 2, replaces the Select form).
+"""Log a transaction — quick-add bar (Phase 2).
 
 One input bar cycles through fields; a summary fills below as you go. Entity
-fields (account/category/hashtags) show a live-filtered suggestion list — you
-can only *pick existing* entities, never create them mid-entry.
+fields (account/category/hashtags/transfer-to) show a live-filtered suggestion
+list — pick existing entities only.
 
-Flow: Date (pre-filled today) › Title › Amount › Account › Category › Hashtags
-(opt, multi) › Note (opt). `enter` saves & advances; `ctrl+↑/↓` jump between
-fields to re-edit; `↑/↓` move the suggestion highlight; `ctrl+s` creates once
-the four required fields are set. Sign is explicit (− expense / + income);
-currency is derived from the account. Transfers are a future mode.
+Normal flow: Date › Title › Amount › Account › Transfer to? › Category ›
+Hashtags › Note. Filling "Transfer to?" makes it a transfer instead: the field
+set becomes … Account › Transfer to › To amount › Note (no category/hashtags —
+the engine assigns @Transfer / @Debt). The To amount is the opposite sign of
+Amount (auto-mirrored for same-currency accounts).
+
+`enter` saves & advances · `ctrl+↑/↓` jump fields to re-edit · `↑/↓` move the
+suggestion highlight · `ctrl+s` creates. Sign is explicit (− expense / +
+income); currency is derived from the account.
 """
 
 import io
@@ -30,23 +34,26 @@ from expense.commands._resource import format_cents
 from expense.dates import to_canonical_aware
 from expense.tui.widgets.header import Breadcrumb
 
-# (key, label)
-_FIELDS = [
-    ("date", "DATE"),
-    ("title", "TITLE"),
-    ("amount", "AMOUNT"),
-    ("account", "ACCOUNT"),
-    ("category", "CATEGORY"),
-    ("hashtags", "HASHTAGS"),
-    ("note", "NOTE"),
-]
-_ENTITY = {"account", "category", "hashtags"}
-_REQUIRED = ("title", "amount", "account", "category")
+_LABELS = {
+    "date": "DATE",
+    "title": "TITLE",
+    "amount": "AMOUNT",
+    "account": "ACCOUNT",
+    "transfer_to": "TRANSFER TO?",
+    "to_amount": "TO AMOUNT",
+    "category": "CATEGORY",
+    "hashtags": "HASHTAGS",
+    "note": "NOTE",
+}
+_ENTITY = {"account", "transfer_to", "category", "hashtags"}  # account-pool / cat / tag
+_AMOUNTS = {"amount", "to_amount"}
 _HINTS = {
     "date": "YYYY-MM-DD · enter to accept today, or type a date",
     "title": "free text · enter to save",
     "amount": "signed decimal · − expense / + income · in the account's currency",
     "account": "pick an existing account · ↑↓ highlight · enter select",
+    "transfer_to": "optional · pick a destination account → transfer · empty enter = skip",
+    "to_amount": "opposite sign of Amount · same currency is auto-filled · overwrite if needed",
     "category": "pick an existing category · ↑↓ highlight · enter select",
     "hashtags": "type a tag · ↑↓ highlight · enter adds & stays · empty enter = done (optional)",
     "note": "optional · enter creates the transaction · (ctrl+s anytime)",
@@ -89,9 +96,32 @@ class QuickAddLogScreen(Screen):
         self._accounts: list = []  # (id, name, currency)
         self._categories: list = []  # (id, name)
         self._hashtags: list = []  # (id, name)
+        self._transfer_category_id: str | None = None  # required-but-overridden for transfers
         self._suggestions: list = []
         self._suggest_idx = 0
-        self._submitting = False  # one-shot guard against duplicate creates
+        self._submitting = False
+
+    # ---- field sequence (dynamic: transfer swaps the tail) ---------------
+    def _is_transfer(self) -> bool:
+        return bool(self._values.get("transfer_to"))
+
+    def _sequence(self) -> list[str]:
+        seq = ["date", "title", "amount", "account", "transfer_to"]
+        if self._is_transfer():
+            seq += ["to_amount", "note"]
+        else:
+            seq += ["category", "hashtags", "note"]
+        return seq
+
+    def _required(self) -> tuple[str, ...]:
+        if self._is_transfer():
+            return ("title", "amount", "account", "transfer_to", "to_amount")
+        return ("title", "amount", "account", "category")
+
+    @property
+    def _key(self) -> str:
+        seq = self._sequence()
+        return seq[min(self._current, len(seq) - 1)]
 
     # ---- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -133,24 +163,38 @@ class QuickAddLogScreen(Screen):
             if c.get("id") and not c.get("is_system")
         ]
         hashtags = [(t["id"], t.get("name") or "(unnamed)") for t in tags if t.get("id")]
-        self.app.call_from_thread(self._set_entities, accounts, categories, hashtags)
+        # The @Transfer system category id — required on the request even though
+        # the engine overrides it; fall back to any category if not present.
+        transfer_cat = next(
+            (
+                c["id"]
+                for c in cats
+                if c.get("id")
+                and (
+                    c.get("system_key") == "transfer"
+                    or (c.get("name") or "").strip() == "@Transfer"
+                )
+            ),
+            next((c["id"] for c in cats if c.get("id")), None),
+        )
+        self.app.call_from_thread(self._set_entities, accounts, categories, hashtags, transfer_cat)
 
-    def _set_entities(self, accounts: list, categories: list, hashtags: list) -> None:
+    def _set_entities(self, accounts, categories, hashtags, transfer_cat) -> None:
         self._accounts, self._categories, self._hashtags = accounts, categories, hashtags
+        self._transfer_category_id = transfer_cat
         self._recompute_suggestions(self.query_one("#bar", Input).value)
         self._refresh_view()
 
-    # ---- field state -----------------------------------------------------
-    @property
-    def _key(self) -> str:
-        return _FIELDS[self._current][0]
+    def _account_currency(self, account_id) -> str | None:
+        return next((c for (i, n, c) in self._accounts if i == account_id), None)
 
+    # ---- bar / nav -------------------------------------------------------
     def _refresh_bar(self) -> None:
         key = self._key
-        self.query_one("#field", Label).update(_FIELDS[self._current][1])
+        self.query_one("#field", Label).update(_LABELS[key])
         bar = self.query_one("#bar", Input)
-        if key == "amount" and "amount" in self._values:
-            bar.value = amount_to_text(self._values["amount"])
+        if key in _AMOUNTS and key in self._values:
+            bar.value = amount_to_text(self._values[key])
         elif key in ("date", "title", "note"):
             bar.value = str(self._values.get(key, "") or "")
         else:  # entity fields re-pick from scratch
@@ -158,9 +202,13 @@ class QuickAddLogScreen(Screen):
         self._recompute_suggestions(bar.value)
 
     def action_field(self, delta: int) -> None:
-        self._current = max(0, min(len(_FIELDS) - 1, self._current + delta))
+        self._current = max(0, min(len(self._sequence()) - 1, self._current + delta))
         self._refresh_bar()
         self._refresh_view()
+
+    def _advance(self) -> None:
+        self._current = min(len(self._sequence()) - 1, self._current + 1)
+        self._refresh_bar()
 
     def action_suggest(self, delta: int) -> None:
         if self._suggestions:
@@ -171,12 +219,13 @@ class QuickAddLogScreen(Screen):
     def _recompute_suggestions(self, text: str) -> None:
         key = self._key
         needle = text.strip().lower()
-        if key == "account":
-            pool = [(i, n, c) for (i, n, c) in self._accounts if needle in n.lower()]
+        if key in ("account", "transfer_to"):
+            src = self._values.get("account") if key == "transfer_to" else None
+            pool = [(i, n, c) for (i, n, c) in self._accounts if needle in n.lower() and i != src]
         elif key == "category":
             pool = [(i, n) for (i, n) in self._categories if needle in n.lower()]
         elif key == "hashtags":
-            needle = needle.lstrip("#")  # users type "#dog"; stored names have no "#"
+            needle = needle.lstrip("#")
             chosen = set(self._values.get("hashtags", []))
             pool = [(i, n) for (i, n) in self._hashtags if needle in n.lower() and i not in chosen]
         else:
@@ -226,30 +275,77 @@ class QuickAddLogScreen(Screen):
             self._values[key] = picked[0]
             self._display[key] = picked[1]
             self._advance()
+        elif key == "transfer_to":
+            self._commit_transfer_to(text)
+        elif key == "to_amount":
+            self._commit_to_amount(text)
         elif key == "hashtags":
-            if not text:
-                self._advance()
-            else:
-                picked = self._picked()
-                if picked is None:
-                    self.notify(f"No hashtag matches “{text}”.", severity="error")
-                    return
-                self._values.setdefault("hashtags", []).append(picked[0])
-                self._display["hashtags"] = " ".join("#" + n for n in self._tag_names())
-                self.query_one("#bar", Input).value = ""
-                self._recompute_suggestions("")
-                self._refresh_view()
-                return  # stay on hashtags
+            self._commit_hashtag(text)
+            return  # _commit_hashtag advances or stays itself
         elif key == "note":
             if text:
                 self._values["note"] = self._display["note"] = text
-            self.action_submit()  # note is the last field → enter creates
+            self.action_submit()  # note is last → enter creates
             return
         self._refresh_view()
 
-    def _advance(self) -> None:
-        self._current = min(len(_FIELDS) - 1, self._current + 1)
-        self._refresh_bar()
+    def _commit_transfer_to(self, text: str) -> None:
+        if not text:  # optional → skip, stay a normal entry
+            for k in ("transfer_to", "to_amount"):
+                self._values.pop(k, None)
+                self._display.pop(k, None)
+            self._advance()
+            return
+        picked = self._picked()
+        if picked is None:
+            self.notify(f"No account matches “{text}”.", severity="error")
+            return
+        if picked[0] == self._values.get("account"):
+            self.notify("Transfer destination must differ from the source.", severity="error")
+            return
+        self._values["transfer_to"] = picked[0]
+        self._display["transfer_to"] = picked[1]
+        # same currency → auto-mirror To amount (opposite sign); else leave to user
+        from_cur = self._account_currency(self._values.get("account"))
+        to_cur = picked[2] if len(picked) > 2 else None
+        amount = self._values.get("amount")
+        if amount is not None and from_cur and to_cur and from_cur == to_cur:
+            self._values["to_amount"] = -amount
+            self._display["to_amount"] = format_cents(-amount)
+        else:
+            self._values.pop("to_amount", None)
+            self._display.pop("to_amount", None)
+        self._advance()
+
+    def _commit_to_amount(self, text: str) -> None:
+        raw = parse_amount(text) if text else self._values.get("to_amount")
+        if raw is None:
+            self.notify("Enter the destination amount, e.g. 500 or 270.50", severity="error")
+            return
+        if raw == 0:
+            self.notify("Amount must be non-zero.", severity="error")
+            return
+        amount = self._values.get("amount", 0)
+        magnitude = abs(raw)
+        cents = magnitude if amount < 0 else -magnitude  # opposite sign of Amount
+        self._values["to_amount"] = cents
+        self._display["to_amount"] = format_cents(cents)
+        self._advance()
+
+    def _commit_hashtag(self, text: str) -> None:
+        if not text:
+            self._advance()
+            self._refresh_view()
+            return
+        picked = self._picked()
+        if picked is None:
+            self.notify(f"No hashtag matches “{text}”.", severity="error")
+            return
+        self._values.setdefault("hashtags", []).append(picked[0])
+        self._display["hashtags"] = " ".join("#" + n for n in self._tag_names())
+        self.query_one("#bar", Input).value = ""
+        self._recompute_suggestions("")
+        self._refresh_view()  # stay on hashtags
 
     def _tag_names(self) -> list[str]:
         by_id = dict((i, n) for (i, n) in self._hashtags)
@@ -268,7 +364,6 @@ class QuickAddLogScreen(Screen):
             return Text("  no matches — pick something that exists", style="dim")
         window = 8
         total = len(self._suggestions)
-        # scroll the window so the highlighted row stays visible
         start = 0
         if total > window:
             start = max(0, min(self._suggest_idx - window // 2, total - window))
@@ -288,18 +383,21 @@ class QuickAddLogScreen(Screen):
         return Group(*rows)
 
     def _summary_renderable(self) -> RenderableType:
+        seq = self._sequence()
+        required = self._required()
+        current_key = self._key
         t = Table(box=None, pad_edge=False, show_header=False, expand=False)
         t.add_column("k")
         t.add_column("v")
-        for i, (key, label) in enumerate(_FIELDS):
+        for key in seq:
             shown = self._display.get(key)
-            required = key in _REQUIRED
             if shown:
                 value = Text(str(shown))
             else:
-                value = Text("—" + ("  *" if required else "  (optional)"), style="dim")
-            label_text = Text(label.lower())
-            if i == self._current:
+                tag = "  *" if key in required else "  (optional)"
+                value = Text("—" + tag, style="dim")
+            label_text = Text(_LABELS[key].lower())
+            if key == current_key:
                 label_text.stylize("bold")
             t.add_row(label_text, value)
         return t
@@ -310,25 +408,42 @@ class QuickAddLogScreen(Screen):
 
     def action_submit(self) -> None:
         if self._submitting:
-            return  # a create is already in flight — ignore extra enters
-        for key in _REQUIRED:
+            return
+        for key in self._required():
             if key not in self._values:
-                self.notify(f"{key.capitalize()} is required.", severity="error")
+                self.notify(f"{_LABELS[key].title()} is required.", severity="error")
                 return
-        payload: dict = {
-            "id": str(uuid.uuid4()),
-            "title": self._values["title"],
-            "amount_cents": self._values["amount"],
-            "account_id": self._values["account"],
-            "category_id": self._values["category"],
-            "date": to_canonical_aware(self._values.get("date") or date_cls.today().isoformat()),
-        }
+        date = to_canonical_aware(self._values.get("date") or date_cls.today().isoformat())
+        if self._is_transfer():
+            payload = {
+                "id": str(uuid.uuid4()),
+                "title": self._values["title"],
+                "amount_cents": self._values["amount"],
+                "account_id": self._values["account"],
+                "category_id": self._transfer_category_id,  # required; engine overrides
+                "date": date,
+                "transfer": {
+                    "id": str(uuid.uuid4()),
+                    "account_id": self._values["transfer_to"],
+                    "amount_cents": self._values["to_amount"],
+                },
+            }
+        else:
+            payload = {
+                "id": str(uuid.uuid4()),
+                "title": self._values["title"],
+                "amount_cents": self._values["amount"],
+                "account_id": self._values["account"],
+                "category_id": self._values["category"],
+                "date": date,
+            }
+            if self._values.get("hashtags"):
+                payload["hashtag_ids"] = self._values["hashtags"]
         if self._values.get("note"):
             payload["description"] = self._values["note"]
-        if self._values.get("hashtags"):
-            payload["hashtag_ids"] = self._values["hashtags"]
         self._submitting = True
-        self.query_one("#hint", Static).update(Text("Creating transaction…", style="dim"))
+        verb = "transfer" if self._is_transfer() else "transaction"
+        self.query_one("#hint", Static).update(Text(f"Creating {verb}…", style="dim"))
         self._submit(payload)
 
     @work(thread=True, exclusive=True)
@@ -354,12 +469,12 @@ class QuickAddLogScreen(Screen):
         self.app.call_from_thread(self._done)
 
     def _failed(self, message: str) -> None:
-        self._submitting = False  # let them fix and retry
+        self._submitting = False
         self.notify(message, title="Failed", severity="error")
         self._refresh_view()
 
     def _done(self) -> None:
-        self.notify("Transaction created.")
+        self.notify("Transfer created." if self._is_transfer() else "Transaction created.")
         self.app.pop_screen()
 
 
