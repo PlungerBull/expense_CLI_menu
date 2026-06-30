@@ -126,63 +126,81 @@
     </div>
   </div>
 
-  <div class="sec">Reconciliations — match a bank statement</div>
+  <div class="sec">Reconciliations — match a bank statement (per account)</div>
 
-  <div class="lbl">reconciliations · list <span>· per account</span></div>
+  <div class="lbl">reconciliations · list <span>· pick an account → its batches</span></div>
   <div class="term"><div class="bar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b></div></div>
     <div class="screen">
       <div class="crumb">◈ EXPENSE WORLD <span class="s">▸</span> Capture &amp; ledger <span class="s">▸</span> <b>Reconciliations</b></div>
       <div class="pickbar">account <span class="chip">BCP PEN ▾</span> <span style="color:var(--dim)">· a to switch</span></div>
       <div class="tbl">
-        <div class="row head" style="grid-template-columns:1.2fr 1.4fr 100px 100px 90px 90px"><span>Name</span><span>Period</span><span class="amt">Begin</span><span class="amt">End</span><span class="amt">Diff</span><span>Status</span></div>
+        <div class="row head" style="grid-template-columns:1.2fr 1.4fr 110px 110px 90px 90px"><span>Name</span><span>Period</span><span class="amt">Begin</span><span class="amt">End</span><span>Source</span><span>Status</span></div>
         <div class="rule"></div>
-        <div class="row" style="grid-template-columns:1.2fr 1.4fr 100px 100px 90px 90px"><span>February 2026</span><span class="mut">2026-02-01 → 02-28</span><span class="amt">14,200.00</span><span class="amt">12,000.00</span><span class="amt ok">0.00</span><span class="badge ok">completed</span></div>
-        <div class="row" style="grid-template-columns:1.2fr 1.4fr 100px 100px 90px 90px"><span>March 2026</span><span class="mut">2026-03-01 → 03-31</span><span class="amt">12,000.00</span><span class="amt">9,580.00</span><span class="amt ok">0.00</span><span class="badge ok">completed</span></div>
-        <div class="row on" style="grid-template-columns:1.2fr 1.4fr 100px 100px 90px 90px"><span>April 2026</span><span class="mut">2026-04-01 → 04-30</span><span class="amt">9,580.00</span><span class="amt">9,460.00</span><span class="amt warnc">−120.00</span><span class="badge draft">draft</span></div>
+        <div class="row" style="grid-template-columns:1.2fr 1.4fr 110px 110px 90px 90px"><span>February 2026</span><span class="mut">2026-02-01 → 02-28</span><span class="amt">14,200.00</span><span class="amt">12,000.00</span><span class="mut">manual</span><span class="badge ok">completed</span></div>
+        <div class="row" style="grid-template-columns:1.2fr 1.4fr 110px 110px 90px 90px"><span>March 2026</span><span class="mut">2026-03-01 → 03-31</span><span class="amt">12,000.00</span><span class="amt">9,580.00</span><span class="mut">chained</span><span class="badge ok">completed</span></div>
+        <div class="row on" style="grid-template-columns:1.2fr 1.4fr 110px 110px 90px 90px"><span>April 2026</span><span class="mut">2026-04-01 → 04-30</span><span class="amt">9,580.00</span><span class="amt">9,460.00</span><span class="mut">chained</span><span class="badge draft">draft</span></div>
       </div>
-      <div class="hint">diff = end − begin − cleared transactions in range · 0.00 = balanced</div>
+      <div class="hint">begin/end are native balances · “chained” = begin carried from the previous batch · home-currency shown in detail</div>
       <div class="keybar"><span><b>↑↓</b>move</span><span><b>enter</b>open</span><span><b>n</b>new</span><span><b>a</b>account</span><span><b>esc</b>back</span></div>
     </div>
   </div>
 
-  <div class="lbl">reconciliations · new <span>· bar-cycle, like the others</span></div>
+  <div class="lbl">reconciliations · new <span>· begin balance is chained by default (or manual)</span></div>
   <div class="term"><div class="bar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b></div></div>
     <div class="screen">
       <div class="crumb">◈ EXPENSE WORLD <span class="s">▸</span> Reconciliations <span class="s">▸</span> <b>New</b></div>
-      <div class="input"><span class="field">ENDING BALANCE</span><span class="val">9460.00<span class="cur"></span></span></div>
-      <div class="hint">your bank statement's closing balance for the period</div>
+      <div class="input"><span class="field">SOURCE</span><span class="val ph">chained<span class="cur"></span></span></div>
+      <div class="hint">chained = derive begin from the previous batch · manual = type it yourself · ↑↓ · enter select</div>
+      <div class="sugg"><div class="row on">chained <span style="color:var(--dim)">— begin = March's end (9,580.00)</span></div><div class="row">manual <span style="color:var(--dim)">— set begin yourself</span></div></div>
       <div class="summary">
         <div class="frow"><span class="k">name</span><span class="v">April 2026</span></div>
         <div class="frow"><span class="k">account</span><span class="v">BCP PEN</span></div>
         <div class="frow"><span class="k">date start</span><span class="v">2026-04-01</span></div>
         <div class="frow"><span class="k">date end</span><span class="v">2026-04-30</span></div>
-        <div class="frow"><span class="k">source</span><span class="v">chained <span class="note">begin balance carried from the previous reconciliation</span></span></div>
-        <div class="frow"><span class="k">begin balance</span><span class="v">9,580.00 <span class="note">auto · from March</span></span></div>
-        <div class="frow sel"><span class="k">end balance</span><span class="v">9,460.00</span></div>
+        <div class="frow sel"><span class="k">source</span><span class="v">… choosing</span></div>
+        <div class="frow"><span class="k">begin balance</span><span class="v empty">— chained: auto · manual: you'll be asked next</span></div>
+        <div class="frow"><span class="k">end balance</span><span class="v empty">— your statement's closing balance (optional)</span></div>
       </div>
       <div class="keybar"><span><b>enter</b>next</span><span><b>ctrl+s</b>create</span><span><b>esc</b>cancel</span></div>
     </div>
   </div>
 
-  <div class="lbl">reconciliations · detail <span>· assign transactions, balance to zero, complete</span></div>
+  <div class="lbl">reconciliations · detail <span>· assigned transactions → complete locks them · no balance-to-zero gate</span></div>
   <div class="term"><div class="bar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b></div></div>
     <div class="screen">
       <div class="crumb">◈ EXPENSE WORLD <span class="s">▸</span> Reconciliations <span class="s">▸</span> <b>April 2026</b></div>
-      <div class="kv" style="grid-template-columns:auto auto auto auto;gap:4px 26px">
-        <div><span class="k" style="color:var(--muted)">begin</span> <b>9,580.00</b></div>
-        <div><span class="k" style="color:var(--muted)">end</span> <b>9,460.00</b></div>
-        <div><span class="k" style="color:var(--muted)">cleared</span> <b class="neg">−2,540.00</b></div>
-        <div><span class="k" style="color:var(--muted)">difference</span> <b class="warnc">−120.00</b> <span class="badge draft">not balanced</span></div>
+      <div class="kv" style="grid-template-columns:auto auto auto;gap:5px 30px">
+        <div><span class="k" style="color:var(--muted)">begin</span> <b>9,580.00</b> <span class="mut">≈ $2,555 · chained</span></div>
+        <div><span class="k" style="color:var(--muted)">end</span> <b>9,460.00</b> <span class="mut">≈ $2,523</span></div>
+        <div><span class="k" style="color:var(--muted)">status</span> <span class="badge draft">draft</span></div>
       </div>
-      <div class="tbl" style="margin-top:12px">
-        <div class="row head" style="grid-template-columns:28px 1.4fr 100px 110px"><span>cl</span><span>Title</span><span class="amt">Amount</span><span>Date</span></div>
+      <div style="color:var(--muted);font-size:13px;margin:12px 0 2px">Assigned transactions <span class="mut">· 12</span></div>
+      <div class="tbl">
+        <div class="row head" style="grid-template-columns:1.6fr 110px 120px"><span>Title</span><span class="amt">Amount</span><span>Date</span></div>
         <div class="rule"></div>
-        <div class="row" style="grid-template-columns:28px 1.4fr 100px 110px"><span class="ok">✓</span><span>Alquiler oficina</span><span class="amt neg">−2,500.00</span><span class="mut">2026-04-03</span></div>
-        <div class="row on" style="grid-template-columns:28px 1.4fr 100px 110px"><span class="mut">·</span><span>Gasolina</span><span class="amt neg">−120.00</span><span class="mut">2026-04-08</span></div>
-        <div class="row" style="grid-template-columns:28px 1.4fr 100px 110px"><span class="ok">✓</span><span>Sueldo abril</span><span class="amt pos">+6,519.00</span><span class="mut">2026-04-05</span></div>
+        <div class="row" style="grid-template-columns:1.6fr 110px 120px"><span>Alquiler oficina</span><span class="amt neg">−2,500.00</span><span class="mut">2026-04-03</span></div>
+        <div class="row on" style="grid-template-columns:1.6fr 110px 120px"><span>Gasolina</span><span class="amt neg">−120.00</span><span class="mut">2026-04-08</span></div>
+        <div class="row" style="grid-template-columns:1.6fr 110px 120px"><span>Sueldo abril</span><span class="amt pos">+6,519.00</span><span class="mut">2026-04-05</span></div>
       </div>
-      <div class="hint">toggle “Gasolina” cleared → difference becomes 0.00 → you can complete</div>
-      <div class="keybar"><span><b>↑↓</b>move</span><span><b>space</b>toggle cleared</span><span><b>a</b>assign txns</span><span><b>c</b>complete</span><span><b>r</b>revert</span><span><b>esc</b>back</span></div>
+      <div class="hint">read-only list · the engine doesn't gate on a balance — you decide when the batch matches your statement, then complete (which locks amount/account/title/date on these)</div>
+      <div class="keybar"><span><b>↑↓</b>move</span><span><b>a</b>assign txns</span><span><b>c</b>complete</span><span><b>r</b>revert</span><span><b>d</b>delete</span><span><b>esc</b>back</span></div>
+    </div>
+  </div>
+
+  <div class="lbl">reconciliations · assign transactions <span>· PROPOSED — multi-select (the open question below)</span></div>
+  <div class="term"><div class="bar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b></div></div>
+    <div class="screen">
+      <div class="crumb">◈ EXPENSE WORLD <span class="s">▸</span> Reconciliations <span class="s">▸</span> April 2026 <span class="s">▸</span> <b>Assign</b></div>
+      <div class="pickbar">BCP PEN · <b>unassigned</b> transactions in 2026-04-01 → 04-30</div>
+      <div class="tbl">
+        <div class="row head" style="grid-template-columns:34px 1.6fr 110px 120px"><span></span><span>Title</span><span class="amt">Amount</span><span>Date</span></div>
+        <div class="rule"></div>
+        <div class="row" style="grid-template-columns:34px 1.6fr 110px 120px"><span class="ok">[✓]</span><span>Alquiler oficina</span><span class="amt neg">−2,500.00</span><span class="mut">2026-04-03</span></div>
+        <div class="row on" style="grid-template-columns:34px 1.6fr 110px 120px"><span class="mut">[ ]</span><span>Gasolina</span><span class="amt neg">−120.00</span><span class="mut">2026-04-08</span></div>
+        <div class="row" style="grid-template-columns:34px 1.6fr 110px 120px"><span class="ok">[✓]</span><span>Sueldo abril</span><span class="amt pos">+6,519.00</span><span class="mut">2026-04-05</span></div>
+      </div>
+      <div class="hint">space toggles · enter assigns the checked rows (sets each transaction's reconciliation_id) · already-assigned rows hidden</div>
+      <div class="keybar"><span><b>↑↓</b>move</span><span><b>space</b>toggle</span><span><b>enter</b>assign</span><span><b>esc</b>cancel</span></div>
     </div>
   </div>
 
@@ -218,9 +236,10 @@
 
   <div class="notes">
     <div class="it"><b>Create forms reuse the same bar-cycle</b> as Log — Name › (currency / color picks) › ctrl+s. New account is <b>bank-only</b> (Name · Currency PEN/USD · Color); the engine forbids <code>is_person</code> on create. Person accounts need the People API (Phase 4, not yet implemented).</div>
-    <div class="it"><b>Reconciliations are per-account.</b> Pick an account, see its sessions; each has a period, begin/end balance, and a difference (0.00 = balanced). “n” starts a new one.</div>
-    <div class="it"><b>New reconciliation:</b> source “chained” auto-carries the begin balance from the previous one; “manual” lets you set it. You enter the statement's end balance.</div>
-    <div class="it"><b>Detail = the working screen:</b> toggle which transactions are cleared until difference hits 0.00, then “complete” (which locks those transactions — the read-only fields you saw in Edit). “revert” unlocks.</div>
+    <div class="it"><b>Reconciliations are per-account.</b> Pick an account, see its batches; each has a period, begin/end balance, and a source (chained/manual). No “difference” — the engine doesn't compute one or gate completion on a balance. “n” starts a new one.</div>
+    <div class="it"><b>New reconciliation:</b> begin balance is <b>chained</b> by default (auto-carried from the previous batch's end) or <b>manual</b> (you type it). You can't set a value while chained (engine 422). End balance is your statement's closing balance (optional).</div>
+    <div class="it"><b>Detail:</b> shows the assigned transactions (read-only) + begin/end balances with home equivalents. <b>Assign</b> attaches the statement's transactions to the batch; <b>complete</b> locks amount/account/title/date on them (the read-only fields you saw in Edit); <b>revert</b> unlocks; <b>delete</b> (draft only) cascade-unassigns.</div>
+    <div class="it"><b>⚠ Open question — how to assign?</b> The mock shows a multi-select picker of the account's unassigned transactions (space to check, enter to bulk-assign). Alternative: a “Reconciliation” field on the transaction Edit screen (one at a time). Pick below.</div>
     <div class="it"><b>Config is mostly read</b> — shows engine/token/cache; “e/t” open small forms to change engine url / token. (⚠ token is a secret — masked, never logged.)</div>
     <div class="it"><b>Auth shows identity + main currency;</b> “bootstrap” provisions a new user's settings (one-time), “set main currency” PUTs the profile (and triggers the engine's home-currency recompute).</div>
   </div>

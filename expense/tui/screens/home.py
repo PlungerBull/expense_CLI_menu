@@ -16,6 +16,7 @@ from expense.tui.screens.hashtags import HashtagsScreen
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
+from expense.tui.screens.reconciliations import ReconciliationsScreen
 from expense.tui.screens.transactions import TransactionsScreen
 
 _BANNER = "◈  EXPENSE WORLD"
@@ -26,7 +27,7 @@ _MENU: list[tuple[str | None, str]] = [
     ("log", "Log a transaction"),
     ("inbox", "Inbox"),
     ("transactions", "Transactions"),
-    ("soon", "Reconciliations"),
+    ("reconciliations", "Reconciliations"),
     (None, "Reports"),
     ("outstanding", "Outstanding Amounts"),
     ("soon", "Monthly report"),
@@ -64,6 +65,8 @@ class HomeScreen(Screen):
             self.app.push_screen(InboxScreen())
         elif kind == "transactions":
             self.app.push_screen(TransactionsScreen())
+        elif kind == "reconciliations":
+            self.app.push_screen(ReconciliationsScreen())
         elif kind == "accounts":
             self.app.push_screen(AccountsScreen())
         elif kind == "categories":

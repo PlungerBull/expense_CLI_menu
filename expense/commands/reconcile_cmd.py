@@ -25,6 +25,48 @@ _RESOURCE = "reconciliations"
 
 _SOURCE_CHOICES = ("manual", "chained")
 
+
+def fetch_reconciliations(
+    cfg,
+    *,
+    account_id: str | None = None,
+    include_deleted: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+    no_cache: bool = False,
+    verbose: bool = False,
+    cold_start_notice: bool = True,
+    notice_stream=None,
+) -> dict:
+    """GET /v1/reconciliations → the raw engine/replica body. Pure data, no render.
+
+    Shared by the flat `reconcile list` command and the TUI's Reconciliations
+    screen. Reads the local replica by default (warming it first); `no_cache`
+    round-trips the engine. Rows are ordered by `sort_order` (the chain order).
+    """
+    if no_cache:
+        params: dict = {}
+        if account_id is not None:
+            params["account_id"] = account_id
+        if include_deleted:
+            params["include_deleted"] = "true"
+        if limit is not None:
+            params["limit"] = str(limit)
+        if offset is not None:
+            params["offset"] = str(offset)
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            return client.get(f"/{_RESOURCE}", params=params or None)
+
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
+        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
+    return cache_pkg.list_reconciliations(
+        account_id=account_id,
+        include_deleted=include_deleted,
+        limit=limit,
+        offset=offset,
+    )
+
+
 _CHAINED_AMBIGUITY_HINT = (
     "Hint: --source chained cannot be combined with --beginning-balance.\n"
     "Chained mode derives the value from the previous reconciliation.\n"
@@ -182,32 +224,15 @@ def list_(
     Example: expense reconcile list --account chase-checking
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        params: dict = {}
-        if account is not None:
-            params["account_id"] = account
-        if include_deleted:
-            params["include_deleted"] = "true"
-        if limit is not None:
-            params["limit"] = str(limit)
-        if offset is not None:
-            params["offset"] = str(offset)
-
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}", params=params or None)
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.list_reconciliations(
-            account_id=account,
-            include_deleted=include_deleted,
-            limit=limit,
-            offset=offset,
-        )
-
+    body = fetch_reconciliations(
+        cfg,
+        account_id=account,
+        include_deleted=include_deleted,
+        limit=limit,
+        offset=offset,
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
     _render_reconciliation_list(body, json_mode=json_output)
 
 
