@@ -1,13 +1,22 @@
-"""Reconciliations — list + new batch (Phase 2, pass 1).
+"""Reconciliations — list, new batch, and the working/detail screen (Phase 2).
 
 Per-account bank-statement batches. The list shows every batch (Account column;
-`a` filters to one account, `n` opens the new-batch form). Detail + assign +
-complete/revert land in pass 2 (enter opens a read-only record for now).
+`a` filters to one account, `n` opens the new-batch form). Enter opens the
+working screen.
 
 New batch: name › account › date range › source (chained|manual) › [begin if
 manual] › end. Begin balance is chained by default (the engine derives it from
 the previous batch's end); manual lets you set it — you can't supply a value
 while chained (engine 422). POST /reconciliations.
+
+Working screen (ReconciliationDetailScreen): a checklist of the account's
+unassigned + already-in-batch transactions (draft) or a read-only list of the
+batch's transactions (completed). `space` toggles membership (PUT the
+transaction's reconciliation_id); `c`/`r`/`d` complete/revert/delete. Complete
+needs ≥1 transaction and locks amount/account/title/date on them; delete is
+draft-only and just detaches the transactions.
+
+The account-first browse + native reorder land in pass 2b.
 """
 
 import io
@@ -18,22 +27,34 @@ from rich.table import Table
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Container, Horizontal
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Footer, Input, Label, Static
 
-from expense.commands import accounts_cmd, reconcile_cmd
-from expense.commands._resource import format_cents, load_account_name_map
+from expense.commands import accounts_cmd, reconcile_cmd, transactions_cmd
+from expense.commands._resource import (
+    format_cents,
+    load_account_name_map,
+    load_category_name_map,
+)
+from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.dates import to_canonical_aware
 from expense.tui.screens._base import SectionScreen
-from expense.tui.screens.modals import RecordModal
+from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
+from expense.tui.widgets.checklist import CheckList
 from expense.tui.widgets.cursor_list import CursorList
 from expense.tui.widgets.header import Breadcrumb
 
 _STATUS = {1: "draft", 2: "completed"}
 _LIST_HEADERS = ["Account", "Name", "Period", "Begin", "End", "Source", "Status"]
+
+
+def _items(body: object) -> list:
+    if isinstance(body, dict):
+        return body.get("items", []) or []
+    return body or []
 
 
 def _period(item: dict) -> str:
@@ -123,8 +144,8 @@ class ReconciliationsScreen(SectionScreen):
 
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
         item = self._by_id.get(event.key)
-        if item:  # pass-1 placeholder; the real detail + assign land in pass 2
-            self.app.push_screen(RecordModal(f"Reconciliation · {item.get('name') or '—'}", item))
+        if item:
+            self.app.push_screen(ReconciliationDetailScreen(item), lambda _result: self._load())
 
 
 # --------------------------------------------------------------------------- #
@@ -445,3 +466,267 @@ class NewReconciliationScreen(Screen):
     def _done(self) -> None:
         self.notify("Reconciliation created.")
         self.dismiss()
+
+
+# --------------------------------------------------------------------------- #
+# Working / detail screen — assign transactions, complete / revert / delete
+# --------------------------------------------------------------------------- #
+def _txn_sub(it: dict, cat_names: dict, tag_names: dict) -> str:
+    """The dim category · #tags · note sub-line for a transaction row."""
+    parts = []
+    cat = cat_names.get(it.get("category_id"))
+    if cat:
+        parts.append(cat)
+    tags = it.get("hashtag_ids") or []
+    if tags:
+        parts.append(" ".join("#" + tag_names.get(t, t[:6]) for t in tags))
+    note = it.get("description")
+    if note:
+        parts.append(f'"{note}"')
+    return "  ·  ".join(parts)
+
+
+class ReconciliationDetailScreen(Screen):
+    """One batch: header + a transaction checklist (draft) or read-only list
+    (completed). `space` toggles membership; `c`/`r`/`d` complete/revert/delete."""
+
+    BINDINGS = [
+        ("escape", "back", "Back"),
+        ("c", "complete", "Complete"),
+        ("r", "revert", "Revert"),
+        ("d", "delete", "Delete"),
+    ]
+
+    def __init__(self, record: dict) -> None:
+        super().__init__()
+        self._record = record
+        self._id = record.get("id")
+        self._account_id = record.get("account_id")
+        self._busy = False
+        self._list: CheckList | None = None
+
+    @property
+    def _completed(self) -> bool:
+        return self._record.get("status") == 2
+
+    def compose(self) -> ComposeResult:
+        yield Breadcrumb(("Reconciliations", self._record.get("name") or "—"), id="crumb")
+        yield Static("", id="rhead")
+        yield Container(id="rlist")
+        yield Static("", id="rhint")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._render_header()
+        self._load_txns()
+
+    def _render_header(self) -> None:
+        r = self._record
+        acct = load_account_name_map().get(self._account_id, (self._account_id or "?")[:8])
+        status = _STATUS.get(r.get("status"), "—")
+        text = Text.assemble(
+            (r.get("name") or "—", "bold"),
+            ("  ·  ", "dim"),
+            (acct, ""),
+            ("  ·  ", "dim"),
+            (_period(r), "dim"),
+            ("\n", ""),
+            ("begin ", "dim"),
+            (format_cents(r.get("beginning_balance_cents")), ""),
+            (f"  ({r.get('beginning_balance_source') or '—'})", "dim"),
+            ("    end ", "dim"),
+            (format_cents(r.get("ending_balance_cents")), ""),
+            ("    status ", "dim"),
+            (status, "green" if status == "completed" else "yellow"),
+        )
+        self.query_one("#rhead", Static).update(text)
+        hint = (
+            "read-only while completed · r revert to edit · esc back"
+            if self._completed
+            else "space toggle in/out of this batch · c complete · r revert · d delete · esc back"
+        )
+        self.query_one("#rhint", Static).update(Text(hint, style="dim"))
+
+    @work(thread=True, exclusive=True)
+    def _load_txns(self) -> None:
+        from expense import config as config_module
+
+        cfg = config_module.ensure_loaded()
+        kw = dict(
+            no_cache=self.app._no_cache,
+            verbose=self.app._verbose,
+            cold_start_notice=False,
+            notice_stream=io.StringIO(),
+        )
+        # assigned-to-this-batch transactions (always; any date)
+        assigned = _items(
+            transactions_cmd.fetch_transactions(cfg, reconciliation=self._id, limit=500, **kw)
+        )
+        available = []
+        if not self._completed:  # draft also offers the account's unassigned txns in range
+            available = [
+                it
+                for it in _items(
+                    transactions_cmd.fetch_transactions(
+                        cfg,
+                        account=self._account_id,
+                        date_from=self._record.get("date_start") or None,
+                        date_to=self._record.get("date_end") or None,
+                        limit=500,
+                        **kw,
+                    )
+                )
+                if it.get("reconciliation_id") is None
+            ]
+        cat_names = load_category_name_map()
+        tag_names = load_hashtag_name_map()
+        rows, checked, seen = [], [], set()
+        for it in [*assigned, *available]:
+            key = it.get("id")
+            if key in seen:
+                continue
+            seen.add(key)
+            if it.get("reconciliation_id") == self._id:
+                checked.append(key)
+            rows.append(
+                (
+                    key,
+                    it.get("title"),
+                    it.get("amount_cents"),
+                    (it.get("date") or "")[:10],
+                    _txn_sub(it, cat_names, tag_names),
+                )
+            )
+        self.app.call_from_thread(self._populate, rows, checked)
+
+    async def _populate(self, rows: list, checked: list) -> None:
+        container = self.query_one("#rlist", Container)
+        await container.remove_children()
+        empty = (
+            "(no transactions in this batch)"
+            if self._completed
+            else "(no transactions for this account in range)"
+        )
+        self._list = CheckList(rows, checked, read_only=self._completed, empty=empty)
+        await container.mount(self._list)
+        if not self._completed:
+            self._list.focus()
+
+    # ---- assign / unassign ----------------------------------------------
+    def on_check_list_toggled(self, event: CheckList.Toggled) -> None:
+        self._assign(event.key, self._id if event.checked else None)
+
+    @work(thread=True)
+    def _assign(self, tx_id: object, recon_id: object) -> None:
+        from expense import config as config_module
+        from expense.cache import refresh_after_write
+        from expense.http import ExpenseClient
+
+        cfg = config_module.ensure_loaded()
+        try:
+            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
+                client.put(f"/transactions/{tx_id}", json_body={"reconciliation_id": recon_id})
+                refresh_after_write(
+                    client,
+                    cfg,
+                    no_cache=self.app._no_cache,
+                    no_sync_after=False,
+                    notice_stream=io.StringIO(),
+                )
+        except Exception as exc:
+            self.app.call_from_thread(self._assign_failed, str(exc))
+
+    def _assign_failed(self, message: str) -> None:
+        self.notify(message, title="Couldn't update", severity="error")
+        self._load_txns()  # resync the checklist to the engine's truth
+
+    # ---- status actions --------------------------------------------------
+    def action_back(self) -> None:
+        self.dismiss()
+
+    def action_complete(self) -> None:
+        if self._completed:
+            self.notify("Already completed.")
+            return
+        if not (self._list and self._list.checked):
+            self.notify("Assign at least one transaction first.", severity="error")
+            return
+        n = len(self._list.checked)
+        self._confirm(
+            "Complete reconciliation?",
+            f"Locks amount/account/title/date on the {n} assigned transaction(s).",
+            lambda: self._status_action(
+                "POST", f"/reconciliations/{self._id}/complete", 2, "completed"
+            ),
+        )
+
+    def action_revert(self) -> None:
+        if not self._completed:
+            self.notify("Only completed reconciliations can be reverted.")
+            return
+        self._confirm(
+            "Revert to draft?",
+            "Unlocks the assigned transactions and this batch's balances.",
+            lambda: self._status_action(
+                "POST", f"/reconciliations/{self._id}/revert", 1, "reverted to draft"
+            ),
+        )
+
+    def action_delete(self) -> None:
+        if self._completed:
+            self.notify("Revert before deleting a completed reconciliation.", severity="error")
+            return
+        self._confirm(
+            "Delete reconciliation?",
+            "Detaches its transactions (they are not deleted) and removes the batch.",
+            lambda: self._status_action("DELETE", f"/reconciliations/{self._id}", None, "deleted"),
+        )
+
+    def _confirm(self, title: str, message: str, action) -> None:
+        def cb(ok: bool) -> None:
+            if ok:
+                action()
+
+        self.app.push_screen(ConfirmModal(title, message), cb)
+
+    @work(thread=True, exclusive=True)
+    def _status_action(self, method: str, path: str, new_status, verb: str) -> None:
+        if self._busy:
+            return
+        self._busy = True
+        from expense import config as config_module
+        from expense.cache import refresh_after_write
+        from expense.http import ExpenseClient
+
+        cfg = config_module.ensure_loaded()
+        try:
+            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
+                if method == "DELETE":
+                    client.delete(path)
+                else:
+                    client.post(path)
+                refresh_after_write(
+                    client,
+                    cfg,
+                    no_cache=self.app._no_cache,
+                    no_sync_after=False,
+                    notice_stream=io.StringIO(),
+                )
+        except Exception as exc:
+            self.app.call_from_thread(self._action_failed, str(exc), verb)
+            return
+        self.app.call_from_thread(self._action_done, new_status, verb)
+
+    def _action_failed(self, message: str, verb: str) -> None:
+        self._busy = False
+        self.notify(message, title=f"Couldn't {verb.split()[0]}", severity="error")
+
+    def _action_done(self, new_status, verb: str) -> None:
+        self._busy = False
+        self.notify(f"Reconciliation {verb}.")
+        if verb == "deleted":
+            self.dismiss()
+            return
+        self._record["status"] = new_status
+        self._render_header()
+        self._load_txns()
