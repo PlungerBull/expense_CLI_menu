@@ -6,7 +6,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Static
+from textual.widgets import Footer, Input, Static
 
 from expense.commands._resource import format_field_value
 
@@ -67,3 +67,37 @@ class ConfirmModal(ModalScreen[bool]):
 
     def action_cancel(self) -> None:
         self.dismiss(False)
+
+
+class PromptModal(ModalScreen[str | None]):
+    """Single-line text prompt. `enter` submits the value, `esc` cancels (None).
+    `password=True` masks input (for the token). Dismisses with the string."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(
+        self, title: str, message: str = "", *, value: str = "", password: bool = False
+    ) -> None:
+        super().__init__()
+        self._title = title
+        self._message = message
+        self._value = value
+        self._password = password
+
+    def compose(self) -> ComposeResult:
+        rows = [Static(Text(self._title), classes="modal-title")]
+        if self._message:
+            rows.append(Static(Text(self._message, style="dim")))
+        rows.append(Input(value=self._value, password=self._password, id="prompt"))
+        rows.append(Static(Text("[enter] save    [esc] cancel", style="dim")))
+        yield Vertical(*rows, id="modal")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.query_one("#prompt", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value.strip())
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
