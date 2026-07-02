@@ -1,9 +1,17 @@
 # Interactive TUI — Implementation Plan
 
-> Status: proposal. Builds a menu-driven, retained-mode terminal app on top of the
-> existing engine-integration layer. Mockups: [docs/mockups/](mockups/) (the
-> `expense-world-*.html` set). Expand/collapse = interactive `▼/▶` tree with
+> Status: **in progress (Step 10)** — Phases 0 & 1 shipped, Phase 2 (write flows)
+> under way; Phase 3 not started. Entry command is **`expense world`**. This TUI
+> **replaces the questionary `expense menu`** — once it reaches parity, `expense/menu/`
+> is deleted (see §10, roadmap Step 10.X). Builds a menu-driven, retained-mode terminal
+> app on top of the existing engine-integration layer. Mockups: [docs/mockups/](mockups/)
+> (the `expense-world-*.html` set). Expand/collapse = interactive `▼/▶` tree with
 > arrow-key navigation. Theme = swappable token set, **neutral by default**.
+>
+> **What's wired (per [expense/tui/screens/home.py](../expense/tui/screens/home.py)):**
+> Outstanding Amounts, Log a transaction (quick-add + transfer), Inbox, Transactions,
+> Reconciliations, Accounts, Categories, Hashtags, Config, Auth & profile.
+> **Still stubbed (`"soon"`):** Monthly report; Sync · Activity · Rates.
 
 ## 1. Goal & shape
 
@@ -11,10 +19,12 @@ A persistent terminal app — `expense world` — that opens to a **header + men
 and renders a dedicated **interface per section** (browse, create, edit, confirm),
 with arrow-key navigation, an expandable category tree, and contextual key hints.
 
-It is **additive**: the flat commands (`expense log`, `expense dashboard`, …) and
-the existing `expense menu` (questionary) keep working untouched. The TUI is a new
-*client* of the same data/command layer — it implements **zero** business logic, per
-the repo's thin-wrapper rule. The engine stays the single source of truth.
+The flat commands (`expense log`, `expense dashboard`, …) keep working untouched — they
+stay the canonical interface. The TUI **replaces** the questionary `expense menu`: both
+run in parallel only until the TUI reaches parity, after which `expense/menu/` is deleted
+(see §9 and roadmap Step 10.X). The TUI is a new *client* of the same data/command layer —
+it implements **zero** business logic, per the repo's thin-wrapper rule. The engine stays
+the single source of truth.
 
 Built with **Textual** (Python, by the Rich authors — the direct analog to the Ink
 stack Claude Code uses).
@@ -82,7 +92,7 @@ Tokens: `$surface $panel $text $text-muted $accent $selection $border $positive 
 
 Estimates assume one dev comfortable with Python; **add ~1 week if new to Textual**.
 
-### Phase 0 — Walking skeleton · **3–5 days**
+### Phase 0 — Walking skeleton · **3–5 days** · ✅ shipped
 - `expense world` launches the Textual app; neutral theme loads.
 - Header banner + **home menu** (real section list + live status line), arrow-key nav,
   footer keybar, quit.
@@ -91,7 +101,9 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - **Exit criteria:** launch → navigate the menu → see real current-month data in your
   terminal. De-risks Textual + async + the data-reuse architecture.
 
-### Phase 1 — Read views · **1–2 weeks**
+### Phase 1 — Read views · **1–2 weeks** · ✅ shipped
+> Note: Reports, Activity log, and Exchange rates list screens slipped from Phase 1 to
+> Phase 2's remaining work — they are still `"soon"` stubs on the home menu.
 - Apply the fetch/print split to the resources in scope.
 - List screens (Textual `DataTable`): **Inbox, Transactions, Accounts, Categories,
   Hashtags (chips), Reports (monthly), Activity log, Exchange rates** — filters,
@@ -101,7 +113,12 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - Record **detail modal** (view one row). Loading / empty / error states; status bar.
 - **Exit criteria:** every read surface is browsable in the TUI.
 
-### Phase 2 — Write flows · **1–2 weeks**
+### Phase 2 — Write flows · **1–2 weeks** · 🔨 in progress
+> **Shipped:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms
+> (account/category/hashtag), full Reconciliations screen (assign/complete/revert/delete +
+> account-first browse + reorder), Config, Auth & profile.
+> **Remaining before parity:** the **Monthly report** screen and the **Sync · Activity ·
+> Rates** system-read screens (both still `"soon"` stubs on the home menu).
 - **Confirm modal** (one component) for promote / delete / archive / restore /
   complete / revert / sync — reuses idempotency + error envelope.
 - **The transaction form** (Log / Inbox-add / Transaction-edit — same fields): required
@@ -113,7 +130,7 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - **Config / Auth & profile** forms. Post-write refresh reuses `refresh_after_write`.
 - **Exit criteria:** create/edit/act parity with `expense menu`.
 
-### Phase 3 — Polish & hardening · **~1 week**
+### Phase 3 — Polish & hardening · **~1 week** · ⬜ not started
 - Designer's theme tokens dropped in; light/dark; `NO_COLOR` paths.
 - Keybinding consistency, `?` help overlay, Textual command palette.
 - Async edge cases (slow net, offline, cold-start notice shown in-app), spinners.
@@ -147,19 +164,26 @@ Per-section difficulty: menus & lists *easy*; the tree & the transaction form
 
 ## 8. Definition of done
 
-- Parity checklist vs every `expense menu` group.
+- Parity checklist vs every `expense menu` group (the gate that authorizes deleting it).
 - Every engine endpoint with a CLI surface is reachable in the TUI.
 - Pilot smoke tests + the full existing suite green.
 - Degrades gracefully on `NO_COLOR` / non-TTY / tiny terminals.
+- **`expense menu` (`expense/menu/`) removed** once parity is signed off (Step 10.X): its
+  screens, tests, the Typer command, and the now-unused `questionary` dep all go.
 
-## 9. Open decisions (need your call)
+## 9. Decisions
 
-1. **Entry command** — `expense world` (recommended) · `expense tui` · or bare
-   `expense` opens the TUI.
-2. **Coexistence** — does the TUI eventually *replace* `expense menu`, or do both ship
-   permanently? (Recommend: coexist; revisit after parity.)
-3. **Neutral theme** — monochrome + single accent, dark default? (Designer to finalize
-   tokens; plan assumes dark-neutral.)
-4. **Reconcile reorder** — native TUI reorder vs shell-out to `$EDITOR` for v1
-   (recommend shell-out first).
+**Resolved:**
+
+1. **Entry command** — ✅ **`expense world`**. (Wired in [expense/tui/app.py](../expense/tui/app.py) / `__main__.py`.)
+2. **Coexistence** — ✅ **The TUI replaces `expense menu`.** Both ship in parallel only until
+   the TUI reaches parity; then `expense/menu/` is deleted (roadmap Step 10.X). The flat
+   commands (`expense log`, …) stay permanently as the canonical contract-validator interface.
+4. **Reconcile reorder** — ✅ **shell out to `$EDITOR`** for v1 (reuses `expense/_editor.py`);
+   native reorder deferred.
+
+**Still open:**
+
+3. **Neutral theme** — monochrome + single accent, dark default? Designer to finalize the
+   `theme.tcss` tokens; plan assumes dark-neutral.
 5. **Minimum terminal size** — fallback/refuse below e.g. 80×24?

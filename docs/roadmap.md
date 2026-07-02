@@ -487,6 +487,40 @@ Walks `expense menu` through `Config → Set engine URL → Set token → Auth �
 
 **Step 9.5 done** — 9.5.16 landed; the freshman-flow menu walk passes against the live engine.
 
+> **Deprecation notice (decided 2026-07-02).** The questionary `expense menu` built in Step 9.5 is superseded by the Textual TUI (`expense world`, Step 10). Once the TUI reaches parity, `expense/menu/` is **deleted** — the two interactive surfaces converge to one. See Step 10.X. Until then the menu keeps working; no new features land in it.
+
+---
+
+## Step 10 — Interactive TUI (`expense world`)
+
+*Deliverable: a retained-mode Textual terminal app — the third and final front door, replacing the questionary `expense menu`. Full plan: [tui-plan.md](tui-plan.md).*
+
+The TUI is a new **client** of the same engine-integration layer (HTTP client, SQLite replica, error envelope, name resolution, `refresh_after_write`). It implements **zero** business logic — the thin-wrapper rule holds. The one enabling refactor is the **fetch/print split**: commands that fetch *and* print get a pure `fetch_*(cfg, …) -> dict` extracted, which both the typer command and the TUI call. The synchronous engine client runs inside a Textual `@work(thread=True)` worker so the UI never blocks.
+
+**Resolved open decisions** (from [tui-plan.md §9](tui-plan.md)): entry command is **`expense world`** (#1); the TUI **replaces** `expense menu` at parity (#2 — see 10.X); reconcile reorder **shells out to `$EDITOR`** for v1 (#4). Still open: designer's final theme tokens (#3), minimum terminal size fallback (#5).
+
+### Step 10.P0 — Walking skeleton (shipped)
+`expense world` launches; neutral theme; header banner + home menu with live status; Outstanding Amounts wired to live data (flat, then interactive category tree) via the worker helper. De-risked Textual + async + data-reuse.
+
+### Step 10.P1 — Read views (shipped)
+List screens for Inbox, Transactions, Accounts, Categories, Hashtags (chips); interactive `▼/▶` category tree on Outstanding Amounts; record detail modals; loading/empty/error states. Every read surface browsable.
+
+### Step 10.P2 — Write flows (in progress)
+Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared, hashtag multi-select, conditional transfer sub-flow, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
+
+**Shipped so far:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile.
+**Remaining before parity:**
+- **Reports (Monthly report)** screen — single-month + range with hashtag tree (reuses the flat `reports` fetch/renderer). Currently stubbed as `"soon"` in [expense/tui/screens/home.py](../expense/tui/screens/home.py).
+- **System reads: Sync · Activity · Rates** — three thin read screens extending [expense/tui/screens/system.py](../expense/tui/screens/system.py). Also stubbed `"soon"`.
+
+**Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before code** (per [CLAUDE.md](../CLAUDE.md) "Mock every screen before building it").
+
+### Step 10.P3 — Polish & hardening (not started)
+Designer theme tokens; light/dark + `NO_COLOR` paths; keybinding consistency, `?` help overlay, command palette; async edge cases + spinners; Textual pilot tests (existing CLI suite stays green); update `docs/roadmap.md` + `CLAUDE.md`. Exit criteria: shippable, feature-complete vs the menu.
+
+### Step 10.X — Delete `expense menu` (pending — the closeout)
+Once the TUI is at parity (10.P2 + 10.P3 done), remove `expense/menu/` and its tests (`test_menu_*.py`, `test_freshman_flow_menu.py`), drop the `expense menu` Typer command, and prune the `questionary` dependency from `pyproject.toml` if nothing else uses it. Update all docs to describe two front doors (flat commands + `expense world`). The flat commands and their freshman-flow contract test are untouched.
+
 ---
 
 ## Post-Step-9 ergonomics
@@ -518,4 +552,4 @@ These apply at every step — don't defer them.
 
 ---
 
-*Last updated: April 2026*
+*Last updated: 2026-07-02 (Step 10 TUI in progress; `expense menu` deprecated for deletion at TUI parity).*
