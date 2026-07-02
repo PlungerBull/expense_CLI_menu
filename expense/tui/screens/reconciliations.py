@@ -1,8 +1,11 @@
 """Reconciliations — list, new batch, and the working/detail screen (Phase 2).
 
-Per-account bank-statement batches. The list shows every batch (Account column;
-`a` filters to one account, `n` opens the new-batch form). Enter opens the
-working screen.
+Per-account bank-statement batches. The browse is account-first (two panes):
+the account selector on top, the selected account's batches below in chain
+order. `↑↓` in account focus swaps the account (the batch list follows); `enter`
+drops into batch focus, where `enter` opens the working screen, `ctrl+↑/↓`
+reorders the chain, and `esc` returns to the accounts. `n` creates a batch for
+the selected account.
 
 New batch: name › account › date range › source (chained|manual) › [begin if
 manual] › end. Begin balance is chained by default (the engine derives it from
@@ -15,8 +18,6 @@ batch's transactions (completed). `space` toggles membership (PUT the
 transaction's reconciliation_id); `c`/`r`/`d` complete/revert/delete. Complete
 needs ≥1 transaction and locks amount/account/title/date on them; delete is
 draft-only and just detaches the transactions.
-
-The account-first browse + native reorder land in pass 2b.
 """
 
 import io
@@ -87,65 +88,227 @@ def reconciliation_rows(items: list[dict], account_names: dict) -> list:
     return rows
 
 
+_BATCH_HEADERS = ["Name", "Period", "Begin", "End", "Source", "Status"]
+
+
+def _sort_key(r: dict):
+    so = r.get("sort_order")
+    return (so if so is not None else 10**9, r.get("id") or "")
+
+
+def batch_rows(items: list[dict]) -> list:
+    """Per-account batch rows (no Account column) for the browse's lower pane."""
+    rows = []
+    for it in items:
+        status = it.get("status")
+        cells = [
+            it.get("name") or "(unnamed)",
+            _period(it),
+            format_cents(it.get("beginning_balance_cents")),
+            format_cents(it.get("ending_balance_cents")),
+            it.get("beginning_balance_source") or "—",
+            _STATUS.get(status, str(status) if status is not None else "—"),
+        ]
+        rows.append((it.get("id"), cells, "dim" if status == 2 else ""))
+    return rows
+
+
 class ReconciliationsScreen(SectionScreen):
+    """Account-first two-pane browse. Top: bank accounts. Bottom: the selected
+    account's batches in chain order. `↑↓` in account focus swaps the account
+    (the batch list follows); `enter` drops into batch focus; there `enter`
+    opens a batch, `ctrl+↑/↓` reorders the chain, `esc` returns to accounts."""
+
     crumb = ("Capture & ledger", "Reconciliations")
     CARD_WIDTH = 100
-    BINDINGS = [("a", "account", "Account"), ("n", "new", "New")]
+    BINDINGS = [
+        ("escape", "back", "Back"),
+        ("r", "reload", "Refresh"),
+        ("n", "new", "New"),
+        ("ctrl+up", "reorder(-1)", "Move up"),
+        ("ctrl+down", "reorder(1)", "Move down"),
+    ]
 
     def __init__(self) -> None:
         super().__init__()
+        self._recons: list = []
+        self._accounts: list = []  # (id, name, currency, balance_cents)
+        self._acct_idx = 0
+        self._mode = "accts"  # "accts" | "batches"
+        self._batches: list = []  # recon dicts for the selected account (sorted)
         self._by_id: dict = {}
-        self._filter_idx = 0
-        self._filter_ids: list = [None]
+        self._resume_batch = False
+        self._resume_key: object | None = None
 
-    def fetch(self) -> list:
+    def fetch(self) -> dict:
         from expense import config as config_module
 
         cfg = config_module.ensure_loaded()
-        body = reconcile_cmd.fetch_reconciliations(
-            cfg,
+        kw = dict(
             no_cache=self.app._no_cache,
             verbose=self.app._verbose,
             cold_start_notice=False,
             notice_stream=io.StringIO(),
         )
-        return body.get("items", body) if isinstance(body, dict) else (body or [])
+        recons = _items(reconcile_cmd.fetch_reconciliations(cfg, **kw))
+        accts = _items(accounts_cmd.fetch_accounts(cfg, **kw))
+        accounts = [
+            (
+                a["id"],
+                a.get("name") or "(unnamed)",
+                a.get("currency_code") or "?",
+                a.get("current_balance_cents"),
+            )
+            for a in accts
+            if a.get("id") and not a.get("is_person")
+        ]
+        return {"recons": recons, "accounts": accounts}
 
-    def build(self, items: list) -> list[Widget]:
-        names = load_account_name_map()
-        present = sorted(
-            {it.get("account_id") for it in items if it.get("account_id")},
-            key=lambda a: names.get(a, a),
+    def _selected_account(self):
+        return self._accounts[self._acct_idx] if self._accounts else None
+
+    def _rebuild_batches(self) -> None:
+        acct = self._selected_account()
+        aid = acct[0] if acct else None
+        self._batches = sorted(
+            (r for r in self._recons if r.get("account_id") == aid), key=_sort_key
         )
-        self._filter_ids = [None, *present]
-        self._filter_idx = min(self._filter_idx, len(self._filter_ids) - 1)
-        current = self._filter_ids[self._filter_idx]
-        shown = [it for it in items if current is None or it.get("account_id") == current]
-        self._by_id = {it.get("id"): it for it in shown}
-        label = "All accounts" if current is None else names.get(current, current[:8])
+        self._by_id = {r.get("id"): r for r in self._batches}
+
+    def _batch_caption(self) -> str:
+        acct = self._selected_account()
+        label = acct[1] if acct else "—"
+        return f"Reconciliations · {label}   ·   chain order (oldest → newest)"
+
+    def build(self, data: dict) -> list[Widget]:
+        self._recons = data["recons"]
+        self._accounts = data["accounts"]
+        self._acct_idx = min(self._acct_idx, max(0, len(self._accounts) - 1))
+        self._rebuild_batches()
+        acct_rows = [
+            (aid, [name, cur, format_cents(bal)]) for (aid, name, cur, bal) in self._accounts
+        ]
+        self._accts_list = CursorList(
+            ["Account", "Cur", "Balance"], acct_rows, align_right={2}, empty="(no bank accounts)"
+        )
+        self._accts_list.id = "accts"
+        self._batch_list = CursorList(
+            _BATCH_HEADERS,
+            batch_rows(self._batches),
+            align_right={2, 3},
+            empty="(no batches — press n to create one)",
+        )
+        self._batch_list.id = "batches"
+        title = "Reconciliations — pick an account, then a batch"
         return [
-            Static(Text("Reconciliations — bank-statement batches"), classes="section-title"),
-            Static(Text(f"account: {label}   ·   a switch · n new", style="dim")),
-            CursorList(
-                _LIST_HEADERS,
-                reconciliation_rows(shown, names),
-                align_right={3, 4},
-                empty="(no reconciliations — press n to create one)",
-            ),
+            Static(Text(title), classes="section-title"),
+            Static(Text("Account", style="dim")),
+            self._accts_list,
+            Static(Text(self._batch_caption(), style="dim"), id="batchcap"),
+            self._batch_list,
         ]
 
-    def action_account(self) -> None:
-        if len(self._filter_ids) > 1:
-            self._filter_idx = (self._filter_idx + 1) % len(self._filter_ids)
-            self._load()
+    async def _show(self, data: object) -> None:
+        await super()._show(data)
+        if not self._accounts:
+            return
+        self._accts_list.set_cursor(self._acct_idx)
+        if self._resume_batch:
+            self._resume_batch = False
+            self._mode = "batches"
+            self._batch_list.set_cursor(self._batch_list.index_of(self._resume_key))
+            self._batch_list.focus()
+        else:
+            self._mode = "accts"
+            self._accts_list.focus()
 
-    def action_new(self) -> None:
-        self.app.push_screen(NewReconciliationScreen(), lambda _result: self._load())
+    # ---- interaction -----------------------------------------------------
+    def on_cursor_list_highlighted(self, event: CursorList.Highlighted) -> None:
+        if self._mode != "accts":
+            return
+        self._acct_idx = event.index
+        self._rebuild_batches()
+        self._batch_list.set_rows(batch_rows(self._batches))
+        self.query_one("#batchcap", Static).update(Text(self._batch_caption(), style="dim"))
 
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
+        if self._mode == "accts":
+            if not self._batches:
+                self.notify("No batches for this account — press n to create one.")
+                return
+            self._mode = "batches"
+            self._batch_list.focus()
+            return
         item = self._by_id.get(event.key)
         if item:
+            self._resume_batch = True
+            self._resume_key = event.key
             self.app.push_screen(ReconciliationDetailScreen(item), lambda _result: self._load())
+
+    def action_back(self) -> None:
+        if self._mode == "batches":
+            self._mode = "accts"
+            self._accts_list.focus()
+        else:
+            self.app.pop_screen()
+
+    def action_new(self) -> None:
+        acct = self._selected_account()
+        if not acct:
+            self.notify("No account selected.", severity="error")
+            return
+        self._resume_batch = True
+        self._resume_key = None
+        self.app.push_screen(
+            NewReconciliationScreen(account_id=acct[0], account_name=acct[1]),
+            lambda _result: self._load(),
+        )
+
+    def action_reorder(self, delta: int) -> None:
+        if self._mode != "batches" or len(self._batches) < 2:
+            return
+        key = self._batch_list.cursor_key
+        ids = [r.get("id") for r in self._batches]
+        i = ids.index(key)
+        j = i + delta
+        if j < 0 or j >= len(ids):
+            return
+        ids[i], ids[j] = ids[j], ids[i]
+        acct = self._selected_account()
+        self._resume_batch = True
+        self._resume_key = key
+        self._reorder(acct[0], ids)
+
+    @work(thread=True, exclusive=True)
+    def _reorder(self, account_id: str, ordered_ids: list) -> None:
+        from expense import config as config_module
+        from expense.cache import refresh_after_write
+        from expense.http import ExpenseClient
+
+        cfg = config_module.ensure_loaded()
+        try:
+            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
+                client.put(
+                    f"/accounts/{account_id}/reconciliations/order",
+                    json_body={"ordered_ids": ordered_ids},
+                )
+                refresh_after_write(
+                    client,
+                    cfg,
+                    no_cache=self.app._no_cache,
+                    no_sync_after=False,
+                    notice_stream=io.StringIO(),
+                )
+        except Exception as exc:
+            self.app.call_from_thread(
+                self.notify, str(exc), title="Couldn't reorder", severity="error"
+            )
+            return
+        self.app.call_from_thread(self._reordered)
+
+    def _reordered(self) -> None:
+        self.notify("Reordered.")
+        self._load()
 
 
 # --------------------------------------------------------------------------- #
@@ -178,7 +341,6 @@ _DATES = {"date_start", "date_end"}
 
 
 class NewReconciliationScreen(Screen):
-    crumb = ("Reconciliations", "New")
     BINDINGS = [
         ("escape", "cancel", "Cancel"),
         ("ctrl+s", "submit", "Create"),
@@ -188,7 +350,7 @@ class NewReconciliationScreen(Screen):
         ("ctrl+down", "field(1)", "Next field"),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, account_id: str | None = None, account_name: str | None = None) -> None:
         super().__init__()
         self._current = 0
         self._values: dict = {"source": "chained"}
@@ -197,12 +359,20 @@ class NewReconciliationScreen(Screen):
         self._suggestions: list = []
         self._suggest_idx = 0
         self._submitting = False
+        self._preset_account = account_id
+        if account_id:  # created from within an account — don't ask for it again
+            self._values["account"] = account_id
+            self._display["account"] = account_name or account_id[:8]
+            self.crumb = ("Reconciliations", account_name or "—", "New")
+        else:
+            self.crumb = ("Reconciliations", "New")
 
     def _is_manual(self) -> bool:
         return self._values.get("source") == "manual"
 
     def _sequence(self) -> list[str]:
-        seq = ["name", "account", "date_start", "date_end", "source"]
+        seq = ["name"] if self._preset_account else ["name", "account"]
+        seq += ["date_start", "date_end", "source"]
         return seq + (["begin", "end"] if self._is_manual() else ["end"])
 
     @property
@@ -222,7 +392,8 @@ class NewReconciliationScreen(Screen):
         self._refresh_bar()
         self._refresh_view()
         self.query_one("#bar", Input).focus()
-        self._load_accounts()
+        if not self._preset_account:  # only need the account picker for standalone create
+            self._load_accounts()
 
     @work(thread=True)
     def _load_accounts(self) -> None:

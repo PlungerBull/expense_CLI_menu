@@ -37,6 +37,15 @@ class CursorList(Static):
             self.key = key
             self.index = index
 
+    class Highlighted(Message):
+        """Posted when the row cursor moves (live), carrying the new row's key.
+        Lets a parent react as you navigate (e.g. a master→detail two-pane)."""
+
+        def __init__(self, key: object, index: int) -> None:
+            super().__init__()
+            self.key = key
+            self.index = index
+
     def __init__(
         self,
         headers: Sequence[str],
@@ -65,6 +74,17 @@ class CursorList(Static):
     def cursor_key(self) -> object | None:
         return self._rows[self._cursor][0] if self._rows else None
 
+    def index_of(self, key: object) -> int:
+        for i, row in enumerate(self._rows):
+            if row[0] == key:
+                return i
+        return 0
+
+    def set_cursor(self, index: int) -> None:
+        if self._rows:
+            self._cursor = max(0, min(len(self._rows) - 1, index))
+            self._refresh()
+
     def _refresh(self) -> None:
         self.update(self._build())
 
@@ -89,8 +109,11 @@ class CursorList(Static):
     def action_move(self, delta: int) -> None:
         if not self._rows:
             return
-        self._cursor = max(0, min(len(self._rows) - 1, self._cursor + delta))
-        self._refresh()
+        new = max(0, min(len(self._rows) - 1, self._cursor + delta))
+        if new != self._cursor:
+            self._cursor = new
+            self._refresh()
+            self.post_message(self.Highlighted(self.cursor_key, self._cursor))
 
     def action_select(self) -> None:
         if self._rows:

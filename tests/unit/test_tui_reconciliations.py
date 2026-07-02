@@ -154,13 +154,17 @@ def test_new_reconciliation_manual_includes_begin(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_reconciliations_list_screen_filters_by_account(monkeypatch):
+def test_reconciliations_browse_account_first(monkeypatch):
     monkeypatch.setattr(
         "expense.commands.reconcile_cmd.fetch_reconciliations",
         lambda *a, **k: {"items": ITEMS, "total": 2},
     )
     monkeypatch.setattr(
-        "expense.tui.screens.reconciliations.load_account_name_map", lambda: ACCOUNTS
+        "expense.commands.accounts_cmd.fetch_accounts",
+        lambda *a, **k: [
+            {"id": "acc1", "name": "BCP PEN", "currency_code": "PEN", "current_balance_cents": 100},
+            {"id": "acc2", "name": "Interbank USD", "currency_code": "USD"},
+        ],
     )
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
@@ -175,9 +179,20 @@ def test_reconciliations_list_screen_filters_by_account(monkeypatch):
                     "#content LoadingIndicator"
                 ):
                     break
-            assert len(screen._by_id) == 2  # all accounts
-            screen.action_account()  # → acc1 only
-            await pilot.pause(0.1)
+            # account focus: first account (acc1) selected → its batch (r1) shown below
+            assert screen._mode == "accts"
             assert set(screen._by_id) == {"r1"}
+            # arrow to the second account → batch list follows to acc2's batch (r2)
+            screen._accts_list.action_move(1)
+            await pilot.pause(0.05)
+            assert screen._acct_idx == 1
+            assert set(screen._by_id) == {"r2"}
 
     asyncio.run(scenario())
+
+
+def test_new_reconciliation_from_account_drops_account_field():
+    screen = NewReconciliationScreen(account_id="acc1", account_name="BCP PEN")
+    assert "account" not in screen._sequence()  # account preset from browse
+    assert screen._values["account"] == "acc1"
+    assert screen.crumb == ("Reconciliations", "BCP PEN", "New")
