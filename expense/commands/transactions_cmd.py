@@ -463,12 +463,16 @@ def batch(
         body = client.post(f"/{_RESOURCE}/batch", json_body={"transactions": items})
         cache_after_write(ctx, client, cfg)
 
-    if not json_output:
-        created_items = body.get("created", []) if isinstance(body, dict) else []
-        for item in created_items:
-            if isinstance(item, dict) and "id" in item:
-                typer.echo(f"Created: {item['id']}")
-    _render_transaction(body, json_mode=json_output)
+    if json_output:
+        typer.echo(json.dumps(body, indent=2))
+        return
+
+    created_items = body.get("created", []) if isinstance(body, dict) else []
+    for item in created_items:
+        if isinstance(item, dict) and "id" in item:
+            typer.echo(f"Created: {item['id']}")
+    count = len(created_items)
+    typer.echo(f"Created {count} transaction{'s' if count != 1 else ''}.")
 
 
 __all__ = ["app"]

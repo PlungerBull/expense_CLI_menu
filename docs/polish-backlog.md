@@ -56,7 +56,7 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   exists (`db.py:171`). Fix: catch `sqlite3.DatabaseError` in `connect()`,
   wipe, retry once. Add unit test in `test_cache.py`.
 
-- [ ] **1.6 `transactions batch` human output dumps a Python repr.**
+- [x] **1.6 `transactions batch` human output dumps a Python repr.**
   After the `Created: <id>` lines, the batch envelope `{"created": [...]}` is
   passed to `_render_transaction`, printing a single-quoted repr of the whole
   array (`transactions_cmd.py:471-476`, verified by reproduction). Fix: render

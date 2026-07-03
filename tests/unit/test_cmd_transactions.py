@@ -539,6 +539,48 @@ def test_batch_happy_from_stdin(configured):
     UUID(sent["transactions"][0]["id"])
     assert sent["transactions"][1]["id"] == "11111111-1111-1111-1111-111111111111"
     assert "Created:" in result.output
+    assert "Created 2 transactions." in result.output
+    # The envelope must never leak as a Python repr in human mode.
+    assert "created: [" not in result.output
+
+
+@respx.mock
+def test_batch_singular_count(configured):
+    items_in = [
+        {
+            "title": "a",
+            "amount_cents": -100,
+            "date": "2026-04-24T12:00:00Z",
+            "account_id": "acct-1",
+            "category_id": "cat-1",
+        }
+    ]
+    respx.post("https://api.example.com/v1/transactions/batch").mock(
+        return_value=httpx.Response(201, json={"created": [TRANSACTION_RESPONSE]})
+    )
+    result = runner.invoke(cli_app, ["transactions", "batch"], input=json.dumps(items_in))
+    assert result.exit_code == 0, result.output
+    assert "Created 1 transaction." in result.output
+
+
+@respx.mock
+def test_batch_json_passthrough(configured):
+    items_in = [
+        {
+            "title": "a",
+            "amount_cents": -100,
+            "date": "2026-04-24T12:00:00Z",
+            "account_id": "acct-1",
+            "category_id": "cat-1",
+        }
+    ]
+    response = {"created": [TRANSACTION_RESPONSE]}
+    respx.post("https://api.example.com/v1/transactions/batch").mock(
+        return_value=httpx.Response(201, json=response)
+    )
+    result = runner.invoke(cli_app, ["transactions", "batch", "--json"], input=json.dumps(items_in))
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == response
 
 
 def test_batch_rejects_transfer_field(configured):
