@@ -6,6 +6,12 @@ import typer
 from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
+    INCLUDE_ARCHIVED_OPT,
+    INCLUDE_DELETED_OPT,
+    JSON_OPT,
+    LIMIT_OPT,
+    OFFSET_OPT,
+    YES_OPT,
     build_update_payload,
     cache_after_write,
     format_field_value,
@@ -106,11 +112,11 @@ def fetch_hashtags(
 @handle_errors
 def list_(
     ctx: typer.Context,
-    include_archived: bool = typer.Option(False, "--include-archived"),
-    include_deleted: bool = typer.Option(False, "--include-deleted"),
-    limit: int | None = typer.Option(None, "--limit"),
-    offset: int | None = typer.Option(None, "--offset"),
-    json_output: bool = typer.Option(False, "--json"),
+    include_archived: bool = INCLUDE_ARCHIVED_OPT,
+    include_deleted: bool = INCLUDE_DELETED_OPT,
+    limit: int | None = LIMIT_OPT,
+    offset: int | None = OFFSET_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/hashtags. Reads from the local replica by default.
 
@@ -136,7 +142,7 @@ def list_(
 def get(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/hashtags/{id}. Reads from the local replica by default.
 
@@ -165,7 +171,7 @@ def create(
     ctx: typer.Context,
     name: str = typer.Option(..., "--name", help="Hashtag name (case-insensitive unique)."),
     sort_order: int | None = typer.Option(None, "--sort-order"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/hashtags. Hashtags are NOT auto-created on transaction use.
 
@@ -195,7 +201,7 @@ def update(
     id_: str = typer.Argument(..., metavar="ID"),
     name: str | None = typer.Option(None, "--name"),
     sort_order: int | None = typer.Option(None, "--sort-order"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/hashtags/{id}.
 
@@ -218,8 +224,8 @@ def update(
 def delete(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """DELETE /v1/hashtags/{id}. Cascades soft-delete to junction rows; restore does NOT undo.
 
@@ -246,7 +252,7 @@ def delete(
 def restore(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/hashtags/{id}/restore. Does NOT restore cascaded junction rows.
 
@@ -267,8 +273,8 @@ def restore(
 def archive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/hashtags/{id}/archive. Junction rows left intact.
 
@@ -290,7 +296,7 @@ def archive(
 def unarchive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/hashtags/{id}/unarchive.
 

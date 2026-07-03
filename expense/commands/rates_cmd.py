@@ -3,6 +3,7 @@ import json
 import typer
 
 from expense import config as config_module
+from expense.commands._resource import JSON_OPT
 from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -65,7 +66,7 @@ def get(
             "the most recent prior rate."
         ),
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/exchange-rates. Engine-direct (not cached).
 

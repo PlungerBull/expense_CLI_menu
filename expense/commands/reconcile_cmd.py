@@ -7,6 +7,11 @@ from expense import _editor
 from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
+    INCLUDE_DELETED_OPT,
+    JSON_OPT,
+    LIMIT_OPT,
+    OFFSET_OPT,
+    YES_OPT,
     build_update_payload,
     cache_after_write,
     format_field_value,
@@ -212,16 +217,16 @@ def list_(
         "--account-id",
         help="Filter by account_id (sorts the chain by sort_order ASC).",
     ),
-    include_deleted: bool = typer.Option(False, "--include-deleted"),
-    limit: int | None = typer.Option(None, "--limit"),
-    offset: int | None = typer.Option(None, "--offset"),
-    json_output: bool = typer.Option(False, "--json"),
+    include_deleted: bool = INCLUDE_DELETED_OPT,
+    limit: int | None = LIMIT_OPT,
+    offset: int | None = OFFSET_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/reconciliations. Reads from the local replica by default.
 
     Pass --no-cache (root flag) to round-trip the engine.
 
-    Example: expense reconcile list --account chase-checking
+    Example: expense reconcile list --account-id <account-id>
     """
     cfg = config_module.ensure_loaded()
     body = fetch_reconciliations(
@@ -246,8 +251,8 @@ def get(
         "--limit",
         help="Max transactions in the embedded window (engine default 50, max 200).",
     ),
-    offset: int | None = typer.Option(None, "--offset"),
-    json_output: bool = typer.Option(False, "--json"),
+    offset: int | None = OFFSET_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/reconciliations/{id}. Reads from the local replica by default.
 
@@ -310,11 +315,11 @@ def create(
         "--sort-order",
         help="1-based slot in the account chain. Omit to append at the end.",
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/reconciliations. Create a draft reconciliation batch.
 
-    Example: expense reconcile create --account <id> --name "April 2026"
+    Example: expense reconcile create --account-id <id> --name "April 2026"
              --date-start 2026-04-01 --date-end 2026-04-30 --ending-balance 12345600
     """
     source = _validate_source_choice(source)
@@ -380,7 +385,7 @@ def update(
         "--source",
         help="manual | chained. Mutually exclusive with --beginning-balance for 'chained'.",
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/reconciliations/{id}. Partial update.
 
@@ -426,8 +431,8 @@ def update(
 def delete(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """DELETE /v1/reconciliations/{id}. Soft-delete; cascade-unassigns attached transactions.
 
@@ -470,7 +475,7 @@ def _render_after_state_change(body: dict, *, lock_verb: str) -> None:
 def restore(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/reconciliations/{id}/restore.
 
@@ -502,7 +507,7 @@ def restore(
 def complete(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/reconciliations/{id}/complete.
 
@@ -546,8 +551,8 @@ def complete(
 def revert(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/reconciliations/{id}/revert.
 
@@ -643,7 +648,7 @@ def move(
     after: str | None = typer.Option(
         None, "--after", help="UUID of the peer to land after (mutually exclusive)."
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """Reorder a single reconciliation within its account chain.
 
@@ -817,8 +822,8 @@ def reorder(
     with one line per reconciliation, parses the saved result, and sends one
     PUT /v1/accounts/{account_id}/reconciliations/order.
 
-    Example: expense reconcile reorder --account <id>
-    Example: expense reconcile reorder --account <id> --year 2025
+    Example: expense reconcile reorder --account-id <id>
+    Example: expense reconcile reorder --account-id <id> --year 2025
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)

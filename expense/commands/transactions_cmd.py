@@ -7,6 +7,11 @@ import typer
 from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
+    INCLUDE_DELETED_OPT,
+    JSON_OPT,
+    LIMIT_OPT,
+    OFFSET_OPT,
+    YES_OPT,
     build_update_payload,
     cache_after_write,
     format_cents,
@@ -36,7 +41,7 @@ _RESOURCE = "transactions"
 _RECONCILIATION_LOCK_HINT = (
     "Hint: This transaction is in a completed reconciliation. "
     "amount_cents/account_id/title/date are read-only until the reconciliation "
-    "is reverted (Step 6: 'expense reconcile revert <id>')."
+    "is reverted ('expense reconcile revert <id>')."
 )
 _TRANSFER_GUARD_HINT = (
     "Hint: This transaction is part of a transfer pair. "
@@ -216,14 +221,16 @@ def list_(
     ),
     date_from: str | None = typer.Option(None, "--from", help="ISO 8601 lower bound (inclusive)."),
     date_to: str | None = typer.Option(None, "--to", help="ISO 8601 upper bound (inclusive)."),
-    cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
+    cleared: bool | None = typer.Option(
+        None, "--cleared/--no-cleared", help="Filter by cleared status."
+    ),
     search: str | None = typer.Option(
         None, "--search", help="Full-text search on title/description."
     ),
-    limit: int | None = typer.Option(None, "--limit"),
-    offset: int | None = typer.Option(None, "--offset"),
-    include_deleted: bool = typer.Option(False, "--include-deleted"),
-    json_output: bool = typer.Option(False, "--json"),
+    limit: int | None = LIMIT_OPT,
+    offset: int | None = OFFSET_OPT,
+    include_deleted: bool = INCLUDE_DELETED_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/transactions. Reads from the local replica by default.
 
@@ -257,16 +264,15 @@ def list_(
 def get(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/transactions/{id}. Reads from the local replica by default.
 
     Pass --no-cache (root flag) to round-trip the engine. Cached responses
     omit `hashtag_ids` (matches engine get shape).
 
-    Activity-log entries for a transaction will be reachable via
-    'expense activity list --resource-type expense_transactions --resource-id <id>'
-    once Step 8 ships.
+    See a transaction's activity history via
+    'expense activity list --resource-type transaction --resource-id <id>'.
 
     Example: expense transactions get <transaction-id>
     """
@@ -297,13 +303,15 @@ def update(
     account_id: str | None = typer.Option(None, "--account-id"),
     category_id: str | None = typer.Option(None, "--category-id"),
     description: str | None = typer.Option(None, "--description"),
-    cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
+    cleared: bool | None = typer.Option(
+        None, "--cleared/--no-cleared", help="Set the cleared status."
+    ),
     exchange_rate: float | None = typer.Option(None, "--exchange-rate"),
     hashtag_ids: str | None = typer.Option(
         None, "--hashtag-ids", help="Comma-separated list; replaces the existing set."
     ),
     reconciliation_id: str | None = typer.Option(None, "--reconciliation-id"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/transactions/{id}. Partial update.
 
@@ -346,8 +354,8 @@ def update(
 def delete(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """DELETE /v1/transactions/{id}. Soft-delete; transfer pairs delete atomically.
 
@@ -372,7 +380,7 @@ def delete(
 def restore(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/transactions/{id}/restore.
 
@@ -415,7 +423,7 @@ def batch(
     file: str | None = typer.Option(
         None, "--file", help="Path to a JSON array of transactions. Defaults to stdin."
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/transactions/batch. Atomic multi-create. Transfers not supported in batch.
 

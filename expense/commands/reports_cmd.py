@@ -4,7 +4,7 @@ import typer
 
 from expense import config as config_module
 from expense.cache import ensure_synced
-from expense.commands._resource import format_cents, render_table, render_totals
+from expense.commands._resource import JSON_OPT, format_cents, render_table, render_totals
 from expense.commands.dashboard_cmd import (
     hashtag_label,
     load_hashtag_name_map,
@@ -276,7 +276,7 @@ def monthly(
         "--to",
         help="Range end, YYYY-MM. Requires --from. Inclusive. Max span: 24 months.",
     ),
-    json_output: bool = typer.Option(False, "--json", help="Raw engine response."),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/reports/monthly. Historical flow for a single month or a month range.
 

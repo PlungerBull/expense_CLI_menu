@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import cache_after_write
+from expense.commands._resource import JSON_OPT, YES_OPT, cache_after_write
 from expense.config import Config
 from expense.context import get_verbose
 from expense.errors import EngineError, handle_errors
@@ -111,7 +111,7 @@ def bootstrap(
     timezone: str | None = typer.Option(
         None, "--timezone", help="IANA timezone (default: auto-detect from system)."
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """First-login upsert via POST /v1/auth/bootstrap.
 
@@ -160,7 +160,7 @@ def _me_impl(ctx: typer.Context, json_output: bool) -> None:
 @handle_errors
 def me(
     ctx: typer.Context,
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/auth/me. Alias: `whoami` (top-level).
 
@@ -172,7 +172,7 @@ def me(
 @handle_errors
 def whoami(
     ctx: typer.Context,
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """Shortcut for `expense auth me`.
 
@@ -188,7 +188,7 @@ def profile(
     display_name: str | None = typer.Option(
         None, "--display-name", help="New display name. Cannot be cleared (engine rejects null)."
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/auth/profile. Mutate identity fields on the users row.
 
@@ -226,7 +226,9 @@ def settings(
     main_currency: str | None = typer.Option(
         None, "--main-currency", help="USD or PEN (engine schema-locked)."
     ),
-    transaction_sort_preference: int | None = typer.Option(None, "--transaction-sort-preference"),
+    transaction_sort_preference: int | None = typer.Option(
+        None, "--transaction-sort-preference", help="Sort preference index."
+    ),
     display_timezone: str | None = typer.Option(
         None, "--display-timezone", help="IANA timezone for rendering."
     ),
@@ -239,12 +241,12 @@ def settings(
     sidebar_show_categories: bool | None = typer.Option(
         None, "--sidebar-show-categories/--no-sidebar-show-categories"
     ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/auth/settings. Partial update; main_currency change triggers engine recalc.
 
-    Example: expense auth settings --theme dark --start-of-week monday
+    Example: expense auth settings --theme 1 --start-of-week 1
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)

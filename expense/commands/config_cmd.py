@@ -4,6 +4,7 @@ import sys
 import typer
 
 from expense import config as config_module
+from expense.commands._resource import YES_OPT
 from expense.config import Config
 from expense.errors import handle_errors
 
@@ -89,7 +90,7 @@ def get_cmd(
 
 @app.command("clear")
 def clear_cmd(
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+    yes: bool = YES_OPT,
 ) -> None:
     """Remove ~/.expense-config.
 

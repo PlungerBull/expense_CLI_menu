@@ -4,7 +4,7 @@ from uuid import uuid4
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import cache_after_write, format_field_value
+from expense.commands._resource import JSON_OPT, cache_after_write, format_field_value
 from expense.context import get_verbose
 from expense.dates import now_local_iso, to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -62,7 +62,7 @@ def log(
         help="Comma-separated hashtag UUIDs to attach at creation. "
         "Engine rejects archived ids with 422.",
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/transactions. Direct ledger entry; bypasses the inbox.
 

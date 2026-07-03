@@ -130,8 +130,8 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 
 *Deliverable: full ledger management including batch and restore.*
 
-1. `transactions list` — filters: `--account`, `--category`, `--hashtag`, `--reconciliation`, `--from`, `--to`, `--cleared/--no-cleared`, `--search`, `--include-deleted`. (Signed amounts are not opt-in: every stateless read sends `debit_as_negative=true`, matching the replica; the former `--debit-as-negative` flag was removed at the polish pass.) Pagination is offset-based: `--limit`, `--offset` (engine response shape `{items, total, limit, offset}`); human mode prints a `(showing N of M; pass --offset N --limit ... for more)` hint when truncated, `--json` is pass-through.
-2. `transactions get <id>` — full detail. (`--with-activity` is deferred to Step 8: activity-log entries surface via `expense activity list --resource-type expense_transactions --resource-id <id>`.)
+1. `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--cleared/--no-cleared`, `--search`, `--include-deleted`. (Signed amounts are not opt-in: every stateless read sends `debit_as_negative=true`, matching the replica; the former `--debit-as-negative` flag was removed at the polish pass.) Pagination is offset-based: `--limit`, `--offset` (engine response shape `{items, total, limit, offset}`); human mode prints a `(showing N of M; pass --offset N --limit ... for more)` hint when truncated, `--json` is pass-through.
+2. `transactions get <id>` — full detail. (`--with-activity` is deferred to Step 8: activity-log entries surface via `expense activity list --resource-type transaction --resource-id <id>`.)
 3. `transactions update <id>` — partial update. `hashtag_ids` (comma-separated) and `reconciliation_id` editable through update. Field locking under completed reconciliations and the transfer-pair edit guard surface as 422s with friendly hints.
 4. `transactions delete <id>` / `restore <id>` — `delete` confirms unless `--yes`. Both render the engine's `warnings: list[str]` envelope as `Warning: ...` lines in human mode; `--json` passes through verbatim.
 5. Extend `expense log` with `--transfer --to-account-id <id> --to-amount <signed_cents>` for paired transfer creation in a single atomic POST (engine creates both legs and links via `transfer_transaction_id`).
@@ -171,7 +171,7 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 
 The engine ships `sort_order`, `beginning_balance_source` (`"manual"` or `"chained"`), `chained_from_reconciliation_id`, and a new `PUT /v1/accounts/{account_id}/reconciliations/order` bulk reorder endpoint alongside this step. `PUT /v1/reconciliations/{id}` rejects `beginning_balance_source: "chained" + beginning_balance_cents: <number>` with a field-scoped 422 — the CLI blocks the equivalent flag combination at parse time.
 
-1. `reconcile list [--account]` — when filtered by account, sorted by `sort_order ASC, created_at ASC`. List rows surface `[chained from <id>]` / `[manual]` markers.
+1. `reconcile list [--account-id]` — when filtered by account, sorted by `sort_order ASC, created_at ASC`. List rows surface `[chained from <id>]` / `[manual]` markers.
 2. `reconcile create`, `get`, `update`, `delete`, `restore`. Beginning-balance UX:
    - omit `--beginning-balance` → engine chains from previous reconciliation (default for "next month follows last month")
    - pass `--beginning-balance <cents>` → engine forces `source = "manual"`, value stored verbatim
@@ -179,9 +179,9 @@ The engine ships `sort_order`, `beginning_balance_source` (`"manual"` or `"chain
 3. `reconcile complete <id>` — prints the count of newly-locked transactions. Locks 4 transaction fields + 5 reconciliation fields (incl. `beginning_balance_source`).
 4. `reconcile revert <id>` — requires `--yes`; unlocks all assigned transactions and the reconciliation's own balance/date fields. A meaningful audit event.
 5. `reconcile move <id> --to <n> | --before <id> | --after <id>` — single-row reorder. CLI fetches current chain, computes the new `ordered_ids`, sends one `PUT /v1/accounts/{account_id}/reconciliations/order`.
-6. `reconcile reorder --account <id>` — bulk reorder via `$EDITOR`. CLI writes the current order to a temp file, launches the user's editor, parses the saved result, sends one bulk request. Mirrors `git rebase -i` UX. First `subprocess + tempfile` pattern in the CLI; helper lives at `expense/_editor.py`.
+6. `reconcile reorder --account-id <id>` — bulk reorder via `$EDITOR`. CLI writes the current order to a temp file, launches the user's editor, parses the saved result, sends one bulk request. Mirrors `git rebase -i` UX. First `subprocess + tempfile` pattern in the CLI; helper lives at `expense/_editor.py`.
 
-**Verify:** `reconcile create` without `--beginning-balance` chains from previous month. `reconcile update <id> --source chained --beginning-balance N` rejected at parse time. `reconcile complete <id>` on an empty batch returns the engine's 422 with a friendly hint. `reconcile move <id> --after <other>` reorders with the cascade running engine-side. `reconcile reorder --account <id>` opens `$EDITOR`, accepts the rearranged file, and prints `recalculated_count` from the response.
+**Verify:** `reconcile create` without `--beginning-balance` chains from previous month. `reconcile update <id> --source chained --beginning-balance N` rejected at parse time. `reconcile complete <id>` on an empty batch returns the engine's 422 with a friendly hint. `reconcile move <id> --after <other>` reorders with the cascade running engine-side. `reconcile reorder --account-id <id>` opens `$EDITOR`, accepts the rearranged file, and prints `recalculated_count` from the response.
 
 **Commit:** `feat: reconcile — full lifecycle + sort_order, source toggle, bulk reorder`
 

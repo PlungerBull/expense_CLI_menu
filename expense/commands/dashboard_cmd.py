@@ -4,7 +4,7 @@ import typer
 
 from expense import config as config_module
 from expense.cache import ensure_synced, queries
-from expense.commands._resource import format_cents, render_table, render_totals
+from expense.commands._resource import JSON_OPT, format_cents, render_table, render_totals
 from expense.context import get_no_cache, get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -221,7 +221,7 @@ def dashboard(
         "--include-archived",
         help="Include archived accounts/categories/hashtags panels (lifetime totals).",
     ),
-    json_output: bool = typer.Option(False, "--json", help="Raw engine response."),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/dashboard. Current month overview: balances, categories, totals.
 

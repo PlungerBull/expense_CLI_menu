@@ -4,6 +4,7 @@ import time
 import typer
 
 from expense import config as config_module
+from expense.commands._resource import JSON_OPT
 from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -12,7 +13,7 @@ from expense.http import ExpenseClient
 @handle_errors
 def ping(
     ctx: typer.Context,
-    json_output: bool = typer.Option(False, "--json", help="Output raw engine response."),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """Probe GET /health. Confirms the engine is reachable.
 

@@ -6,6 +6,12 @@ import typer
 from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
+    INCLUDE_ARCHIVED_OPT,
+    INCLUDE_DELETED_OPT,
+    JSON_OPT,
+    LIMIT_OPT,
+    OFFSET_OPT,
+    YES_OPT,
     build_update_payload,
     cache_after_write,
     color_supported,
@@ -112,11 +118,11 @@ def fetch_categories(
 @handle_errors
 def list_(
     ctx: typer.Context,
-    include_archived: bool = typer.Option(False, "--include-archived"),
-    include_deleted: bool = typer.Option(False, "--include-deleted"),
-    limit: int | None = typer.Option(None, "--limit"),
-    offset: int | None = typer.Option(None, "--offset"),
-    json_output: bool = typer.Option(False, "--json"),
+    include_archived: bool = INCLUDE_ARCHIVED_OPT,
+    include_deleted: bool = INCLUDE_DELETED_OPT,
+    limit: int | None = LIMIT_OPT,
+    offset: int | None = OFFSET_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/categories. Reads from the local replica by default.
 
@@ -142,7 +148,7 @@ def list_(
 def get(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/categories/{id}. Reads from the local replica by default.
 
@@ -172,7 +178,7 @@ def create(
     name: str = typer.Option(..., "--name", help="Category name (case-insensitive unique)."),
     color: str = typer.Option(..., "--color", help="Color hint (free-form string)."),
     sort_order: int | None = typer.Option(None, "--sort-order"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/categories.
 
@@ -207,7 +213,7 @@ def update(
     name: str | None = typer.Option(None, "--name"),
     color: str | None = typer.Option(None, "--color"),
     sort_order: int | None = typer.Option(None, "--sort-order"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/categories/{id}. System categories CAN be renamed.
 
@@ -230,8 +236,8 @@ def update(
 def delete(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """DELETE /v1/categories/{id}. Soft-delete (use archive for categories with history).
 
@@ -265,7 +271,7 @@ def delete(
 def restore(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/categories/{id}/restore.
 
@@ -289,8 +295,8 @@ def restore(
 def archive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/categories/{id}/archive.
 
@@ -313,7 +319,7 @@ def archive(
 def unarchive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/categories/{id}/unarchive.
 

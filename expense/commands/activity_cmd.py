@@ -3,7 +3,13 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import render_pagination_hint, render_table
+from expense.commands._resource import (
+    JSON_OPT,
+    LIMIT_OPT,
+    OFFSET_OPT,
+    render_pagination_hint,
+    render_table,
+)
 from expense.context import get_verbose
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
@@ -203,23 +209,23 @@ def list_(
     resource_type: str | None = typer.Option(
         None,
         "--resource-type",
-        help="Filter by resource_type (e.g. expense_transactions).",
+        help="Filter by resource_type (e.g. transaction).",
     ),
     resource_id: str | None = typer.Option(
         None,
         "--resource-id",
         help="Filter by resource_id (UUID; engine validates).",
     ),
-    limit: int | None = typer.Option(None, "--limit"),
-    offset: int | None = typer.Option(None, "--offset"),
-    json_output: bool = typer.Option(False, "--json"),
+    limit: int | None = LIMIT_OPT,
+    offset: int | None = OFFSET_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/activity. Engine-direct (not cached).
 
     Snapshots are omitted from the human renderer; pass --json to see
     before_snapshot / after_snapshot.
 
-    Example: expense activity list --resource-type expense_transactions --limit 5
+    Example: expense activity list --resource-type transaction --limit 5
     """
     cfg = config_module.ensure_loaded()
     body = fetch_activity(

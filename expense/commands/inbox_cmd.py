@@ -6,6 +6,11 @@ import typer
 from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
+    INCLUDE_DELETED_OPT,
+    JSON_OPT,
+    LIMIT_OPT,
+    OFFSET_OPT,
+    YES_OPT,
     build_update_payload,
     cache_after_write,
     format_cents,
@@ -142,11 +147,11 @@ def fetch_inbox(
 def list_(
     ctx: typer.Context,
     ready: bool = typer.Option(False, "--ready", help="Only items ready to promote."),
-    include_deleted: bool = typer.Option(False, "--include-deleted"),
+    include_deleted: bool = INCLUDE_DELETED_OPT,
     overdue: bool = typer.Option(False, "--overdue", help="Only items with date in the past."),
-    limit: int | None = typer.Option(None, "--limit"),
-    offset: int | None = typer.Option(None, "--offset"),
-    json_output: bool = typer.Option(False, "--json"),
+    limit: int | None = LIMIT_OPT,
+    offset: int | None = OFFSET_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/inbox. Reads from the local replica by default.
 
@@ -173,7 +178,7 @@ def list_(
 def get(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/inbox/{id}. Reads from the local replica by default.
 
@@ -226,7 +231,7 @@ def add(
     exchange_rate: float | None = typer.Option(
         None, "--exchange-rate", help="Override engine auto-fetch."
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/inbox. Drop a partial draft into the inbox; fill in later, then promote.
 
@@ -276,7 +281,7 @@ def update(
     description: str | None = typer.Option(None, "--description"),
     cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
     exchange_rate: float | None = typer.Option(None, "--exchange-rate"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/inbox/{id}.
 
@@ -310,8 +315,8 @@ def update(
 def delete(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """DELETE /v1/inbox/{id}. Soft-delete (dismiss the draft); restore is the inverse.
 
@@ -334,7 +339,7 @@ def delete(
 def restore(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/inbox/{id}/restore. Undo a dismissed draft.
 
@@ -350,7 +355,7 @@ def restore(
             if err.status == 409:
                 typer.echo(
                     "Hint: This inbox item was already promoted to a ledger transaction. "
-                    "Delete the transaction directly to undo (Step 4).",
+                    "Delete the transaction directly to undo.",
                     err=True,
                 )
             raise
@@ -364,7 +369,7 @@ def restore(
 def promote(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/inbox/{id}/promote. Convert the draft into a real ledger transaction.
 

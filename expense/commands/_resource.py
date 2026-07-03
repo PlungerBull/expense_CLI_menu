@@ -16,6 +16,16 @@ from expense.context import get_no_cache, get_no_sync_after, get_verbose
 from expense.errors import EngineError
 from expense.http import ExpenseClient
 
+# Shared option declarations — one wording for flags repeated across command
+# modules. Never mutate these; a command whose flag means something different
+# declares it inline (e.g. `reconcile reorder --json` skips the editor).
+JSON_OPT = typer.Option(False, "--json", help="Output the raw engine response as JSON.")
+LIMIT_OPT = typer.Option(None, "--limit", help="Max rows to return (engine default applies).")
+OFFSET_OPT = typer.Option(None, "--offset", help="Rows to skip (pagination).")
+INCLUDE_DELETED_OPT = typer.Option(False, "--include-deleted", help="Include soft-deleted rows.")
+INCLUDE_ARCHIVED_OPT = typer.Option(False, "--include-archived", help="Include archived rows.")
+YES_OPT = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt.")
+
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 

@@ -97,26 +97,26 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
 
 ## 3. Help text & CLI output polish (highest polish-per-effort)
 
-- [ ] **3.1 Fix the four broken docstring examples.**
+- [x] **3.1 Fix the four broken docstring examples.**
   `reconcile list/create/reorder` examples say `--account` but the flag is
   `--account-id` (`reconcile_cmd.py:224,314,817-818`); `auth settings` example
   uses `--theme dark --start-of-week monday` on int-typed options
   (`auth_cmd.py:244`) — fails Typer parsing if copy-pasted. Consider a small
   test that extracts `Example:` lines and asserts each flag exists.
 
-- [ ] **3.2 Fix the `--resource-type` guidance.**
+- [x] **3.2 Fix the `--resource-type` guidance.**
   Help, docstring example, and the `transactions get` cross-reference all
   recommend `expense_transactions` (`activity_cmd.py:206,222`,
   `transactions_cmd.py:270-272`) but the engine writes singular
   (`transaction`) — following the help returns a silently empty list. Keep the
   plural aliases in `_RESOURCE_KIND` for display robustness only.
 
-- [ ] **3.3 Strip internal roadmap leakage from user-facing text.**
+- [x] **3.3 Strip internal roadmap leakage from user-facing text.**
   "once Step 8 ships" for a shipped feature (`transactions_cmd.py:270-272`),
   "(Step 6: …)" (`transactions_cmd.py:38-39`), "(Step 4)"
   (`inbox_cmd.py:357-358`). Keep just the concrete command suggestions.
 
-- [ ] **3.4 Consistent option help text via shared option constants.**
+- [x] **3.4 Consistent option help text via shared option constants.**
   Many flags render bare in `--help` (`transactions_cmd.py:219-227` documents
   4 of 10 options; `accounts_cmd.py:122-125` documents none) and `--json` has
   six different wordings. Fix: hoist `JSON_OPT` / `LIMIT_OPT` / `OFFSET_OPT` /

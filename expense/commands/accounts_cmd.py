@@ -6,6 +6,10 @@ import typer
 from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
+    INCLUDE_ARCHIVED_OPT,
+    INCLUDE_DELETED_OPT,
+    JSON_OPT,
+    YES_OPT,
     build_update_payload,
     cache_after_write,
     color_supported,
@@ -119,10 +123,12 @@ def fetch_accounts(
 @handle_errors
 def list_(
     ctx: typer.Context,
-    include_archived: bool = typer.Option(False, "--include-archived"),
-    include_deleted: bool = typer.Option(False, "--include-deleted"),
-    include_people: bool = typer.Option(False, "--include-people"),
-    json_output: bool = typer.Option(False, "--json"),
+    include_archived: bool = INCLUDE_ARCHIVED_OPT,
+    include_deleted: bool = INCLUDE_DELETED_OPT,
+    include_people: bool = typer.Option(
+        False, "--include-people", help="Include person (payable/receivable) accounts."
+    ),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/accounts. Reads from the local replica by default.
 
@@ -149,7 +155,7 @@ def list_(
 def get(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """GET /v1/accounts/{id}. Reads from the local replica by default.
 
@@ -183,7 +189,7 @@ def create(
     ),
     color: str | None = typer.Option(None, "--color", help="Color hint (free-form string)."),
     sort_order: int | None = typer.Option(None, "--sort-order"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/accounts.
 
@@ -225,7 +231,7 @@ def update(
         "--currency-code",
         help="Rejected: currency is immutable after creation.",
     ),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/accounts/{id}.
 
@@ -254,8 +260,8 @@ def update(
 def delete(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """DELETE /v1/accounts/{id}. Soft-delete (use archive for closed accounts with history).
 
@@ -287,7 +293,7 @@ def delete(
 def restore(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/accounts/{id}/restore.
 
@@ -308,8 +314,8 @@ def restore(
 def archive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
-    json_output: bool = typer.Option(False, "--json"),
+    yes: bool = YES_OPT,
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/accounts/{id}/archive. Hides from pickers; transactions remain.
 
@@ -331,7 +337,7 @@ def archive(
 def unarchive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = typer.Option(False, "--json"),
+    json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/accounts/{id}/unarchive.
 
