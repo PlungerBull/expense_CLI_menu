@@ -363,9 +363,15 @@ def test_archive_happy(configured):
     respx.post("https://api.example.com/v1/categories/abc/archive").mock(
         return_value=httpx.Response(200, json=archived)
     )
-    result = runner.invoke(cli_app, ["categories", "archive", "abc"])
+    result = runner.invoke(cli_app, ["categories", "archive", "abc", "--yes"])
     assert result.exit_code == 0, result.output
     assert "is_archived: True" in result.output
+
+
+def test_archive_requires_yes_in_non_tty(configured):
+    result = runner.invoke(cli_app, ["categories", "archive", "abc"])
+    assert result.exit_code == 1
+    assert "non-interactive" in result.output
 
 
 @respx.mock
@@ -382,7 +388,7 @@ def test_archive_403_prints_system_hint(configured):
             },
         )
     )
-    result = runner.invoke(cli_app, ["categories", "archive", "sys"])
+    result = runner.invoke(cli_app, ["categories", "archive", "sys", "--yes"])
     assert result.exit_code == 1
     assert "System categories" in result.output
 

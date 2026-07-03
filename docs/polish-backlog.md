@@ -26,7 +26,7 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   `debit_as_negative=true` unconditionally on stateless reads (matching what
   sync.py already stores) so both paths agree.
 
-- [ ] **1.2 Archive commands must confirm (CLAUDE.md non-negotiable).**
+- [x] **1.2 Archive commands must confirm (CLAUDE.md non-negotiable).**
   `accounts archive` (`accounts_cmd.py:306-324`), `categories archive`
   (`categories_cmd.py:287-295`), `hashtags archive` (`hashtags_cmd.py:265-273`)
   have no `--yes` and no prompt; the TUI confirms the same action. Fix: add

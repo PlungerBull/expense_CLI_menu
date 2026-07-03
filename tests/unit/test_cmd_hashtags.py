@@ -305,9 +305,15 @@ def test_archive_happy(configured):
     respx.post("https://api.example.com/v1/hashtags/abc/archive").mock(
         return_value=httpx.Response(200, json=archived)
     )
-    result = runner.invoke(cli_app, ["hashtags", "archive", "abc"])
+    result = runner.invoke(cli_app, ["hashtags", "archive", "abc", "--yes"])
     assert result.exit_code == 0, result.output
     assert "is_archived: True" in result.output
+
+
+def test_archive_requires_yes_in_non_tty(configured):
+    result = runner.invoke(cli_app, ["hashtags", "archive", "abc"])
+    assert result.exit_code == 1
+    assert "non-interactive" in result.output
 
 
 @respx.mock
