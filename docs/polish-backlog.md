@@ -33,7 +33,7 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   `--yes/-y` + `require_yes(...)` before `run_toggle`. Unarchive stays
   prompt-free.
 
-- [ ] **1.3 Guard the three unguarded TUI fetch workers (app-crash bug).**
+- [x] **1.3 Guard the three unguarded TUI fetch workers (app-crash bug).**
   Textual `@work` defaults to `exit_on_error=True`, so an engine/config error
   inside `NewReconciliationScreen._load_accounts`
   (`reconciliations.py:398-416`), `ReconciliationDetailScreen._load_txns`

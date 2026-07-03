@@ -224,3 +224,32 @@ def test_revert_posts(monkeypatch):
             assert _FakeClient.posts == [("/reconciliations/r1/revert", None)]
 
     asyncio.run(scenario())
+
+
+def test_detail_fetch_error_notifies_not_crash(monkeypatch):
+    """An engine/config error in _load_txns must not exit the app (backlog 1.3)."""
+    _patch(monkeypatch, record=DRAFT)
+
+    def boom(cfg, **k):
+        raise RuntimeError("engine down")
+
+    monkeypatch.setattr("expense.commands.transactions_cmd.fetch_transactions", boom)
+    notices: list = []
+    monkeypatch.setattr(
+        ReconciliationDetailScreen, "notify", lambda self, message, **kw: notices.append(message)
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            for _ in range(40):
+                await pilot.pause(0.02)
+                if notices:
+                    break
+            assert notices and "engine down" in notices[0]
+            assert app.is_running
+            assert app.screen is screen
+
+    asyncio.run(scenario())

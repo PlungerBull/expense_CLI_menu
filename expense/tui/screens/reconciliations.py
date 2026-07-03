@@ -395,18 +395,22 @@ class NewReconciliationScreen(Screen):
         if not self._preset_account:  # only need the account picker for standalone create
             self._load_accounts()
 
-    @work(thread=True)
+    @work(thread=True, exclusive=True)
     def _load_accounts(self) -> None:
         from expense import config as config_module
 
-        cfg = config_module.ensure_loaded()
-        body = accounts_cmd.fetch_accounts(
-            cfg,
-            no_cache=self.app._no_cache,
-            verbose=self.app._verbose,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
-        )
+        try:
+            cfg = config_module.ensure_loaded()
+            body = accounts_cmd.fetch_accounts(
+                cfg,
+                no_cache=self.app._no_cache,
+                verbose=self.app._verbose,
+                cold_start_notice=False,
+                notice_stream=io.StringIO(),
+            )
+        except Exception as exc:  # surface engine/config errors in-app, don't crash
+            self.app.call_from_thread(self.notify, str(exc), severity="error")
+            return
         items = body.get("items", body) if isinstance(body, dict) else (body or [])
         accounts = [
             (a["id"], a.get("name") or "(unnamed)", a.get("currency_code") or "?")
@@ -722,35 +726,39 @@ class ReconciliationDetailScreen(Screen):
     def _load_txns(self) -> None:
         from expense import config as config_module
 
-        cfg = config_module.ensure_loaded()
-        kw = dict(
-            no_cache=self.app._no_cache,
-            verbose=self.app._verbose,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
-        )
-        # assigned-to-this-batch transactions (always; any date)
-        assigned = _items(
-            transactions_cmd.fetch_transactions(cfg, reconciliation=self._id, limit=500, **kw)
-        )
-        available = []
-        if not self._completed:  # draft also offers the account's unassigned txns in range
-            available = [
-                it
-                for it in _items(
-                    transactions_cmd.fetch_transactions(
-                        cfg,
-                        account=self._account_id,
-                        date_from=self._record.get("date_start") or None,
-                        date_to=self._record.get("date_end") or None,
-                        limit=500,
-                        **kw,
+        try:
+            cfg = config_module.ensure_loaded()
+            kw = dict(
+                no_cache=self.app._no_cache,
+                verbose=self.app._verbose,
+                cold_start_notice=False,
+                notice_stream=io.StringIO(),
+            )
+            # assigned-to-this-batch transactions (always; any date)
+            assigned = _items(
+                transactions_cmd.fetch_transactions(cfg, reconciliation=self._id, limit=500, **kw)
+            )
+            available = []
+            if not self._completed:  # draft also offers the account's unassigned txns in range
+                available = [
+                    it
+                    for it in _items(
+                        transactions_cmd.fetch_transactions(
+                            cfg,
+                            account=self._account_id,
+                            date_from=self._record.get("date_start") or None,
+                            date_to=self._record.get("date_end") or None,
+                            limit=500,
+                            **kw,
+                        )
                     )
-                )
-                if it.get("reconciliation_id") is None
-            ]
-        cat_names = load_category_name_map()
-        tag_names = load_hashtag_name_map()
+                    if it.get("reconciliation_id") is None
+                ]
+            cat_names = load_category_name_map()
+            tag_names = load_hashtag_name_map()
+        except Exception as exc:  # surface engine/config errors in-app, don't crash
+            self.app.call_from_thread(self.notify, str(exc), severity="error")
+            return
         rows, checked, seen = [], [], set()
         for it in [*assigned, *available]:
             key = it.get("id")

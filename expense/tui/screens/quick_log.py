@@ -219,20 +219,26 @@ class QuickAddLogScreen(Screen):
                 return i
         return 0
 
-    @work(thread=True)
+    @work(thread=True, exclusive=True)
     def _load_entities(self) -> None:
         from expense import config as config_module
 
-        cfg = config_module.ensure_loaded()
-        kw = dict(
-            no_cache=self.app._no_cache,
-            verbose=self.app._verbose,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
-        )
-        accts = _items(accounts_cmd.fetch_accounts(cfg, include_people=True, **kw))
-        cats = _items(categories_cmd.fetch_categories(cfg, **kw))
-        tags = _items(hashtags_cmd.fetch_hashtags(cfg, **kw))
+        try:
+            cfg = config_module.ensure_loaded()
+            kw = dict(
+                no_cache=self.app._no_cache,
+                verbose=self.app._verbose,
+                cold_start_notice=False,
+                notice_stream=io.StringIO(),
+            )
+            accts = _items(accounts_cmd.fetch_accounts(cfg, include_people=True, **kw))
+            cats = _items(categories_cmd.fetch_categories(cfg, **kw))
+            tags = _items(hashtags_cmd.fetch_hashtags(cfg, **kw))
+            # full maps (incl system/archived) for resolving pre-filled edit values
+            maps = (load_account_name_map(), load_category_name_map(), load_hashtag_name_map())
+        except Exception as exc:  # surface engine/config errors in-app, don't crash
+            self.app.call_from_thread(self.notify, str(exc), severity="error")
+            return
         accounts = [
             (a["id"], a.get("name") or "(unnamed)", a.get("currency_code") or "?")
             for a in accts
@@ -244,8 +250,6 @@ class QuickAddLogScreen(Screen):
             if c.get("id") and not c.get("is_system")
         ]
         hashtags = [(t["id"], t.get("name") or "(unnamed)") for t in tags if t.get("id")]
-        # full maps (incl system/archived) for resolving pre-filled edit values
-        maps = (load_account_name_map(), load_category_name_map(), load_hashtag_name_map())
         self.app.call_from_thread(self._set_entities, accounts, categories, hashtags, maps)
 
     def _set_entities(self, accounts, categories, hashtags, maps) -> None:

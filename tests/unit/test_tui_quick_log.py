@@ -278,3 +278,32 @@ def test_quick_log_rejects_zero_and_unknown_account(monkeypatch):
             assert screen._key == "account"
 
     asyncio.run(scenario())
+
+
+def test_quick_log_fetch_error_notifies_not_crash(monkeypatch):
+    """An engine/config error in _load_entities must not exit the app (backlog 1.3)."""
+    _patch(monkeypatch)
+
+    def boom(*a, **k):
+        raise RuntimeError("engine down")
+
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", boom)
+    notices: list = []
+    monkeypatch.setattr(
+        QuickAddLogScreen, "notify", lambda self, message, **kw: notices.append(message)
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen()
+            await app.push_screen(screen)
+            for _ in range(40):
+                await pilot.pause(0.02)
+                if notices:
+                    break
+            assert notices and "engine down" in notices[0]
+            assert app.is_running
+            assert app.screen is screen
+
+    asyncio.run(scenario())

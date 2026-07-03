@@ -196,3 +196,32 @@ def test_new_reconciliation_from_account_drops_account_field():
     assert "account" not in screen._sequence()  # account preset from browse
     assert screen._values["account"] == "acc1"
     assert screen.crumb == ("Reconciliations", "BCP PEN", "New")
+
+
+def test_new_reconciliation_fetch_error_notifies_not_crash(monkeypatch):
+    """An engine/config error in _load_accounts must not exit the app (backlog 1.3)."""
+    _patch(monkeypatch)
+
+    def boom(*a, **k):
+        raise RuntimeError("engine down")
+
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", boom)
+    notices: list = []
+    monkeypatch.setattr(
+        NewReconciliationScreen, "notify", lambda self, message, **kw: notices.append(message)
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = NewReconciliationScreen()
+            await app.push_screen(screen)
+            for _ in range(40):
+                await pilot.pause(0.02)
+                if notices:
+                    break
+            assert notices and "engine down" in notices[0]
+            assert app.is_running
+            assert app.screen is screen
+
+    asyncio.run(scenario())
