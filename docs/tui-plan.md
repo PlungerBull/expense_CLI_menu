@@ -10,8 +10,9 @@
 >
 > **What's wired (per [expense/tui/screens/home.py](../expense/tui/screens/home.py)):**
 > Outstanding Amounts, Log a transaction (quick-add + transfer), Inbox, Transactions,
-> Reconciliations, Accounts, Categories, Hashtags, Config, Auth & profile.
-> **Still stubbed (`"soon"`):** Monthly report; Sync · Activity · Rates.
+> Reconciliations, Accounts, Categories, Hashtags, Config, Auth & profile, and the
+> System reads (Sync · Activity · Rates).
+> **Still stubbed (`"soon"`):** Monthly report.
 
 ## 1. Goal & shape
 
@@ -103,7 +104,8 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 
 ### Phase 1 — Read views · **1–2 weeks** · ✅ shipped
 > Note: Reports, Activity log, and Exchange rates list screens slipped from Phase 1 to
-> Phase 2's remaining work — they are still `"soon"` stubs on the home menu.
+> Phase 2. Activity log and Exchange rates shipped there (as the System reads); only
+> the **Monthly report** screen remains a `"soon"` stub on the home menu.
 - Apply the fetch/print split to the resources in scope.
 - List screens (Textual `DataTable`): **Inbox, Transactions, Accounts, Categories,
   Hashtags (chips), Reports (monthly), Activity log, Exchange rates** — filters,
@@ -116,9 +118,10 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 ### Phase 2 — Write flows · **1–2 weeks** · 🔨 in progress
 > **Shipped:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms
 > (account/category/hashtag), full Reconciliations screen (assign/complete/revert/delete +
-> account-first browse + reorder), Config, Auth & profile.
-> **Remaining before parity:** the **Monthly report** screen and the **Sync · Activity ·
-> Rates** system-read screens (both still `"soon"` stubs on the home menu).
+> account-first browse + reorder), Config, Auth & profile, and the **Sync · Activity ·
+> Rates** system-read screens.
+> **Remaining before parity:** the **Monthly report** screen (still a `"soon"` stub on the
+> home menu).
 - **Confirm modal** (one component) for promote / delete / archive / restore /
   complete / revert / sync — reuses idempotency + error envelope.
 - **The transaction form** (Log / Inbox-add / Transaction-edit — same fields): required

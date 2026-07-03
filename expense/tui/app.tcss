@@ -81,8 +81,8 @@ Screen {
     height: auto;
 }
 
-/* record detail modal */
-RecordModal {
+/* modal screens — center the auto-sized #modal box (else it collapses top-left) */
+RecordModal, SnapshotModal, ConfirmModal, PromptModal {
     align: center middle;
 }
 #modal {

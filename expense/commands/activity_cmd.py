@@ -33,6 +33,25 @@ def _short_id(resource_id: object) -> str:
     return resource_id[:8]
 
 
+# The engine writes activity `resource_type` in the singular ("transaction",
+# "account", …). Map both the engine's actual strings and the older plural
+# guesses to a canonical kind so name resolution is robust to either.
+_RESOURCE_KIND = {
+    "transaction": "transaction",
+    "expense_transactions": "transaction",
+    "account": "account",
+    "accounts": "account",
+    "category": "category",
+    "categories": "category",
+    "hashtag": "hashtag",
+    "hashtags": "hashtag",
+    "inbox": "inbox",
+    "inbox_items": "inbox",
+    "reconciliation": "reconciliation",
+    "reconciliations": "reconciliation",
+}
+
+
 def _resolve_resource_name(resource_type: object, resource_id: object) -> str:
     """Look up a human name for the row via the local cache replica.
 
@@ -43,29 +62,32 @@ def _resolve_resource_name(resource_type: object, resource_id: object) -> str:
         return "—"
     if not isinstance(resource_type, str):
         return _short_id(resource_id)
+    kind = _RESOURCE_KIND.get(resource_type)
+    if kind is None:
+        return _short_id(resource_id)
     try:
         from expense.cache import queries
     except Exception:
         return _short_id(resource_id)
 
     try:
-        if resource_type == "expense_transactions":
+        if kind == "transaction":
             row = queries.get_transaction(resource_id)
             return row.get("title") or row.get("description") or _short_id(resource_id)
-        if resource_type == "accounts":
+        if kind == "account":
             row = queries.get_account(resource_id)
             return row.get("name") or _short_id(resource_id)
-        if resource_type == "categories":
+        if kind == "category":
             row = queries.get_category(resource_id)
             return row.get("name") or _short_id(resource_id)
-        if resource_type == "hashtags":
+        if kind == "hashtag":
             row = queries.get_hashtag(resource_id)
             name = row.get("name")
             return f"#{name}" if name else _short_id(resource_id)
-        if resource_type == "inbox_items":
+        if kind == "inbox":
             row = queries.get_inbox(resource_id)
             return row.get("title") or row.get("description") or _short_id(resource_id)
-        if resource_type == "reconciliations":
+        if kind == "reconciliation":
             row = queries.get_reconciliation(resource_id)
             date = row.get("statement_date") or row.get("date")
             account_id = row.get("account_id")
@@ -91,29 +113,36 @@ def _resolve_resource_name(resource_type: object, resource_id: object) -> str:
     return _short_id(resource_id)
 
 
+def activity_display_cells(item: dict) -> list[str]:
+    """The 6 human cells for one activity row: date, time, action, actor, type, resource.
+
+    Shared by the CLI table renderer and the TUI Activity list screen so both
+    resolve resource names and map action codes identically.
+    """
+    date_part, time_part = _split_date_time(item.get("created_at"))
+    return [
+        date_part,
+        time_part,
+        _action_label(item.get("action")),
+        str(item.get("actor_type") or "—"),
+        str(item.get("resource_type") or "—"),
+        _resolve_resource_name(item.get("resource_type"), item.get("resource_id")),
+    ]
+
+
 def _render_activity_rows(items: list[dict]) -> None:
     """Render activity rows as a 6-column table (Date · Time · Action · Actor · Type · Resource).
 
-    Module-level so the menu wrapper can reuse it. Snapshots and `changed_by`
-    are deliberately omitted from the table; both remain accessible via --json.
+    Module-level so alternate front doors (e.g. the TUI) can reuse it. Snapshots
+    and `changed_by` are deliberately omitted from the table; both remain
+    accessible via --json.
     """
+    keys = ("date", "time", "action", "actor", "type", "resource")
     rows: list[dict[str, str]] = []
     for item in items:
         if not isinstance(item, dict):
             continue
-        date_part, time_part = _split_date_time(item.get("created_at"))
-        rows.append(
-            {
-                "date": date_part,
-                "time": time_part,
-                "action": _action_label(item.get("action")),
-                "actor": str(item.get("actor_type") or "—"),
-                "type": str(item.get("resource_type") or "—"),
-                "resource": _resolve_resource_name(
-                    item.get("resource_type"), item.get("resource_id")
-                ),
-            }
-        )
+        rows.append(dict(zip(keys, activity_display_cells(item), strict=True)))
     render_table(
         headers={
             "date": "Date",
@@ -137,6 +166,34 @@ def _render_list(body: object, *, json_mode: bool) -> None:
         return
     _render_activity_rows(items)
     render_pagination_hint(body, items)
+
+
+def fetch_activity(
+    cfg,
+    *,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    verbose: bool = False,
+) -> dict:
+    """GET /v1/activity (engine-direct). Returns the raw response body.
+
+    Extracted so the TUI Activity screen and the typer command share one
+    fetch path — the CLI thin-wrapper rule (no logic duplicated in the TUI).
+    """
+    params: dict = {}
+    if resource_type is not None:
+        params["resource_type"] = resource_type
+    if resource_id is not None:
+        params["resource_id"] = resource_id
+    if limit is not None:
+        params["limit"] = limit
+    if offset is not None:
+        params["offset"] = offset
+
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        return client.get(f"/{_RESOURCE}", params=params or None)
 
 
 @app.command("list")
@@ -165,19 +222,12 @@ def list_(
     Example: expense activity list --resource-type expense_transactions --limit 5
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-
-    params: dict = {}
-    if resource_type is not None:
-        params["resource_type"] = resource_type
-    if resource_id is not None:
-        params["resource_id"] = resource_id
-    if limit is not None:
-        params["limit"] = limit
-    if offset is not None:
-        params["offset"] = offset
-
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.get(f"/{_RESOURCE}", params=params or None)
-
+    body = fetch_activity(
+        cfg,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        limit=limit,
+        offset=offset,
+        verbose=get_verbose(ctx),
+    )
     _render_list(body, json_mode=json_output)

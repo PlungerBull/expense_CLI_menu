@@ -14,8 +14,7 @@ def _render_rate(body: object) -> None:
     """Human-mode renderer for /v1/exchange-rates responses.
 
     Generic key/value iteration so additional engine fields (provider,
-    source, fetched_at, …) render without a code change. Shared with the
-    9.5.15 menu surface.
+    source, fetched_at, …) render without a code change.
     """
     if isinstance(body, dict):
         for key, value in body.items():
@@ -23,6 +22,29 @@ def _render_rate(body: object) -> None:
             typer.echo(f"  {key}: {display}")
     else:
         typer.echo(json.dumps(body, indent=2))
+
+
+def fetch_rate(
+    cfg,
+    *,
+    target: str,
+    base: str | None = None,
+    date: str | None = None,
+    verbose: bool = False,
+) -> dict:
+    """GET /v1/exchange-rates (engine-direct). Returns the raw response body.
+
+    `base` / `date` are omitted when None so the engine defaults (USD, today)
+    apply. Shared by the typer command and the TUI Rates screen.
+    """
+    params: dict = {"target": target}
+    if base is not None:
+        params["base"] = base
+    if date is not None:
+        params["date"] = date
+
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        return client.get("/exchange-rates", params=params)
 
 
 @app.command("get")
@@ -50,16 +72,7 @@ def get(
     Example: expense rates get --target EUR --date 2026-04-01
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-
-    params: dict = {"target": target}
-    if base is not None:
-        params["base"] = base
-    if date is not None:
-        params["date"] = date
-
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.get("/exchange-rates", params=params)
+    body = fetch_rate(cfg, target=target, base=base, date=date, verbose=get_verbose(ctx))
 
     if json_output:
         typer.echo(json.dumps(body, indent=2))

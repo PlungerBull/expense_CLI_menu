@@ -39,6 +39,49 @@ class RecordModal(ModalScreen):
         self.dismiss()
 
 
+class SnapshotModal(ModalScreen):
+    """Before/after detail for one activity-log entry. Renders the union of the
+    two snapshots' fields as a 3-column table (field · before · after), bolding
+    the rows that changed. `esc` closes.
+
+    A CREATED entry has no before; a DELETED entry has no after — the missing
+    side shows blanks, which reads correctly (fields appeared / disappeared).
+    """
+
+    BINDINGS = [("escape", "close", "Close")]
+
+    def __init__(self, title: str, before: dict | None, after: dict | None) -> None:
+        super().__init__()
+        self._title = title
+        self._before = before or {}
+        self._after = after or {}
+
+    def compose(self) -> ComposeResult:
+        before, after = self._before, self._after
+        keys = list(dict.fromkeys([*before.keys(), *after.keys()]))
+        t = Table(box=box.SIMPLE, pad_edge=False)
+        t.add_column("field", style="dim")
+        t.add_column("before")
+        t.add_column("after")
+        for key in keys:
+            b_present, a_present = key in before, key in after
+            changed = (not b_present) or (not a_present) or before[key] != after[key]
+            b_cell = format_field_value(key, before[key]) if b_present else Text("—", style="dim")
+            a_cell = format_field_value(key, after[key]) if a_present else Text("—", style="dim")
+            if changed:
+                a_cell = Text(str(a_cell), style="bold")
+            t.add_row(key, b_cell, a_cell)
+        yield Vertical(
+            Static(Text(self._title), classes="modal-title"),
+            Static(t),
+            id="modal",
+        )
+        yield Footer()
+
+    def action_close(self) -> None:
+        self.dismiss()
+
+
 class ConfirmModal(ModalScreen[bool]):
     """Yes/no confirmation. `y`/`enter` confirm, `n`/`esc` cancel. Dismisses with
     the boolean result (use `push_screen(modal, callback)` to act on it)."""

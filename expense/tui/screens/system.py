@@ -1,10 +1,15 @@
-"""System screens — Config and Auth & profile (Phase 2).
+"""System screens — Config, Auth & profile, and the system reads (Phase 2).
 
 Config: read view of engine URL / token (masked) / client id / main currency /
 cache state; `e` edits the engine URL, `t` sets the token (both write
 ~/.expense-config). Auth & profile: identity + settings from GET /auth/me; `b`
 bootstraps (provisions the user record), `m` sets the main currency (PUT
 /auth/settings, which triggers the engine's home-currency recalc).
+
+System reads (the last three sections before TUI parity):
+  Sync     — status of the local replica + `s` delta refresh / `f` full rebuild.
+  Activity — engine-direct audit log; `enter` shows one entry's before/after.
+  Rates    — reference FX lookup (conversion on writes is automatic engine-side).
 """
 
 import io
@@ -16,8 +21,10 @@ from textual import work
 from textual.widget import Widget
 from textual.widgets import Static
 
+from expense.commands._resource import format_field_value
 from expense.tui.screens._base import SectionScreen
-from expense.tui.screens.modals import ConfirmModal, PromptModal
+from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
+from expense.tui.widgets.cursor_list import CursorList
 
 
 def _redact_token(token: str | None) -> str:
@@ -270,3 +277,373 @@ class AuthScreen(SectionScreen):
     def _done(self, message: str) -> None:
         self.notify(message)
         self._load()
+
+
+# ---------------------------------------------------------------------------
+# System reads — Sync · Activity · Rates
+# ---------------------------------------------------------------------------
+
+
+def _short_token(token: str | None) -> str:
+    if not token:
+        return "(none)"
+    if len(token) <= 12:
+        return token
+    return f"{token[:6]}…{token[-4:]}"
+
+
+class SyncScreen(SectionScreen):
+    """The local-replica status + refresh controls.
+
+    Sync normally runs on its own after every write; this screen exists for
+    the cross-client case (data changed elsewhere) and for a manual full
+    rebuild. Reuses `cache.delta_sync` / `cache.cold_start` — no logic here.
+    """
+
+    crumb = ("System", "Sync")
+    CARD_WIDTH = 80
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Back"),
+        ("r", "reload", "Reload view"),
+        ("s", "sync", "Refresh (delta)"),
+        ("f", "full", "Full rebuild"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._last = None  # last SyncSummary from an in-app run
+
+    def fetch(self) -> dict:
+        from expense.cache import cache_path, db, state
+
+        info: dict = {"sync_token": None, "last_synced_at": None, "ready": False}
+        try:
+            info["cache_path"] = str(cache_path())
+        except Exception:
+            info["cache_path"] = None
+        if getattr(self.app, "_no_cache", False):
+            info["disabled"] = True
+            return info
+        try:
+            conn = db.connect()
+            try:
+                cur = state.read(conn)
+            finally:
+                conn.close()
+            info["sync_token"] = cur.sync_token
+            info["last_synced_at"] = cur.last_synced_at
+            info["ready"] = cur.sync_token is not None
+        except Exception:
+            pass
+        return info
+
+    def build(self, data: dict) -> list[Widget]:
+        widgets: list[Widget] = [
+            Static(Text("Sync — refresh the local copy from the engine"), classes="section-title"),
+        ]
+        if data.get("disabled"):
+            widgets.append(
+                Static(
+                    Text(
+                        "Cache is disabled (--no-cache / EXPENSE_STATELESS). Nothing to sync.",
+                        style="dim",
+                    ),
+                    classes="legend",
+                )
+            )
+            return widgets
+        rows = [
+            ("last synced", data.get("last_synced_at") or "never"),
+            ("sync token", _short_token(data.get("sync_token"))),
+            ("cache file", data.get("cache_path")),
+            ("state", "ready (synced)" if data.get("ready") else "not synced yet"),
+        ]
+        widgets.append(Static(_kv_table(rows)))
+        if self._last is not None:
+            widgets.append(
+                Static(
+                    Text(
+                        "rebuilt" if self._last.kind == "cold_start" else "last run — delta applied"
+                    ),
+                    classes="section-title",
+                )
+            )
+            widgets.append(Static(_delta_table(self._last)))
+        widgets.append(
+            Static(
+                Text(
+                    "s refresh (delta) · f full rebuild · engine is the source of truth",
+                    style="dim",
+                ),
+                classes="legend",
+            )
+        )
+        return widgets
+
+    def action_sync(self) -> None:
+        self._run_sync(full=False)
+
+    def action_full(self) -> None:
+        self._run_sync(full=True)
+
+    @work(thread=True, exclusive=True)
+    def _run_sync(self, *, full: bool) -> None:
+        from expense import cache as cache_pkg
+        from expense import config as config_module
+        from expense.http import ExpenseClient
+
+        if getattr(self.app, "_no_cache", False):
+            self.app.call_from_thread(
+                self.notify, "Cache is disabled; nothing to sync.", severity="warning"
+            )
+            return
+        cfg = config_module.ensure_loaded()
+        try:
+            with ExpenseClient(cfg, verbose=self.app._verbose, cold_start_notice=False) as client:
+                summary = (
+                    cache_pkg.cold_start(client, cfg) if full else cache_pkg.delta_sync(client, cfg)
+                )
+        except Exception as exc:
+            self.app.call_from_thread(self.notify, str(exc), title="Sync failed", severity="error")
+            return
+        self.app.call_from_thread(self._synced, summary)
+
+    def _synced(self, summary) -> None:
+        self._last = summary
+        verb = "Rebuilt cache" if summary.kind == "cold_start" else "Refreshed"
+        self.notify(f"{verb}. token {_short_token(summary.sync_token)}")
+        self._load()
+
+
+def _delta_table(summary) -> Table:
+    """Per-resource added/changed/removed counts from a SyncSummary.
+
+    Cold-start populates only `inserts`; the missing update/tombstone dicts
+    read as 0, which is correct (a fresh cache has nothing to change/remove).
+    """
+    from expense.cache import RESOURCE_KEYS
+
+    t = Table(box=box.SIMPLE, pad_edge=False)
+    t.add_column("resource", style="dim")
+    t.add_column("added", justify="right")
+    t.add_column("changed", justify="right")
+    t.add_column("removed", justify="right")
+    for key in RESOURCE_KEYS:
+        ins = summary.inserts.get(key, 0)
+        upd = summary.updates.get(key, 0)
+        tomb = summary.tombstones.get(key, 0)
+        t.add_row(key, f"+{ins}", f"~{upd}", f"−{tomb}")
+    t.add_row(
+        "settings",
+        "replaced" if summary.settings_changed else "unchanged",
+        "",
+        "",
+    )
+    return t
+
+
+_ACTIVITY_PAGE = 50
+_ACTIVITY_HEADERS = ["Date", "Time", "Action", "Actor", "Type", "Record"]
+
+
+class ActivityScreen(SectionScreen):
+    """Engine-direct audit log — the most recent page of changes.
+
+    `enter` opens the before/after snapshot for one entry (the nested dicts the
+    CLI human view omits). v1 is unfiltered; filters/pagination are a later pass.
+    """
+
+    crumb = ("System", "Activity")
+    CARD_WIDTH = 118
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._by_id: dict = {}
+
+    def fetch(self) -> dict:
+        from expense import config as config_module
+        from expense.commands import activity_cmd
+
+        cfg = config_module.ensure_loaded()
+        body = activity_cmd.fetch_activity(cfg, limit=_ACTIVITY_PAGE, verbose=self.app._verbose)
+        items = body.get("items", body) if isinstance(body, dict) else (body or [])
+        total = body.get("total") if isinstance(body, dict) else None
+        return {"items": items, "total": total}
+
+    def build(self, data: dict) -> list[Widget]:
+        from expense.commands import activity_cmd
+
+        items = data["items"]
+        self._by_id = {}
+        rows = []
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            key = item.get("id") or f"row-{i}"
+            self._by_id[key] = item
+            rows.append((key, activity_cmd.activity_display_cells(item)))
+        total = data["total"]
+        shown = len(rows)
+        count = f"showing {shown} of {total}" if isinstance(total, int) else f"showing {shown}"
+        return [
+            Static(Text("Activity — who changed what, and when"), classes="section-title"),
+            CursorList(_ACTIVITY_HEADERS, rows, empty="(no activity)"),
+            Static(
+                Text(f"{count}   ·   most recent first   ·   ↵ view before/after"),
+                classes="legend",
+            ),
+        ]
+
+    def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
+        item = self._by_id.get(event.key)
+        if not item:
+            return
+        from expense.commands import activity_cmd
+
+        cells = activity_cmd.activity_display_cells(item)
+        title = f"{cells[2]} · {cells[4]} · {cells[5]}"  # ACTION · type · record
+        self.app.push_screen(
+            SnapshotModal(title, item.get("before_snapshot"), item.get("after_snapshot"))
+        )
+
+
+class RatesScreen(SectionScreen):
+    """Reference FX lookup — GET /v1/exchange-rates.
+
+    Cross-currency writes convert automatically engine-side; this screen only
+    *reads* a rate for reference. `t/b/d` set target/base/date, `enter` looks up.
+    """
+
+    crumb = ("System", "Rates")
+    CARD_WIDTH = 90
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Back"),
+        ("t", "set_target", "Target"),
+        ("b", "set_base", "Base"),
+        ("d", "set_date", "Date"),
+        ("enter", "lookup", "Look up"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._target = "PEN"
+        self._base: str | None = None  # None → engine default (USD)
+        self._date: str | None = None  # None → engine default (today)
+        self._result: dict | None = None
+
+    def fetch(self) -> dict:
+        return {}  # nothing to preload — this is an on-demand lookup
+
+    def build(self, data: dict) -> list[Widget]:
+        widgets: list[Widget] = [
+            Static(Text("Exchange rates — reference lookup"), classes="section-title"),
+            Static(
+                Text(
+                    "Cross-currency transactions convert to your home currency automatically "
+                    "when you save them — you never type a rate. This only looks one up.",
+                    style="dim",
+                ),
+                classes="legend",
+            ),
+            Static(
+                _kv_table(
+                    [
+                        ("base", self._base or "USD (default)"),
+                        ("target", self._target),
+                        ("date", self._date or "today (default)"),
+                    ]
+                )
+            ),
+        ]
+        if self._result is not None:
+            widgets.append(Static(Text("result"), classes="section-title"))
+            widgets.append(Static(_rate_table(self._result)))
+        widgets.append(
+            Static(
+                Text("t target · b base · d date · ↵ look up", style="dim"),
+                classes="legend",
+            )
+        )
+        return widgets
+
+    def action_set_target(self) -> None:
+        def cb(value: str | None) -> None:
+            if value:
+                self._target = value.strip().upper()
+                self._load()
+
+        self.app.push_screen(
+            PromptModal("Target currency", "e.g. PEN", value=self._target or ""), cb
+        )
+
+    def action_set_base(self) -> None:
+        def cb(value: str | None) -> None:
+            if value is None:
+                return
+            self._base = value.strip().upper() or None
+            self._load()
+
+        self.app.push_screen(
+            PromptModal("Base currency", "blank = USD (engine default)", value=self._base or ""), cb
+        )
+
+    def action_set_date(self) -> None:
+        def cb(value: str | None) -> None:
+            if value is None:
+                return
+            self._date = value.strip() or None
+            self._load()
+
+        self.app.push_screen(
+            PromptModal("Date", "YYYY-MM-DD · blank = today", value=self._date or ""), cb
+        )
+
+    def action_lookup(self) -> None:
+        if not self._target:
+            self.notify("Set a target currency first (t).", severity="warning")
+            return
+        self._run_lookup()
+
+    @work(thread=True, exclusive=True)
+    def _run_lookup(self) -> None:
+        from expense import config as config_module
+        from expense.commands import rates_cmd
+
+        cfg = config_module.ensure_loaded()
+        try:
+            body = rates_cmd.fetch_rate(
+                cfg,
+                target=self._target,
+                base=self._base,
+                date=self._date,
+                verbose=self.app._verbose,
+            )
+        except Exception as exc:
+            self._result = None
+            self.app.call_from_thread(
+                self.notify, str(exc), title="Lookup failed", severity="error"
+            )
+            self.app.call_from_thread(self._load)
+            return
+        self._result = body
+        self.app.call_from_thread(self._looked_up)
+
+    def _looked_up(self) -> None:
+        self.notify("Rate fetched.")
+        self._load()
+
+
+def _rate_table(body: dict) -> Table:
+    """One-row table of the engine's exchange-rate response.
+
+    Columns are whatever fields the engine returns (base/target/rate/date/…),
+    so new fields render without a code change — same spirit as the CLI's
+    generic key/value renderer, just tabular per the approved mockup.
+    """
+    if not isinstance(body, dict) or not body:
+        return Table(box=box.SIMPLE)
+    t = Table(box=box.SIMPLE, pad_edge=False)
+    for key in body:
+        t.add_column(str(key))
+    t.add_row(*[format_field_value(key, value) for key, value in body.items()])
+    return t

@@ -68,11 +68,11 @@ Before writing or changing UI code for any user-facing view or screen — a menu
 
 ## Build phases (current status)
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 9 (CLI-complete gate closed 2026-05-10): every engine endpoint with a CLI surface is wrapped, surface coverage is regression-armored by [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py), and the freshman flow is wired as a live contract test. Step 9.5 (questionary interactive shell, `expense menu`) is complete: all 14 menu groups are wired and the freshman-flow menu gate ([tests/contract/test_freshman_flow_menu.py](tests/contract/test_freshman_flow_menu.py)) closed it (Step 9.5.16).
+See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 9 (CLI-complete gate closed 2026-05-10): every engine endpoint with a CLI surface is wrapped, surface coverage is regression-armored by [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py), and the freshman flow is wired as a live contract test. Step 9.5 (questionary interactive shell, `expense menu`) shipped in full and was then **deleted at Step 10.X (2026-07-02)** — the Textual TUI replaces it; see below.
 
-**Current work — the Textual TUI (`expense world`), Step 10.** A retained-mode terminal app is the third and final front door (see [docs/tui-plan.md](docs/tui-plan.md)). It is another thin client of the same command/data layer — zero new business logic. Phases 0 (skeleton) and 1 (read views) are done; Phase 2 (write flows) is in progress — every home-menu section is wired except **Reports (Monthly report)** and **System reads (Sync · Activity · Rates)**, both still stubbed as "coming later" in [expense/tui/screens/home.py](expense/tui/screens/home.py). Phase 3 (polish, `?` help overlay, pilot tests, docs) is not started. A bulk `.xlsx → engine` importer (`expense import`) also landed on this branch.
+**Current work — the Textual TUI (`expense world`), Step 10.** A retained-mode terminal app is the interactive front door (see [docs/tui-plan.md](docs/tui-plan.md)). It is another thin client of the same command/data layer — zero new business logic. Phases 0 (skeleton) and 1 (read views) are done; Phase 2 (write flows) is in progress. The **System reads (Sync · Activity · Rates)** screens are now wired ([expense/tui/screens/system.py](expense/tui/screens/system.py)) as three direct System-group entries; the one remaining stub is **Reports (Monthly report)**, still "coming later" in [expense/tui/screens/home.py](expense/tui/screens/home.py). Phase 3 (polish, `?` help overlay, pilot tests, docs) is not started. A bulk `.xlsx → engine` importer (`expense import`) also landed on this branch.
 
-**Three front doors, converging to two.** The flat commands (`expense log`, `expense dashboard`, …) stay the canonical contract-validator interface. The TUI (`expense world`) is the new interactive surface. **The questionary `expense menu` (Step 9.5, `expense/menu/`) is deprecated: once the TUI reaches parity it will be deleted** — the TUI replaces it. Do not build new features into `expense/menu/`; the fetch/print split lets the TUI reuse the underlying command implementations directly. Until deletion, `expense menu` keeps working untouched.
+**Two front doors.** The flat commands (`expense log`, `expense dashboard`, …) stay the canonical contract-validator interface and remain the complete surface — every engine endpoint is reachable through them. The TUI (`expense world`) is the interactive surface. The questionary `expense menu` (Step 9.5, `expense/menu/`) **was deleted at Step 10.X (2026-07-02)**, retired ahead of full TUI parity by decision — no capability was lost because the flat commands cover everything. The fetch/print split still lets the TUI reuse the underlying command implementations directly.
 
 Next is post-Step-9 ergonomics (quick-add parser, shell completions — see [docs/roadmap.md](docs/roadmap.md)).
 
@@ -98,28 +98,12 @@ The CLI is **cache-by-default by design** per [api-design-principles.md §3b](..
 | 8.1 | Activity log read | Done |
 | 8.2 | Exchange-rate read | Done |
 | 9 | CLI complete (gate) | Done |
-| 9.5.1 | Menu — foundation (questionary, root menu, shared helpers) | Done |
-| 9.5.2 | Menu — Log a transaction (root shortcut) | Done |
-| 9.5.3 | Menu — Inbox | Done |
-| 9.5.4 | Menu — Transactions | Done |
-| 9.5.5 | Menu — Outstanding Amounts (the `dashboard` wrapper) | Done |
-| 9.5.6 | Menu — Config | Done |
-| 9.5.7 | Menu — Auth & profile | Done |
-| 9.5.8 | Menu — Reports (with hashtag tree) | Done |
-| 9.5.9 | Menu — Accounts | Done |
-| 9.5.10 | Menu — Categories | Done |
-| 9.5.11 | Menu — Hashtags | Done |
-| 9.5.11b | Menu — Clear-on-navigate UX | Done |
-| 9.5.12 | Menu — Reconciliations (incl. `$EDITOR` reorder) | Done |
-| 9.5.13 | Menu — Sync | Done |
-| 9.5.14 | Menu — Activity log | Done |
-| 9.5.15 | Menu — Exchange rates | Done |
-| 9.5.16 | Menu — Step 9.5 closeout (freshman-flow gate) | Done |
+| 9.5 | Menu — questionary interactive shell, all 16 sub-steps (`expense/menu/`) | Shipped, deleted at 10.X |
 | import | Bulk `.xlsx → engine` importer (`expense import`) | Done |
 | 10.P0 | TUI (`expense world`) — walking skeleton (Outstanding Amounts live) | Done |
 | 10.P1 | TUI — read views (Inbox / Transactions / Accounts / Categories / Hashtags / tree) | Done |
 | 10.P2 | TUI — write flows (Log/transfer, edit, create forms, Reconciliations, Config, Auth) | In progress |
 | 10.P2 | TUI — Reports (Monthly report) screen | Not started |
-| 10.P2 | TUI — System reads (Sync · Activity · Rates) screens | Not started |
+| 10.P2 | TUI — System reads (Sync · Activity · Rates) screens | Done |
 | 10.P3 | TUI — polish (theme, `?` help, command palette, pilot tests, docs) | Not started |
-| 10.X | Delete questionary `expense menu` (after TUI reaches parity) | Pending |
+| 10.X | Delete questionary `expense menu` (`expense/menu/` + tests + dep) | Done (2026-07-02) |

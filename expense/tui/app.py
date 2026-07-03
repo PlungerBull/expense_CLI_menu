@@ -37,7 +37,7 @@ class ExpenseApp(App):
 
 
 def run_world(ctx: typer.Context) -> None:
-    """TTY guard + launch. Mirrors `expense menu`'s interactive-only contract."""
+    """TTY guard + launch. `expense world` is interactive-only."""
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         typer.echo("Error: expense world requires an interactive terminal.", err=True)
         raise typer.Exit(code=1)

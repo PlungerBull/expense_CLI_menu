@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — system reads (sync · activity · rates)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     System-read section interfaces: Sync, Activity, Rates.
+     Same amber theme + breadcrumb/iface/keybar shell as
+     expense-world-sections.html. Two home-menu variants at the top so we can
+     compare "one combined entry" vs "three separate entries".
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0a0805; --term-bg:#0e0a05;
+    --frame:#b9802f; --frame-dim:#5e4520;
+    --amber:#e3a849; --amber-hi:#f6c772; --amber-lo:#a87f3e;
+    --dim:#6f5630; --dimmer:#4d3c22;
+    --sel-bg:#e9b25a; --sel-fg:#1c1305; --pos:#f2cd84;
+    --glow:rgba(233,178,90,.18);
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       gap:32px;padding:42px 20px 80px;font-family:var(--mono);color:var(--amber);
+       -webkit-font-smoothing:antialiased}
+
+  .lbl{width:min(940px,100%);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber-lo)}
+  .lbl span{color:var(--dim)}
+
+  .term{width:min(940px,100%);background:
+      radial-gradient(120% 70% at 50% -10%,rgba(233,178,90,.05),transparent 60%),var(--term-bg);
+      border:1px solid #241a0d;border-radius:14px;
+      box-shadow:0 26px 70px -34px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.02) inset;
+      overflow:hidden;font-size:14px;line-height:1.5}
+  .titlebar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#120d07;border-bottom:1px solid #221809}
+  .dots{display:flex;gap:7px}.dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#e0654b}.dot.y{background:#dca23a}.dot.g{background:#3fa66a}
+  .ttl{color:var(--dim);font-size:12.5px}.ttl b{color:var(--amber-lo);font-weight:600}
+  .screen{padding:15px 18px 18px}
+  .live-dot{color:#6cc08a;display:inline-block;animation:pulse 1.8s ease-in-out infinite}
+
+  /* home menu (brand + section list) */
+  .brand{font-size:20px;letter-spacing:.14em;color:var(--amber-hi);font-weight:700}
+  .brand .tag{display:block;font-size:12px;letter-spacing:.05em;color:var(--dim);font-weight:400;margin-top:2px}
+  .status{margin:10px 2px 14px;color:var(--amber-lo);font-size:12.5px}
+  .menu{border:1px solid var(--frame-dim);border-radius:12px;padding:8px 6px;background:rgba(233,178,90,.018)}
+  .grp{color:var(--dim);font-size:11px;letter-spacing:.18em;text-transform:uppercase;padding:9px 12px 3px}
+  .mrow{display:flex;align-items:center;gap:10px;padding:4px 12px;border-radius:7px}
+  .mrow .ic{width:18px;color:var(--amber-lo);text-align:center}
+  .mrow .sub2{margin-left:auto;color:var(--dim);font-size:12px}
+  .mrow.focus{background:var(--sel-bg)} .mrow.focus *{color:var(--sel-fg)!important}
+  .mrow.focus::before{content:"▌";color:var(--sel-fg);position:absolute;margin-left:-14px}
+
+  /* breadcrumb header */
+  .crumb{display:flex;align-items:center;gap:10px;border:1px solid var(--frame);border-radius:10px;
+      padding:10px 16px;color:var(--amber-lo);
+      background:linear-gradient(180deg,rgba(233,178,90,.05),rgba(233,178,90,.01))}
+  .crumb .home{color:var(--amber-hi);font-weight:700;letter-spacing:.14em}
+  .crumb .sep{color:var(--frame-dim)} .crumb .here{color:var(--amber)}
+  .crumb .right{margin-left:auto;color:var(--dim);font-size:12.5px}
+
+  /* interface shell */
+  .iface{margin-top:12px;border:1px solid var(--frame-dim);border-radius:12px;background:rgba(233,178,90,.018);overflow:hidden}
+  .ihead{padding:11px 16px 9px;color:var(--amber-hi);letter-spacing:.05em;display:flex;align-items:center;gap:10px}
+  .ihead .sub{color:var(--amber-lo);letter-spacing:0}
+  .ihead .pill{margin-left:auto;font-size:11px;letter-spacing:.13em;border:1px solid var(--frame-dim);
+      border-radius:999px;padding:2px 9px;color:var(--amber-hi)}
+  .ibody{padding:4px 16px 10px}
+  .neg{color:var(--amber)} .pos{color:var(--pos)} .amt{text-align:right;font-variant-numeric:tabular-nums}
+
+  /* key/value card (sync status, rate result) */
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:3px 16px;padding:6px 8px 4px}
+  .kv .k{color:var(--dim)} .kv .v{color:var(--amber)}
+  .kv .v.mono{font-variant-numeric:tabular-nums}
+
+  /* delta grid (sync applied counts) */
+  .delta{--cols:1fr 70px 70px 70px}
+  .delta .row{display:grid;grid-template-columns:var(--cols);gap:14px;padding:2px 8px;border-radius:6px}
+  .delta .row.head{color:var(--dim);font-size:12px}
+  .delta .rule{height:1px;background:#2a1f0c;margin:3px 4px}
+  .delta .res{color:var(--amber-lo)}
+  .delta .ins{color:var(--pos);text-align:right} .delta .upd{color:var(--amber);text-align:right}
+  .delta .tomb{color:var(--dim);text-align:right}
+  .delta .row.zero *{color:var(--dim)}
+
+  .note{margin-top:9px;padding:8px 11px;border:1px solid var(--frame-dim);border-radius:8px;
+      color:var(--amber-lo);font-size:12.5px;background:rgba(233,178,90,.03)}
+  .note b{color:var(--amber-hi)}
+
+  /* generic table (activity) */
+  .tbl{--cols:1fr}
+  .tbl .row{display:grid;grid-template-columns:var(--cols);gap:14px;padding:3px 8px;border-radius:6px;align-items:center}
+  .tbl .row.head{color:var(--dim);font-size:12px;padding-bottom:2px}
+  .tbl .rule{height:1px;background:#2a1f0c;margin:3px 4px 4px}
+  .tbl .mut{color:var(--dim)}
+  .tbl .row.focus{background:var(--sel-bg)}
+  .tbl .row.focus *{color:var(--sel-fg)!important}
+  .tbl .row.focus::before{content:"▌";color:var(--sel-fg);position:absolute;margin-left:-14px}
+  .tbl .nm{color:var(--amber)}
+  .act{font-weight:600}
+  .act.c{color:#6cc08a} .act.u{color:var(--amber-hi)} .act.d{color:#e0654b} .act.r{color:#5a9bd9}
+  .tbl .row.focus .act{color:var(--sel-fg)!important}
+
+  .legend{margin-top:9px;padding-top:8px;border-top:1px solid #241a0c;display:flex;gap:18px;
+      color:var(--amber-lo);font-size:12px}
+  .legend .right{margin-left:auto;color:var(--dim)}
+
+  /* modal (activity detail — before/after snapshot) */
+  .modal-wrap{border:1px dashed var(--frame-dim);border-radius:10px;margin-top:10px;padding:2px 0 0}
+  .modal-cap{color:var(--dim);font-size:11px;letter-spacing:.16em;text-transform:uppercase;padding:6px 14px 0}
+  .modal{margin:6px;border:1px solid var(--frame);border-radius:10px;background:#120d07;padding:12px 16px 14px;
+      box-shadow:0 18px 50px -26px rgba(0,0,0,.9)}
+  .modal-title{color:var(--amber-hi);font-weight:600;margin-bottom:8px}
+  .snap{--cols:150px 1fr 1fr}
+  .snap .row{display:grid;grid-template-columns:var(--cols);gap:14px;padding:2px 4px}
+  .snap .row.head{color:var(--dim);font-size:12px}
+  .snap .fld{color:var(--dim)} .snap .b4{color:var(--amber-lo)} .snap .af{color:var(--amber)}
+  .snap .row.chg{background:rgba(233,178,90,.06);border-radius:5px}
+  .snap .row.chg .af{color:var(--pos)}
+  .snap .rule{height:1px;background:#2a1f0c;margin:3px 4px}
+
+  .keybar{display:flex;flex-wrap:wrap;gap:15px;padding:9px 16px;border-top:1px solid #2a1f0e;
+      background:rgba(0,0,0,.22);color:var(--amber-lo);font-size:12.5px}
+  .keybar b{color:var(--sel-fg);background:var(--amber-lo);border-radius:4px;padding:0 6px;margin-right:5px;font-weight:600}
+  .keybar .off{opacity:.4}
+  .keybar .right{margin-left:auto;color:var(--dim)}
+
+  .two{display:flex;gap:20px;width:min(940px,100%);flex-wrap:wrap}
+  .two .term{width:calc(50% - 10px);min-width:340px}
+
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</head>
+<body>
+
+  <!-- ============ HOME-MENU VARIANTS (System group only) ============ -->
+  <div class="lbl">menu wiring · variant A <span>— one combined entry</span> &nbsp; vs &nbsp; variant B <span>— three entries</span></div>
+  <div class="two">
+
+    <!-- Variant A: one combined "System reads" entry -->
+    <div class="term">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — home · variant A</div></div>
+      <div class="screen">
+        <div class="brand">◈ EXPENSE WORLD<span class="tag">your money, in the terminal</span></div>
+        <div class="status"><span class="live-dot">●</span> connected — engine via ~/.expense-config</div>
+        <div class="menu">
+          <div class="grp">System</div>
+          <div class="mrow"><span class="ic">⚙</span><span>Config</span></div>
+          <div class="mrow"><span class="ic">◐</span><span>Auth &amp; profile</span></div>
+          <div class="mrow focus"><span class="ic">▤</span><span>System reads</span><span class="sub2">sync · activity · rates ▸</span></div>
+        </div>
+        <div class="note">One entry → opens a small sub-menu (Sync / Activity / Rates). Keeps the home list short; one extra keystroke to reach each tool.</div>
+      </div>
+    </div>
+
+    <!-- Variant B: three separate entries -->
+    <div class="term">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — home · variant B</div></div>
+      <div class="screen">
+        <div class="brand">◈ EXPENSE WORLD<span class="tag">your money, in the terminal</span></div>
+        <div class="status"><span class="live-dot">●</span> connected — engine via ~/.expense-config</div>
+        <div class="menu">
+          <div class="grp">System</div>
+          <div class="mrow"><span class="ic">⚙</span><span>Config</span></div>
+          <div class="mrow"><span class="ic">◐</span><span>Auth &amp; profile</span></div>
+          <div class="mrow focus"><span class="ic">↻</span><span>Sync</span><span class="sub2">refresh local copy</span></div>
+          <div class="mrow"><span class="ic">▤</span><span>Activity</span><span class="sub2">change history</span></div>
+          <div class="mrow"><span class="ic">$</span><span>Rates</span><span class="sub2">FX lookup</span></div>
+        </div>
+        <div class="note">Three direct entries under System. One keystroke to each; slightly longer home list.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SUB-MENU (only exists in variant A) ================= -->
+  <div class="lbl">system reads sub-menu <span>· only shown if we pick variant A</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>System</span><span class="sep">▸</span><span class="here">System reads</span><span class="right"><span class="live-dot">●</span> last sync 3m ago</span></div>
+      <div class="iface">
+        <div class="ihead">SYSTEM READS <span class="sub">· maintenance &amp; reference</span></div>
+        <div class="ibody">
+          <div class="menu" style="border:none;background:none;padding:2px 0">
+            <div class="mrow focus"><span class="ic">↻</span><span>Sync</span><span class="sub2">refresh the local copy of your data</span></div>
+            <div class="mrow"><span class="ic">▤</span><span>Activity</span><span class="sub2">history of every change (audit trail)</span></div>
+            <div class="mrow"><span class="ic">$</span><span>Rates</span><span class="sub2">check an exchange rate (reference)</span></div>
+          </div>
+        </div>
+        <div class="keybar"><span><b>↑↓</b>move</span><span><b>↵</b>open</span><span><b>esc</b>back</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ SYNC ============================ -->
+  <div class="lbl">sync <span>· refresh the local copy from the engine</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>System</span><span class="sep">▸</span><span class="here">Sync</span><span class="right"><span class="live-dot">●</span> cache ready</span></div>
+      <div class="iface">
+        <div class="ihead">SYNC <span class="sub">· your terminal keeps a local copy; this refreshes it</span><span class="pill">up to date</span></div>
+        <div class="ibody">
+          <div class="kv">
+            <span class="k">last synced</span><span class="v mono">2026-07-02T14:03:11Z &nbsp;<span class="mut" style="color:var(--dim)">(3 minutes ago)</span></span>
+            <span class="k">sync token</span><span class="v mono">a1f3…9c7e</span>
+            <span class="k">cache file</span><span class="v">~/.expense-cache.sqlite3</span>
+            <span class="k">state</span><span class="v">ready — 6 resource groups cached</span>
+          </div>
+
+          <div style="margin:12px 2px 5px;color:var(--dim);font-size:11px;letter-spacing:.16em;text-transform:uppercase">last run — delta applied</div>
+          <div class="delta">
+            <div class="row head"><span class="res">resource</span><span class="ins">added</span><span class="upd">changed</span><span class="tomb">removed</span></div>
+            <div class="rule"></div>
+            <div class="row"><span class="res">transactions</span><span class="ins">+3</span><span class="upd">~1</span><span class="tomb">−0</span></div>
+            <div class="row"><span class="res">inbox_items</span><span class="ins">+1</span><span class="upd">~0</span><span class="tomb">−1</span></div>
+            <div class="row zero"><span class="res">accounts</span><span class="ins">+0</span><span class="upd">~0</span><span class="tomb">−0</span></div>
+            <div class="row zero"><span class="res">categories</span><span class="ins">+0</span><span class="upd">~0</span><span class="tomb">−0</span></div>
+            <div class="row zero"><span class="res">hashtags</span><span class="ins">+0</span><span class="upd">~0</span><span class="tomb">−0</span></div>
+            <div class="row zero"><span class="res">reconciliations</span><span class="ins">+0</span><span class="upd">~0</span><span class="tomb">−0</span></div>
+            <div class="row"><span class="res">settings</span><span class="ins" style="color:var(--dim)">unchanged</span><span class="upd"></span><span class="tomb"></span></div>
+          </div>
+
+          <div class="note">Sync usually runs on its own after you add or edit something. Use <b>Refresh</b> if you changed data elsewhere (web dashboard, direct API); use <b>Full rebuild</b> only if the local copy looks wrong.</div>
+        </div>
+        <div class="keybar"><span><b>s</b>refresh (delta)</span><span><b>f</b>full rebuild</span><span><b>r</b>reload view</span><span><b>esc</b>back</span><span class="right">engine = source of truth</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ ACTIVITY ============================ -->
+  <div class="lbl">activity <span>· history of every change (audit trail)</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>System</span><span class="sep">▸</span><span class="here">Activity</span><span class="right"><span class="live-dot">●</span> most recent first</span></div>
+      <div class="iface">
+        <div class="ihead">ACTIVITY <span class="sub">· who changed what, and when</span><span class="pill">recent 25</span></div>
+        <div class="ibody">
+          <div class="tbl" style="--cols:96px 78px 92px 66px 150px 1.3fr">
+            <div class="row head"><span>Date</span><span>Time</span><span>Action</span><span>Actor</span><span>Type</span><span>Record</span></div>
+            <div class="rule"></div>
+            <div class="row focus"><span>2026-07-02</span><span>14:03:07</span><span class="act u">UPDATED</span><span class="mut">user</span><span>expense_transactions</span><span class="nm">Supermercado</span></div>
+            <div class="row"><span>2026-07-02</span><span>14:02:55</span><span class="act c">CREATED</span><span class="mut">user</span><span>expense_transactions</span><span class="nm">Uber aeropuerto</span></div>
+            <div class="row"><span>2026-07-02</span><span>13:41:10</span><span class="act d">DELETED</span><span class="mut">user</span><span>inbox_items</span><span class="nm">Compra ferretería</span></div>
+            <div class="row"><span>2026-07-01</span><span>19:20:44</span><span class="act r">RESTORED</span><span class="mut">user</span><span>accounts</span><span class="nm">Old BCP</span></div>
+            <div class="row"><span>2026-07-01</span><span>18:05:02</span><span class="act c">CREATED</span><span class="mut">user</span><span>categories</span><span class="nm">Viajes</span></div>
+            <div class="row"><span>2026-07-01</span><span>09:12:33</span><span class="act u">UPDATED</span><span class="mut">user</span><span>reconciliations</span><span class="nm">2026-06-30 / BCP Soles</span></div>
+          </div>
+          <div class="legend"><span>CREATED · UPDATED · DELETED · RESTORED &nbsp;·&nbsp; names resolved from the local copy</span><span class="right">showing 6 of 25 · <b style="color:var(--dim)">more →</b></span></div>
+
+          <!-- detail modal (enter on a row) -->
+          <div class="modal-wrap">
+            <div class="modal-cap">↵ enter on a row → detail (before / after)</div>
+            <div class="modal">
+              <div class="modal-title">UPDATED · expense_transactions · Supermercado</div>
+              <div class="snap">
+                <div class="row head"><span class="fld">field</span><span class="b4">before</span><span class="af">after</span></div>
+                <div class="rule"></div>
+                <div class="row"><span class="fld">title</span><span class="b4">Supermercado</span><span class="af">Supermercado</span></div>
+                <div class="row chg"><span class="fld">amount_cents</span><span class="b4">−41,000</span><span class="af">−43,250</span></div>
+                <div class="row chg"><span class="fld">description</span><span class="b4">Wong</span><span class="af">Wong + Plaza Vea</span></div>
+                <div class="row"><span class="fld">cleared</span><span class="b4">false</span><span class="af">false</span></div>
+                <div class="row chg"><span class="fld">hashtag_ids</span><span class="b4">[#casa]</span><span class="af">[#casa, #club]</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="keybar"><span><b>↑↓</b>move</span><span><b>↵</b>detail (before/after)</span><span><b>r</b>reload</span><span><b>esc</b>back</span><span class="right">read-only · engine-direct</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ RATES ============================ -->
+  <div class="lbl">rates <span>· check an exchange rate (reference only)</span></div>
+  <div class="term">
+    <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><div class="ttl"><b>expense world</b> — interactive</div></div>
+    <div class="screen">
+      <div class="crumb"><span class="home">◈ EXPENSE WORLD</span><span class="sep">▸</span><span>System</span><span class="sep">▸</span><span class="here">Rates</span><span class="right"><span class="live-dot">●</span> reference lookup</span></div>
+      <div class="iface">
+        <div class="ihead">EXCHANGE RATES <span class="sub">· what rate would the engine apply?</span><span class="pill">read-only</span></div>
+        <div class="ibody">
+          <div class="note" style="margin:2px 0 12px">The engine converts cross-currency transactions to your home currency <b>automatically</b> when you save them — you never type a rate. This screen is just a way to <b>look up</b> today's (or a past day's) rate for reference.</div>
+
+          <div class="tbl" style="--cols:80px 80px 110px 130px 1fr">
+            <div class="row head"><span>Base</span><span>Target</span><span>Date</span><span class="amt">Rate</span><span>Source</span></div>
+            <div class="rule"></div>
+            <div class="row focus"><span class="nm">USD</span><span class="nm">PEN</span><span>2026-07-02</span><span class="amt pos">3.7520</span><span class="mut">engine daily rate</span></div>
+          </div>
+          <div class="legend"><span>1 USD = 3.7520 PEN · rate the engine would apply on this date</span><span class="right">base &amp; date default to USD / today</span></div>
+        </div>
+        <div class="keybar"><span><b>t</b>target currency</span><span><b>b</b>base</span><span><b>d</b>date</span><span><b>↵</b>look up</span><span><b>esc</b>back</span><span class="right">USD ⇄ PEN</span></div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

@@ -207,7 +207,7 @@ def run_single_month(
     show_hashtags: bool = True,
     no_cache: bool = False,
 ) -> None:
-    """Engine round-trip + render for a single month. Shared by flat + menu."""
+    """Engine round-trip + render for a single month. Shared by flat + TUI."""
     params = {"year": str(year), "month": str(month)}
     # Hashtag-breakdown names resolve against the local replica. Warm it
     # (best-effort, after the report itself is fetched) so a cold cache shows
@@ -234,7 +234,7 @@ def run_range(
     expand_hashtags: bool = False,
     no_cache: bool = False,
 ) -> None:
-    """Engine round-trip + render for a month range. Shared by flat + menu.
+    """Engine round-trip + render for a month range. Shared by flat + TUI.
 
     Caller is responsible for span validation (use _months_between + _MAX_RANGE_MONTHS).
     """

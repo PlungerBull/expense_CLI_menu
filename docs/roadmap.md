@@ -487,17 +487,17 @@ Walks `expense menu` through `Config → Set engine URL → Set token → Auth �
 
 **Step 9.5 done** — 9.5.16 landed; the freshman-flow menu walk passes against the live engine.
 
-> **Deprecation notice (decided 2026-07-02).** The questionary `expense menu` built in Step 9.5 is superseded by the Textual TUI (`expense world`, Step 10). Once the TUI reaches parity, `expense/menu/` is **deleted** — the two interactive surfaces converge to one. See Step 10.X. Until then the menu keeps working; no new features land in it.
+> **Deleted 2026-07-02 (Step 10.X).** The questionary `expense menu` built in Step 9.5 was superseded by the Textual TUI (`expense world`, Step 10) and has been **removed** — `expense/menu/`, the `test_menu_*.py` suite, `test_freshman_flow_menu.py`, the `expense menu` Typer command, and the now-unused `questionary` dependency are all gone. Retired ahead of full TUI parity by decision; no capability was lost because the flat commands are the complete contract-validator surface. The narrative below is retained as shipped history.
 
 ---
 
 ## Step 10 — Interactive TUI (`expense world`)
 
-*Deliverable: a retained-mode Textual terminal app — the third and final front door, replacing the questionary `expense menu`. Full plan: [tui-plan.md](tui-plan.md).*
+*Deliverable: a retained-mode Textual terminal app — the interactive front door, which replaced the questionary `expense menu` (deleted at Step 10.X). Full plan: [tui-plan.md](tui-plan.md).*
 
 The TUI is a new **client** of the same engine-integration layer (HTTP client, SQLite replica, error envelope, name resolution, `refresh_after_write`). It implements **zero** business logic — the thin-wrapper rule holds. The one enabling refactor is the **fetch/print split**: commands that fetch *and* print get a pure `fetch_*(cfg, …) -> dict` extracted, which both the typer command and the TUI call. The synchronous engine client runs inside a Textual `@work(thread=True)` worker so the UI never blocks.
 
-**Resolved open decisions** (from [tui-plan.md §9](tui-plan.md)): entry command is **`expense world`** (#1); the TUI **replaces** `expense menu` at parity (#2 — see 10.X); reconcile reorder **shells out to `$EDITOR`** for v1 (#4). Still open: designer's final theme tokens (#3), minimum terminal size fallback (#5).
+**Resolved open decisions** (from [tui-plan.md §9](tui-plan.md)): entry command is **`expense world`** (#1); the TUI **replaced** `expense menu`, now deleted (#2 — see 10.X); reconcile reorder **shells out to `$EDITOR`** for v1 (#4). Still open: designer's final theme tokens (#3), minimum terminal size fallback (#5).
 
 ### Step 10.P0 — Walking skeleton (shipped)
 `expense world` launches; neutral theme; header banner + home menu with live status; Outstanding Amounts wired to live data (flat, then interactive category tree) via the worker helper. De-risked Textual + async + data-reuse.
@@ -508,18 +508,17 @@ List screens for Inbox, Transactions, Accounts, Categories, Hashtags (chips); in
 ### Step 10.P2 — Write flows (in progress)
 Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared, hashtag multi-select, conditional transfer sub-flow, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
 
-**Shipped so far:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile.
+**Shipped so far:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile, and the **System reads (Sync · Activity · Rates)** screens ([expense/tui/screens/system.py](../expense/tui/screens/system.py) — wired as three direct System-group entries in [home.py](../expense/tui/screens/home.py); enabling refactor was the `fetch_activity` / `fetch_rate` extractions on the flat commands). Two bugs surfaced and were fixed while landing these: (1) the shared modal CSS only centered `RecordModal`, so `SnapshotModal` (Activity's before/after detail) collapsed invisibly in the top-left — the `align: center middle` rule now covers every modal screen; (2) activity name resolution matched plural `resource_type` strings (`expense_transactions`, …) but the engine writes them **singular** (`transaction`, `account`, …), so the Resource column always fell back to the UUID prefix — `_resolve_resource_name` now maps the engine's real strings (fixing the flat `expense activity list` too).
 **Remaining before parity:**
 - **Reports (Monthly report)** screen — single-month + range with hashtag tree (reuses the flat `reports` fetch/renderer). Currently stubbed as `"soon"` in [expense/tui/screens/home.py](../expense/tui/screens/home.py).
-- **System reads: Sync · Activity · Rates** — three thin read screens extending [expense/tui/screens/system.py](../expense/tui/screens/system.py). Also stubbed `"soon"`.
 
 **Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before code** (per [CLAUDE.md](../CLAUDE.md) "Mock every screen before building it").
 
 ### Step 10.P3 — Polish & hardening (not started)
-Designer theme tokens; light/dark + `NO_COLOR` paths; keybinding consistency, `?` help overlay, command palette; async edge cases + spinners; Textual pilot tests (existing CLI suite stays green); update `docs/roadmap.md` + `CLAUDE.md`. Exit criteria: shippable, feature-complete vs the menu.
+Designer theme tokens; light/dark + `NO_COLOR` paths; keybinding consistency, `?` help overlay, command palette; async edge cases + spinners; Textual pilot tests (existing CLI suite stays green); update `docs/roadmap.md` + `CLAUDE.md`. Exit criteria: shippable, feature-complete vs the flat command surface.
 
-### Step 10.X — Delete `expense menu` (pending — the closeout)
-Once the TUI is at parity (10.P2 + 10.P3 done), remove `expense/menu/` and its tests (`test_menu_*.py`, `test_freshman_flow_menu.py`), drop the `expense menu` Typer command, and prune the `questionary` dependency from `pyproject.toml` if nothing else uses it. Update all docs to describe two front doors (flat commands + `expense world`). The flat commands and their freshman-flow contract test are untouched.
+### Step 10.X — Delete `expense menu` (done — 2026-07-02)
+Removed `expense/menu/` and its tests (`test_menu_*.py`, `test_freshman_flow_menu.py`), dropped the `expense menu` Typer command from `expense/__main__.py`, and pruned the now-unused `questionary` dependency from `pyproject.toml`. Done ahead of the original gate (which waited on 10.P2 + 10.P3) by decision — the flat commands are the complete surface, so nothing was lost. The two front doors are now the flat commands + `expense world`. The flat commands and their freshman-flow contract test ([test_freshman_flow.py](../tests/contract/test_freshman_flow.py)) are untouched.
 
 ---
 
@@ -527,7 +526,7 @@ Once the TUI is at parity (10.P2 + 10.P3 done), remove `expense/menu/` and its t
 
 Land in this order, separately from Step 9.5:
 
-1. **Quick-add natural-language parser** — `expense $20 today #food` → parses amount, sign, date, hashtag, title from free text and dispatches to the flat `log` command. Sign stays literal (`$20` = income, `-$20` = expense). The "low-friction capture" half of the dual-UX strategy; the menu is the "discoverable management" half.
+1. **Quick-add natural-language parser** — `expense $20 today #food` → parses amount, sign, date, hashtag, title from free text and dispatches to the flat `log` command. Sign stays literal (`$20` = income, `-$20` = expense). The "low-friction capture" half of the dual-UX strategy; the TUI (`expense world`) is the "discoverable management" half.
 2. **Shell completions** — zsh, bash, fish. `expense <TAB>` shows commands; `expense auth <TAB>` shows subcommands. Lowest-effort discoverability win for the flat path.
 3. **`expense import csv`** — bulk transaction import for migration.
 4. **Color conventions** — Rich-based output styling; opt-out flag for plain ANSI.
@@ -552,4 +551,4 @@ These apply at every step — don't defer them.
 
 ---
 
-*Last updated: 2026-07-02 (Step 10 TUI in progress; `expense menu` deprecated for deletion at TUI parity).*
+*Last updated: 2026-07-02 (Step 10 TUI in progress; `expense menu` deleted at Step 10.X).*

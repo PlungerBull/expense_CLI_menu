@@ -1,8 +1,7 @@
 """Home screen — header banner + the section menu.
 
-Phase 0 wires only Outstanding Amounts (the one approved live view); every
-other section is a placeholder that says it's coming. The section list mirrors
-the groups in `expense/menu/app.py`.
+The section list is the top-level entry point into every TUI screen; sections
+not yet wired render a placeholder that says they're coming.
 """
 
 from textual.app import ComposeResult
@@ -17,7 +16,13 @@ from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.screens.reconciliations import ReconciliationsScreen
-from expense.tui.screens.system import AuthScreen, ConfigScreen
+from expense.tui.screens.system import (
+    ActivityScreen,
+    AuthScreen,
+    ConfigScreen,
+    RatesScreen,
+    SyncScreen,
+)
 from expense.tui.screens.transactions import TransactionsScreen
 
 _BANNER = "◈  EXPENSE WORLD"
@@ -39,7 +44,9 @@ _MENU: list[tuple[str | None, str]] = [
     (None, "System"),
     ("config", "Config"),
     ("auth", "Auth & profile"),
-    ("soon", "Sync · Activity · Rates"),
+    ("sync", "Sync"),
+    ("activity", "Activity"),
+    ("rates", "Rates"),
 ]
 
 
@@ -80,5 +87,11 @@ class HomeScreen(Screen):
             self.app.push_screen(CategoriesScreen())
         elif kind == "hashtags":
             self.app.push_screen(HashtagsScreen())
+        elif kind == "sync":
+            self.app.push_screen(SyncScreen())
+        elif kind == "activity":
+            self.app.push_screen(ActivityScreen())
+        elif kind == "rates":
+            self.app.push_screen(RatesScreen())
         elif kind == "soon":
             self.notify("Coming in a later phase.", title="Not wired yet")

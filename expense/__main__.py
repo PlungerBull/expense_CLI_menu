@@ -20,7 +20,6 @@ from expense.commands import (
     transactions_cmd,
 )
 from expense.context import AppContext
-from expense.menu import menu_command
 from expense.tui import world_command
 
 app = typer.Typer(
@@ -88,7 +87,6 @@ app.command("log")(log_cmd.log)
 app.command("dashboard")(dashboard_cmd.dashboard)
 app.command("sync")(sync_cmd.sync)
 app.command("import")(import_cmd.run_import)
-app.command("menu")(menu_command)
 app.command("world")(world_command)
 
 
