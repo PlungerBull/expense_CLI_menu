@@ -430,6 +430,23 @@ def test_wipe_removes_cache_file(cache_path):
     assert not cache_db.cache_path().exists()
 
 
+def test_connect_wipes_and_rebuilds_corrupt_cache(cache_path):
+    """A garbage cache file is wiped and rebuilt fresh, not a crash."""
+    cache_path.write_bytes(b"this is not a sqlite database")
+    conn = cache.connect()
+    try:
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert "_cache_meta" in tables
+        assert "transactions" in tables
+        meta = conn.execute("SELECT * FROM _cache_meta WHERE id = 1").fetchone()
+        assert meta["schema_version"] == cache.SCHEMA_VERSION
+        # Fresh replica: no identity/token — the next read cold-starts.
+        assert meta["user_id"] is None
+        assert meta["sync_token"] is None
+    finally:
+        conn.close()
+
+
 def _seed_accounts(conn, rows: list[dict]) -> None:
     for row in rows:
         conn.execute(

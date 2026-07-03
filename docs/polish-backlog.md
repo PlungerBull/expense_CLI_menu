@@ -49,7 +49,7 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   `ConfigMissingError` or a sibling `ConfigInvalidError` rendered the same
   way, with the existing `expense config set ...` recovery hint. Add unit test.
 
-- [ ] **1.5 Corrupt SQLite cache → wipe and rebuild, not crash.**
+- [x] **1.5 Corrupt SQLite cache → wipe and rebuild, not crash.**
   `db.connect()` has no corruption guard; a garbage cache file raises
   `sqlite3.DatabaseError` at the WAL pragma (`expense/cache/db.py:28-41`,
   verified live). The module's own contract is wipe + cold-start and `wipe()`

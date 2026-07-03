@@ -26,7 +26,20 @@ def _set_perms(path: Path) -> None:
 
 
 def connect() -> sqlite3.Connection:
-    """Open a connection, ensure schema, return it. Caller closes."""
+    """Open a connection, ensure schema, return it. Caller closes.
+
+    The cache is a disposable replica: if the file is corrupt (sqlite3
+    errors on first use), wipe it and rebuild fresh — the next read
+    cold-starts from the engine. A second failure propagates.
+    """
+    try:
+        return _open()
+    except sqlite3.DatabaseError:
+        wipe()
+        return _open()
+
+
+def _open() -> sqlite3.Connection:
     path = cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     fresh = not path.exists()
@@ -34,10 +47,14 @@ def connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     if fresh:
         _set_perms(path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA foreign_keys=OFF")
-    _bootstrap_schema(conn)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=OFF")
+        _bootstrap_schema(conn)
+    except sqlite3.DatabaseError:
+        conn.close()
+        raise
     return conn
 
 
