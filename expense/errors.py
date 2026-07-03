@@ -33,6 +33,10 @@ class ConfigMissingError(Exception):
     pass
 
 
+class ConfigInvalidError(Exception):
+    pass
+
+
 def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
     """Render an error.
 
@@ -79,6 +83,18 @@ def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
             return json.dumps(envelope, indent=2), 3, False
         return f"Error: {err}", 3, True
 
+    if isinstance(err, ConfigInvalidError):
+        if json_mode:
+            envelope = {
+                "error": {
+                    "code": "CONFIG_INVALID",
+                    "message": str(err),
+                    "fields": None,
+                }
+            }
+            return json.dumps(envelope, indent=2), 3, False
+        return f"Error: {err}", 3, True
+
     raise err
 
 
@@ -90,7 +106,7 @@ def handle_errors(fn):
         json_mode = bool(kwargs.get("json_output", False))
         try:
             return fn(*args, **kwargs)
-        except (EngineError, EngineConnectionError, ConfigMissingError) as err:
+        except (EngineError, EngineConnectionError, ConfigMissingError, ConfigInvalidError) as err:
             output, exit_code, use_stderr = render(err, json_mode=json_mode)
             typer.echo(output, err=use_stderr)
             raise typer.Exit(code=exit_code) from err

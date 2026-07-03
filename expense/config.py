@@ -4,9 +4,9 @@ import tempfile
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
-from expense.errors import ConfigMissingError
+from expense.errors import ConfigInvalidError, ConfigMissingError
 
 
 def config_path() -> Path:
@@ -29,8 +29,17 @@ def load() -> Config | None:
     try:
         raw = json.loads(path.read_text())
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Config file at {path} is not valid JSON: {exc}") from exc
-    return Config.model_validate(raw)
+        raise ConfigInvalidError(
+            f"Config file at {path} is not valid JSON: {exc}. "
+            "Run: expense config set --engine-url <url> --token <pat>"
+        ) from exc
+    try:
+        return Config.model_validate(raw)
+    except ValidationError as exc:
+        raise ConfigInvalidError(
+            f"Config file at {path} is invalid: {exc}. "
+            "Run: expense config set --engine-url <url> --token <pat>"
+        ) from exc
 
 
 def save(cfg: Config) -> None:

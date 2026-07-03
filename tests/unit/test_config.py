@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from expense import config
-from expense.errors import ConfigMissingError
+from expense.errors import ConfigInvalidError, ConfigMissingError
 
 
 @pytest.fixture
@@ -43,10 +43,19 @@ def test_save_chmod_600(tmp_config):
     assert mode == 0o600, f"Expected 0o600, got {oct(mode)}"
 
 
-def test_load_corrupt_json_raises(tmp_config):
+def test_load_corrupt_json_raises_config_invalid(tmp_config):
     tmp_config.write_text("{not valid json")
-    with pytest.raises(ValueError, match="not valid JSON"):
+    with pytest.raises(ConfigInvalidError, match="not valid JSON") as exc:
         config.load()
+    assert "config set" in str(exc.value)
+
+
+def test_load_schema_invalid_raises_config_invalid(tmp_config):
+    # Valid JSON, but missing required fields (engine_url, client_id).
+    tmp_config.write_text(json.dumps({"token": "ewe_pat_abc"}))
+    with pytest.raises(ConfigInvalidError, match="invalid") as exc:
+        config.load()
+    assert "config set" in str(exc.value)
 
 
 def test_clear_removes_file(tmp_config):
@@ -114,3 +123,33 @@ def test_extra_fields_ignored(tmp_config):
     assert loaded is not None
     assert loaded.engine_url == "https://x.com"
     assert not hasattr(loaded, "future_field")
+
+
+def test_corrupt_config_renders_clean_cli_error(tmp_config):
+    """A corrupt config exits 3 with the recovery hint — no traceback."""
+    import typer
+    from typer.testing import CliRunner
+
+    from expense.commands.accounts_cmd import app as accounts_app
+    from expense.context import AppContext
+
+    cli_app = typer.Typer()
+
+    @cli_app.callback()
+    def _root(ctx: typer.Context, no_cache: bool = typer.Option(False, "--no-cache")) -> None:
+        ctx.obj = AppContext(no_cache=no_cache)
+
+    cli_app.add_typer(accounts_app, name="accounts")
+
+    tmp_config.write_text("{not valid json")
+    runner = CliRunner()
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "list"])
+    assert result.exit_code == 3
+    assert "not valid JSON" in result.output
+    assert "config set" in result.output
+    assert "Traceback" not in result.output
+
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "list", "--json"])
+    assert result.exit_code == 3
+    envelope = json.loads(result.output)
+    assert envelope["error"]["code"] == "CONFIG_INVALID"

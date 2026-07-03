@@ -42,7 +42,7 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   try/except → `call_from_thread(error banner/notify)` pattern
   `SectionScreen._load` already uses (`_base.py:54-58`).
 
-- [ ] **1.4 Corrupt `~/.expense-config` → clean error, not traceback.**
+- [x] **1.4 Corrupt `~/.expense-config` → clean error, not traceback.**
   `config.load()` raises bare `ValueError` on bad JSON and lets pydantic
   `ValidationError` escape (`expense/config.py:29-33`); `handle_errors`
   re-raises both (verified live: full Rich traceback). Fix: raise
