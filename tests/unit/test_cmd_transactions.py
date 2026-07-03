@@ -181,7 +181,8 @@ def test_list_happy(configured):
     # Amount renders as grouped major units, not raw cents.
     assert "5.00" in result.output
     assert "500" not in result.output
-    assert dict(route.calls.last.request.url.params) == {}
+    # Signed output is not opt-in: the only param on a bare list is the sign convention.
+    assert dict(route.calls.last.request.url.params) == {"debit_as_negative": "true"}
 
 
 @respx.mock
@@ -215,7 +216,6 @@ def test_list_all_filters_pass_through(configured):
             "--offset",
             "10",
             "--include-deleted",
-            "--debit-as-negative",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -292,13 +292,11 @@ def test_get_happy(configured):
 
 
 @respx.mock
-def test_get_debit_as_negative(configured):
+def test_get_always_sends_debit_as_negative(configured):
     route = respx.get("https://api.example.com/v1/transactions/abc").mock(
         return_value=httpx.Response(200, json=TRANSACTION_RESPONSE)
     )
-    result = runner.invoke(
-        cli_app, ["--no-cache", "transactions", "get", "abc", "--debit-as-negative"]
-    )
+    result = runner.invoke(cli_app, ["--no-cache", "transactions", "get", "abc"])
     assert result.exit_code == 0, result.output
     assert route.calls.last.request.url.params.get("debit_as_negative") == "true"
 

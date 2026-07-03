@@ -304,6 +304,7 @@ def test_get_with_transactions_window(configured):
 
     request = route.calls.last.request
     assert request.url.params.get("limit") == "1"
+    assert request.url.params.get("debit_as_negative") == "true"
 
 
 @respx.mock

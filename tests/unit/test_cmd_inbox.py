@@ -249,6 +249,7 @@ def test_list_happy(configured):
 
     request = route.calls.last.request
     assert request.url.params.get("ready") == "true"
+    assert request.url.params.get("debit_as_negative") == "true"
 
 
 @respx.mock
@@ -275,12 +276,13 @@ def test_list_include_deleted_param(configured):
 
 @respx.mock
 def test_get_happy(configured):
-    respx.get("https://api.example.com/v1/inbox/abc").mock(
+    route = respx.get("https://api.example.com/v1/inbox/abc").mock(
         return_value=httpx.Response(200, json=INBOX_RESPONSE)
     )
     result = runner.invoke(cli_app, ["--no-cache", "inbox", "get", "abc"])
     assert result.exit_code == 0, result.output
     assert "lunch" in result.output
+    assert route.calls.last.request.url.params.get("debit_as_negative") == "true"
 
 
 @respx.mock

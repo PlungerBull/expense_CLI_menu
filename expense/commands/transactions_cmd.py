@@ -146,7 +146,6 @@ def fetch_transactions(
     limit: int | None = None,
     offset: int | None = None,
     include_deleted: bool = False,
-    debit_as_negative: bool = False,
     no_cache: bool = False,
     verbose: bool = False,
     cold_start_notice: bool = True,
@@ -183,10 +182,11 @@ def fetch_transactions(
             params["offset"] = offset
         if include_deleted:
             params["include_deleted"] = "true"
-        if debit_as_negative:
-            params["debit_as_negative"] = "true"
+        # Always signed: the replica stores debit_as_negative=true, so the
+        # stateless path must match or the two modes disagree on sign.
+        params["debit_as_negative"] = "true"
         with ExpenseClient(cfg, verbose=verbose) as client:
-            return client.get(f"/{_RESOURCE}", params=params or None)
+            return client.get(f"/{_RESOURCE}", params=params)
 
     with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
         cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
@@ -223,7 +223,6 @@ def list_(
     limit: int | None = typer.Option(None, "--limit"),
     offset: int | None = typer.Option(None, "--offset"),
     include_deleted: bool = typer.Option(False, "--include-deleted"),
-    debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     """GET /v1/transactions. Reads from the local replica by default.
@@ -247,7 +246,6 @@ def list_(
         limit=limit,
         offset=offset,
         include_deleted=include_deleted,
-        debit_as_negative=debit_as_negative,
         no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
@@ -259,7 +257,6 @@ def list_(
 def get(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    debit_as_negative: bool = typer.Option(False, "--debit-as-negative"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     """GET /v1/transactions/{id}. Reads from the local replica by default.
@@ -278,11 +275,9 @@ def get(
     no_cache = get_no_cache(ctx)
 
     if no_cache:
-        params: dict = {}
-        if debit_as_negative:
-            params["debit_as_negative"] = "true"
+        params: dict = {"debit_as_negative": "true"}
         with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}/{id_}", params=params or None)
+            body = client.get(f"/{_RESOURCE}/{id_}", params=params)
     else:
         with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
             cache_pkg.ensure_synced(client, cfg)

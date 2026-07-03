@@ -265,8 +265,11 @@ def get(
             params["limit"] = str(limit)
         if offset is not None:
             params["offset"] = str(offset)
+        # Always signed: the replica stores debit_as_negative=true, so the
+        # stateless path must match or the two modes disagree on sign.
+        params["debit_as_negative"] = "true"
         with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}/{id_}", params=params or None)
+            body = client.get(f"/{_RESOURCE}/{id_}", params=params)
     else:
         with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
             cache_pkg.ensure_synced(client, cfg)
