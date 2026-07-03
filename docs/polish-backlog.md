@@ -63,7 +63,7 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   a count summary (and/or per-item key/value dumps); assert the repr never
   appears in output.
 
-- [ ] **1.7 Auth writes skip the post-write replica refresh.**
+- [x] **1.7 Auth writes skip the post-write replica refresh.**
   `auth settings` / `auth profile` / `auth bootstrap`
   (`auth_cmd.py:281-287,209-210,131-132`) never call `cache_after_write`,
   unlike every other write. A `--main-currency` change rewrites

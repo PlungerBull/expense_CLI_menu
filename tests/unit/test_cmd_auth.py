@@ -8,6 +8,7 @@ import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
+from expense.cache import db as cache_db
 from expense.commands.auth_cmd import app as auth_app
 from expense.commands.auth_cmd import whoami as whoami_impl
 
@@ -55,7 +56,9 @@ BOOTSTRAP_RESPONSE = {
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
     config_path = tmp_path / ".expense-config"
+    cache_path = tmp_path / "cache.sqlite3"
     monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
     config_module.save(
         config_module.Config(
             engine_url="https://api.example.com",
@@ -63,6 +66,27 @@ def configured(tmp_path, monkeypatch):
             client_id=uuid4(),
         )
     )
+    yield
+
+
+def _sync_payload() -> dict:
+    return {
+        "sync_token": "tok-1",
+        "accounts": [],
+        "categories": [],
+        "hashtags": [],
+        "inbox": [],
+        "transactions": [],
+        "reconciliations": [],
+        "settings": {"user_id": "u_123", "main_currency": "USD", "version": 1},
+    }
+
+
+@pytest.fixture
+def cache_present(configured):
+    """Auth writes refresh the replica only when the cache file already exists."""
+    conn = cache_db.connect()
+    conn.close()
     yield
 
 
@@ -303,3 +327,50 @@ def test_bootstrap_timezone_auto_detected_from_tz_env(configured, monkeypatch):
 
     req_body = json.loads(route.calls.last.request.content)
     assert req_body == {"display_name": "Alex", "timezone": "America/Lima"}
+
+
+# ---------------------------------------------------------------------------
+# Post-write replica refresh (polish backlog 1.7)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_settings_triggers_post_write_sync(cache_present):
+    respx.put("https://api.example.com/v1/auth/settings").mock(
+        return_value=httpx.Response(200, json=BOOTSTRAP_RESPONSE["settings"])
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload())
+    )
+    result = runner.invoke(cli_app, ["auth", "settings", "--theme", "1"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
+
+
+@respx.mock
+def test_profile_triggers_post_write_sync(cache_present):
+    respx.put("https://api.example.com/v1/auth/profile").mock(
+        return_value=httpx.Response(200, json=BOOTSTRAP_RESPONSE["user"])
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload())
+    )
+    result = runner.invoke(cli_app, ["auth", "profile", "--display-name", "Alex"])
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
+
+
+@respx.mock
+def test_bootstrap_triggers_post_write_sync(cache_present):
+    respx.post("https://api.example.com/v1/auth/bootstrap").mock(
+        return_value=httpx.Response(200, json=BOOTSTRAP_RESPONSE)
+    )
+    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=_sync_payload())
+    )
+    result = runner.invoke(
+        cli_app,
+        ["auth", "bootstrap", "--display-name", "Alex", "--timezone", "America/Lima"],
+    )
+    assert result.exit_code == 0, result.output
+    assert sync_route.called
