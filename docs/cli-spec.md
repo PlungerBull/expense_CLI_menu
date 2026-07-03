@@ -162,8 +162,8 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ## To Be Defined
 
-- **`expense menu` (Step 9.5)** — interactive walkdown over the entire flat command surface. Library: `questionary`. Triggered explicitly via `expense menu`; `expense` (no args) keeps current group-help behavior. Menu calls flat commands under the hood — single source of truth for behavior. Designed for management/inspection workflows; capture goes through quick-add. See [roadmap.md](roadmap.md) Step 9.5.
-- **Quick-add natural-language parser (Post-Step-9)** — Todoist-style single-line capture (`expense $20 today #food` → parses amount/date/hashtag/title from free text). Sign stays literal: `$20` = income, `-$20` = expense; no default-to-expense magic. Pairs with `expense menu` as the "fast capture" half of the dual-UX strategy.
+- **`expense world` (Step 10)** — the interactive front door: a retained-mode Textual TUI over the entire flat command surface. Triggered explicitly via `expense world`; `expense` (no args) keeps current group-help behavior. The TUI calls the same command implementations under the hood — single source of truth for behavior. Designed for management/inspection workflows; capture goes through quick-add. Replaced the questionary `expense menu` (Step 9.5), which was deleted at Step 10.X (2026-07-02). See [roadmap.md](roadmap.md) Step 10 and [tui-plan.md](tui-plan.md).
+- **Quick-add natural-language parser (Post-Step-9)** — Todoist-style single-line capture (`expense $20 today #food` → parses amount/date/hashtag/title from free text). Sign stays literal: `$20` = income, `-$20` = expense; no default-to-expense magic. Pairs with `expense world` as the "fast capture" half of the dual-UX strategy.
 - Import commands (`expense import csv`)
 - Shell completions (zsh, bash, fish)
 - Local SQLite cache for `--offline` reads (decision deferred to Step 7)

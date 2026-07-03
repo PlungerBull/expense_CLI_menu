@@ -5,7 +5,7 @@ Walks the Typer command tree and asserts:
   - every docstring contains an `Example:` block (gate criterion 1)
   - every read command exposes a --json flag (gate criterion 2)
 
-If a future PR adds a new command or wrapper (Step 9.5 menu, quick-add parser, etc.)
+If a future PR adds a new command or wrapper (quick-add parser, etc.)
 and forgets these conventions, this test will fail loudly.
 """
 

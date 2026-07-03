@@ -2,8 +2,9 @@
 
 > Status: **in progress (Step 10)** — Phases 0 & 1 shipped, Phase 2 (write flows)
 > under way; Phase 3 not started. Entry command is **`expense world`**. This TUI
-> **replaces the questionary `expense menu`** — once it reaches parity, `expense/menu/`
-> is deleted (see §10, roadmap Step 10.X). Builds a menu-driven, retained-mode terminal
+> **replaced the questionary `expense menu`**, which was **deleted at roadmap Step 10.X
+> (2026-07-02)** — `expense/menu/`, its tests, the Typer command, and the `questionary`
+> dep are gone (see §10). Builds a menu-driven, retained-mode terminal
 > app on top of the existing engine-integration layer. Mockups: [docs/mockups/](mockups/)
 > (the `expense-world-*.html` set). Expand/collapse = interactive `▼/▶` tree with
 > arrow-key navigation. Theme = swappable token set, **neutral by default**.
@@ -21,9 +22,9 @@ and renders a dedicated **interface per section** (browse, create, edit, confirm
 with arrow-key navigation, an expandable category tree, and contextual key hints.
 
 The flat commands (`expense log`, `expense dashboard`, …) keep working untouched — they
-stay the canonical interface. The TUI **replaces** the questionary `expense menu`: both
-run in parallel only until the TUI reaches parity, after which `expense/menu/` is deleted
-(see §9 and roadmap Step 10.X). The TUI is a new *client* of the same data/command layer —
+stay the canonical interface. The TUI **replaced** the questionary `expense menu`, which
+was deleted at roadmap Step 10.X (2026-07-02) — the two ran in parallel only until the
+decision to retire the menu. The TUI is a new *client* of the same data/command layer —
 it implements **zero** business logic, per the repo's thin-wrapper rule. The engine stays
 the single source of truth.
 
@@ -40,12 +41,12 @@ The hard, finance-critical layer already exists and is reused as-is:
 | SQLite replica, `ensure_synced`, name maps (`expense/cache/`) | Header / breadcrumb / keybar widgets |
 | Data shaping — the dicts renderers consume | List, tree, chip, and form screens |
 | Business rules (engine-side) + 422 envelope | Loading / empty / error states |
-| Menu *structure & flows* (`expense/menu/groups/`) | Neutral theme token file |
+| Command implementations & fetch/print split (`expense/commands/`) | Neutral theme token file |
 | `format_cents`, hashtag/account/category resolution, ready-predicate | Confirm modals, navigation |
 
 ## 3. Architecture
 
-New package `expense/tui/`, sitting beside `expense/menu/`:
+The `expense/tui/` package (which replaced the now-deleted `expense/menu/`):
 
 ```
 expense/tui/
@@ -131,7 +132,7 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - **Reconciliation** create/edit form; reorder — shell out to the existing `$EDITOR`
   flow first, native reorder later.
 - **Config / Auth & profile** forms. Post-write refresh reuses `refresh_after_write`.
-- **Exit criteria:** create/edit/act parity with `expense menu`.
+- **Exit criteria:** create/edit/act parity with the flat command surface.
 
 ### Phase 3 — Polish & hardening · **~1 week** · ⬜ not started
 - Designer's theme tokens dropped in; light/dark; `NO_COLOR` paths.
@@ -140,7 +141,7 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - Skeleton/empty/error states everywhere.
 - **Textual pilot tests** for navigation + key flows; existing CLI suite stays green.
 - Update `docs/roadmap.md`, `CLAUDE.md`; user-facing TUI notes.
-- **Exit criteria:** shippable; feature-complete vs the menu.
+- **Exit criteria:** shippable; feature-complete vs the flat command surface.
 
 ### Phase 4 (optional, later) — Live niceties
 Auto-refresh / watch mode, search-as-you-type, mouse, richer dashboards.
@@ -167,20 +168,19 @@ Per-section difficulty: menus & lists *easy*; the tree & the transaction form
 
 ## 8. Definition of done
 
-- Parity checklist vs every `expense menu` group (the gate that authorizes deleting it).
-- Every engine endpoint with a CLI surface is reachable in the TUI.
+- Parity checklist vs the flat command surface (every engine endpoint reachable in the TUI).
 - Pilot smoke tests + the full existing suite green.
 - Degrades gracefully on `NO_COLOR` / non-TTY / tiny terminals.
-- **`expense menu` (`expense/menu/`) removed** once parity is signed off (Step 10.X): its
-  screens, tests, the Typer command, and the now-unused `questionary` dep all go.
+- **`expense menu` (`expense/menu/`) removed** — done at Step 10.X (2026-07-02): its
+  screens, tests, the Typer command, and the now-unused `questionary` dep are all gone.
 
 ## 9. Decisions
 
 **Resolved:**
 
 1. **Entry command** — ✅ **`expense world`**. (Wired in [expense/tui/app.py](../expense/tui/app.py) / `__main__.py`.)
-2. **Coexistence** — ✅ **The TUI replaces `expense menu`.** Both ship in parallel only until
-   the TUI reaches parity; then `expense/menu/` is deleted (roadmap Step 10.X). The flat
+2. **Coexistence** — ✅ **The TUI replaced `expense menu`, now deleted** (roadmap Step 10.X,
+   2026-07-02). They shipped in parallel only until the menu was retired. The flat
    commands (`expense log`, …) stay permanently as the canonical contract-validator interface.
 4. **Reconcile reorder** — ✅ **shell out to `$EDITOR`** for v1 (reuses `expense/_editor.py`);
    native reorder deferred.
