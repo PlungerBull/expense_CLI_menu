@@ -1,28 +1,16 @@
 import json
 import re
-from uuid import uuid4
 
 import httpx
-import pytest
 import respx
-import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
-from expense.cache import db as cache_db
-from expense.cache import state as cache_state
 from expense.commands import reports_cmd
 from expense.commands.reports_cmd import app as reports_app
+from tests.unit.helpers import make_cli_app, sync_payload
 
-cli_app = typer.Typer()
-
-
-@cli_app.callback()
-def _root() -> None:
-    pass
-
-
-cli_app.add_typer(reports_app, name="reports")
+cli_app = make_cli_app(reports_app, "reports")
 
 runner = CliRunner()
 
@@ -134,82 +122,30 @@ RANGE_RESPONSE = {
 }
 
 
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
-    config_path = tmp_path / ".expense-config"
-    cache_path = tmp_path / "cache.sqlite3"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    # Seed a healthy (empty) replica so the single-month report's hashtag-name
-    # warming (ensure_synced) is a no-op — no /v1/sync round-trip to mock here.
-    cfg = config_module.ensure_loaded()
-    conn = cache_db.connect()
-    try:
-        cache_state.write_identity(
-            conn, user_id="u1", client_id=str(cfg.client_id), engine_url=cfg.engine_url
-        )
-        cache_state.write_token(conn, "tok-test")
-    finally:
-        conn.close()
-    yield
-
-
-@pytest.fixture
-def configured_cold(tmp_path, monkeypatch):
-    """Config present but the replica is cold (never synced)."""
-    config_path = tmp_path / ".expense-config"
-    cache_path = tmp_path / "cache.sqlite3"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    yield
-
-
-def _sync_payload_with_hashtag() -> dict:
-    return {
-        "sync_token": "tok-1",
-        "accounts": [],
-        "categories": [],
-        "hashtags": [
-            {
-                "id": "aaaa",
-                "user_id": "u1",
-                "name": "Groceries",
-                "is_archived": False,
-                "deleted_at": None,
-                "sort_order": 1,
-                "version": 1,
-            }
-        ],
-        "inbox": [],
-        "transactions": [],
-        "reconciliations": [],
-        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
-    }
-
-
 @respx.mock
-def test_monthly_single_cold_cache_warms_and_resolves_names(configured_cold):
+def test_monthly_single_cold_cache_warms_and_resolves_names(configured):
     """A cold cache is warmed via GET /v1/sync so hashtag UUIDs render as names.
 
     This is the bug the screenshot showed: with an empty replica the breakdown
     fell back to raw ids. The report now triggers a cold-start sync first.
     """
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload_with_hashtag())
+        return_value=httpx.Response(
+            200,
+            json=sync_payload(
+                hashtags=[
+                    {
+                        "id": "aaaa",
+                        "user_id": "u1",
+                        "name": "Groceries",
+                        "is_archived": False,
+                        "deleted_at": None,
+                        "sort_order": 1,
+                        "version": 1,
+                    }
+                ]
+            ),
+        )
     )
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=SINGLE_MONTH_RESPONSE)
@@ -222,7 +158,7 @@ def test_monthly_single_cold_cache_warms_and_resolves_names(configured_cold):
 
 
 @respx.mock
-def test_monthly_single_no_cache_skips_warm(configured_cold):
+def test_monthly_single_no_cache_skips_warm(configured):
     """no_cache (stateless) suppresses the warming sync entirely."""
     sync_route = respx.get("https://api.example.com/v1/sync")
     respx.get("https://api.example.com/v1/reports/monthly").mock(
@@ -234,7 +170,7 @@ def test_monthly_single_no_cache_skips_warm(configured_cold):
 
 
 @respx.mock
-def test_monthly_single_happy(configured):
+def test_monthly_single_happy(configured_synced):
     route = respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=SINGLE_MONTH_RESPONSE)
     )
@@ -257,7 +193,7 @@ def test_monthly_single_happy(configured):
 
 
 @respx.mock
-def test_monthly_single_json_passthrough(configured):
+def test_monthly_single_json_passthrough(configured_synced):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=SINGLE_MONTH_RESPONSE)
     )
@@ -267,7 +203,7 @@ def test_monthly_single_json_passthrough(configured):
 
 
 @respx.mock
-def test_monthly_range_happy(configured):
+def test_monthly_range_happy(configured_synced):
     route = respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=RANGE_RESPONSE)
     )
@@ -290,7 +226,7 @@ def test_monthly_range_happy(configured):
 
 
 @respx.mock
-def test_monthly_range_json_passthrough(configured):
+def test_monthly_range_json_passthrough(configured_synced):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=RANGE_RESPONSE)
     )
@@ -302,7 +238,7 @@ def test_monthly_range_json_passthrough(configured):
 
 
 @respx.mock
-def test_monthly_no_args_errors_before_http(configured):
+def test_monthly_no_args_errors_before_http(configured_synced):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(cli_app, ["reports", "monthly"])
     assert result.exit_code != 0
@@ -311,7 +247,7 @@ def test_monthly_no_args_errors_before_http(configured):
 
 
 @respx.mock
-def test_monthly_both_forms_errors_before_http(configured):
+def test_monthly_both_forms_errors_before_http(configured_synced):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(
         cli_app, ["reports", "monthly", "--date", "2026-03", "--from", "2025-11"]
@@ -322,7 +258,7 @@ def test_monthly_both_forms_errors_before_http(configured):
 
 
 @respx.mock
-def test_monthly_partial_range_errors_before_http(configured):
+def test_monthly_partial_range_errors_before_http(configured_synced):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(cli_app, ["reports", "monthly", "--from", "2025-11"])
     assert result.exit_code != 0
@@ -331,7 +267,7 @@ def test_monthly_partial_range_errors_before_http(configured):
 
 
 @respx.mock
-def test_monthly_range_too_wide_errors_before_http(configured):
+def test_monthly_range_too_wide_errors_before_http(configured_synced):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(cli_app, ["reports", "monthly", "--from", "2024-01", "--to", "2026-04"])
     assert result.exit_code != 0
@@ -340,7 +276,7 @@ def test_monthly_range_too_wide_errors_before_http(configured):
 
 
 @respx.mock
-def test_monthly_range_inverted_errors_before_http(configured):
+def test_monthly_range_inverted_errors_before_http(configured_synced):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(cli_app, ["reports", "monthly", "--from", "2026-04", "--to", "2025-11"])
     assert result.exit_code != 0
@@ -349,7 +285,7 @@ def test_monthly_range_inverted_errors_before_http(configured):
 
 
 @respx.mock
-def test_monthly_invalid_date_shape_errors_before_http(configured):
+def test_monthly_invalid_date_shape_errors_before_http(configured_synced):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-3"])
     assert result.exit_code != 0
@@ -358,7 +294,7 @@ def test_monthly_invalid_date_shape_errors_before_http(configured):
 
 
 @respx.mock
-def test_monthly_engine_422_surfaces_validation_error(configured):
+def test_monthly_engine_422_surfaces_validation_error(configured_synced):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(
             422,
@@ -378,7 +314,7 @@ def test_monthly_engine_422_surfaces_validation_error(configured):
 
 
 @respx.mock
-def test_monthly_engine_500(configured):
+def test_monthly_engine_500(configured_synced):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(
             500,
@@ -391,7 +327,7 @@ def test_monthly_engine_500(configured):
 
 
 @respx.mock
-def test_monthly_connection_error(configured):
+def test_monthly_connection_error(configured_synced):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         side_effect=httpx.ConnectError("refused")
     )

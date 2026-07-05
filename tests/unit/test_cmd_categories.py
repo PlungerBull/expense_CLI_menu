@@ -1,30 +1,18 @@
 import json
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import httpx
 import pytest
 import respx
-import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
 from expense.cache import db as cache_db
 from expense.cache import state as cache_state
 from expense.commands.categories_cmd import app as categories_app
-from expense.context import AppContext
+from tests.unit.helpers import insert_category, make_cli_app, sync_payload
 
-cli_app = typer.Typer()
-
-
-@cli_app.callback()
-def _root(
-    ctx: typer.Context,
-    no_cache: bool = typer.Option(False, "--no-cache", envvar="EXPENSE_STATELESS"),
-) -> None:
-    ctx.obj = AppContext(no_cache=no_cache)
-
-
-cli_app.add_typer(categories_app, name="categories")
+cli_app = make_cli_app(categories_app, "categories")
 
 runner = CliRunner()
 
@@ -45,53 +33,6 @@ CATEGORY_RESPONSE = {
 }
 
 LIST_RESPONSE = [CATEGORY_RESPONSE]
-
-
-def _sync_payload(categories_rows: list[dict]) -> dict:
-    return {
-        "sync_token": "tok-1",
-        "accounts": [],
-        "categories": categories_rows,
-        "hashtags": [],
-        "inbox": [],
-        "transactions": [],
-        "reconciliations": [],
-        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
-    }
-
-
-def _insert_category(conn, row: dict) -> None:
-    conn.execute(
-        "INSERT OR REPLACE INTO categories "
-        "(id, user_id, is_archived, is_system, deleted_at, sort_order, version, body) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            row["id"],
-            row.get("user_id"),
-            1 if row.get("is_archived") else 0,
-            1 if row.get("is_system") else 0,
-            row.get("deleted_at"),
-            row.get("sort_order"),
-            row.get("version"),
-            json.dumps(row),
-        ),
-    )
-
-
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
-    config_path = tmp_path / ".expense-config"
-    cache_path = tmp_path / "cache.sqlite3"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    yield
 
 
 @pytest.fixture
@@ -125,7 +66,7 @@ def cache_populated(configured):
             },
         ]
         for row in rows:
-            _insert_category(conn, row)
+            insert_category(conn, row)
         cache_state.write_identity(
             conn, user_id="u1", client_id=str(cfg.client_id), engine_url=cfg.engine_url
         )
@@ -253,7 +194,7 @@ def test_get_replica_not_found(cache_populated):
 @respx.mock
 def test_list_auto_cold_start_when_cache_empty(configured):
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload([CATEGORY_RESPONSE]))
+        return_value=httpx.Response(200, json=sync_payload(categories=[CATEGORY_RESPONSE]))
     )
     cat_route = respx.get("https://api.example.com/v1/categories")
     result = runner.invoke(cli_app, ["categories", "list"])
@@ -438,7 +379,7 @@ def test_create_triggers_post_write_sync(cache_populated):
         return_value=httpx.Response(201, json=CATEGORY_RESPONSE)
     )
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload([CATEGORY_RESPONSE]))
+        return_value=httpx.Response(200, json=sync_payload(categories=[CATEGORY_RESPONSE]))
     )
     result = runner.invoke(
         cli_app,

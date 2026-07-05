@@ -4,6 +4,8 @@ Walks the Typer command tree and asserts:
   - every leaf command has a non-empty docstring
   - every docstring contains an `Example:` block (gate criterion 1)
   - every read command exposes a --json flag (gate criterion 2)
+  - every destructive command (delete/archive/revert/clear) exposes --yes
+    (the confirm-destructive convention)
   - every flag used in an `Example:` line exists on that command, and
     int-typed flags get int-looking values (copy-paste safety)
 
@@ -72,14 +74,42 @@ def test_command_has_example_in_docstring(path, callback):
     )
 
 
-@pytest.mark.parametrize(("path", "callback"), _LEAVES, ids=_LEAF_IDS)
+_READ_LEAVES = [(path, cb) for path, cb in _LEAVES if _is_read(path)]
+_READ_LEAF_IDS = [" ".join(path) for path, _ in _READ_LEAVES]
+
+
+@pytest.mark.parametrize(("path", "callback"), _READ_LEAVES, ids=_READ_LEAF_IDS)
 def test_read_command_has_json_flag(path, callback):
-    if not _is_read(path):
-        pytest.skip(f"`expense {' '.join(path)}` is not a read command")
     sig = inspect.signature(callback)
     assert "json_output" in sig.parameters, (
         f"`expense {' '.join(path)}` is a read command but has no --json flag "
         f"(Step 9 gate criterion 2)"
+    )
+
+
+# --- Confirm-destructive convention ------------------------------------------
+# CLAUDE.md non-negotiable: deletes, reverts, archives prompt for confirmation
+# unless --yes is passed. Matched by leaf name — a destructive command under a
+# new name (e.g. `remove`) must be added to the set. `unarchive`/`restore` are
+# deliberately prompt-free.
+
+_DESTRUCTIVE_NAMES = {"delete", "archive", "revert", "clear"}
+_DESTRUCTIVE_LEAVES = [(path, cb) for path, cb in _LEAVES if path[-1] in _DESTRUCTIVE_NAMES]
+_DESTRUCTIVE_LEAF_IDS = [" ".join(path) for path, _ in _DESTRUCTIVE_LEAVES]
+
+
+def test_destructive_walker_finds_known_commands():
+    # Pin the count: a drop means a destructive command was renamed out of the
+    # name set above and now evades the --yes guard — extend the set instead.
+    assert len(_DESTRUCTIVE_LEAVES) == 11, sorted(_DESTRUCTIVE_LEAF_IDS)
+
+
+@pytest.mark.parametrize(("path", "callback"), _DESTRUCTIVE_LEAVES, ids=_DESTRUCTIVE_LEAF_IDS)
+def test_destructive_command_requires_yes(path, callback):
+    sig = inspect.signature(callback)
+    assert "yes" in sig.parameters, (
+        f"`expense {' '.join(path)}` is destructive but exposes no --yes flag "
+        f"(confirm-destructive convention)"
     )
 
 

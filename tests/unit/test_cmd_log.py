@@ -3,23 +3,14 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 import httpx
-import pytest
 import respx
-import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
 from expense.commands.log_cmd import log as log_impl
+from tests.unit.helpers import make_cli_app
 
-cli_app = typer.Typer()
-
-
-@cli_app.callback()
-def _root() -> None:
-    pass
-
-
-cli_app.command("log")(log_impl)
+cli_app = make_cli_app(commands={"log": log_impl})
 
 runner = CliRunner()
 
@@ -46,20 +37,6 @@ TRANSACTION_RESPONSE = {
     "version": 1,
     "deleted_at": None,
 }
-
-
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
-    config_path = tmp_path / ".expense-config"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    yield
 
 
 @respx.mock

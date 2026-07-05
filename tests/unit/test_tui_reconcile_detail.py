@@ -5,6 +5,7 @@ import asyncio
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.reconciliations import ReconciliationDetailScreen, _txn_sub
 from expense.tui.widgets.checklist import CheckList
+from tests.unit.helpers import wait_for
 
 CATS = {"c1": "Vivienda"}
 TAGS = {"h1": "oficina"}
@@ -70,35 +71,8 @@ AVAILABLE = [
 ]
 
 
-class _FakeClient:
-    puts: list = []
-    posts: list = []
-    deletes: list = []
-
-    def __init__(self, *a, **k):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def put(self, path, json_body=None):
-        _FakeClient.puts.append((path, json_body))
-        return {}
-
-    def post(self, path, json_body=None):
-        _FakeClient.posts.append((path, json_body))
-        return {}
-
-    def delete(self, path):
-        _FakeClient.deletes.append(path)
-        return {}
-
-
-def _patch(monkeypatch, *, record):
-    _FakeClient.puts, _FakeClient.posts, _FakeClient.deletes = [], [], []
+def _patch(monkeypatch):
+    """Screen-specific patches; the client/config seams come from fake_client."""
 
     def fake_fetch(cfg, **k):
         if k.get("reconciliation") == "r1":
@@ -113,20 +87,14 @@ def _patch(monkeypatch, *, record):
     )
     monkeypatch.setattr("expense.tui.screens.reconciliations.load_category_name_map", lambda: CATS)
     monkeypatch.setattr("expense.tui.screens.reconciliations.load_hashtag_name_map", lambda: TAGS)
-    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
-    monkeypatch.setattr("expense.http.ExpenseClient", _FakeClient)
-    monkeypatch.setattr("expense.cache.refresh_after_write", lambda *a, **k: None)
 
 
 async def _wait_list(screen, pilot):
-    for _ in range(50):
-        await pilot.pause(0.02)
-        if screen._list is not None:
-            return
+    await wait_for(pilot, lambda: screen._list is not None)
 
 
-def test_draft_lists_assigned_checked_plus_available(monkeypatch):
-    _patch(monkeypatch, record=DRAFT)
+def test_draft_lists_assigned_checked_plus_available(fake_client, monkeypatch):
+    _patch(monkeypatch)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
@@ -143,8 +111,8 @@ def test_draft_lists_assigned_checked_plus_available(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_toggle_puts_reconciliation_id(monkeypatch):
-    _patch(monkeypatch, record=DRAFT)
+def test_toggle_puts_reconciliation_id(fake_client, monkeypatch):
+    _patch(monkeypatch)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
@@ -155,17 +123,14 @@ def test_toggle_puts_reconciliation_id(monkeypatch):
             # toggle the available row (t2) into the batch
             screen._list._cursor = 1
             screen._list.action_toggle()
-            for _ in range(40):
-                await pilot.pause(0.02)
-                if _FakeClient.puts:
-                    break
-            assert _FakeClient.puts == [("/transactions/t2", {"reconciliation_id": "r1"})]
+            await wait_for(pilot, lambda: fake_client.puts)
+            assert fake_client.puts == [("/transactions/t2", {"reconciliation_id": "r1"})]
 
     asyncio.run(scenario())
 
 
-def test_complete_requires_assignment_then_posts(monkeypatch):
-    _patch(monkeypatch, record=DRAFT)
+def test_complete_requires_assignment_then_posts(fake_client, monkeypatch):
+    _patch(monkeypatch)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
@@ -176,18 +141,15 @@ def test_complete_requires_assignment_then_posts(monkeypatch):
             screen.action_complete()  # t1 already checked → opens confirm
             await pilot.pause(0.05)
             await pilot.press("y")  # confirm
-            for _ in range(40):
-                await pilot.pause(0.02)
-                if _FakeClient.posts:
-                    break
-            assert _FakeClient.posts == [("/reconciliations/r1/complete", None)]
+            await wait_for(pilot, lambda: fake_client.posts)
+            assert fake_client.posts == [("/reconciliations/r1/complete", None)]
 
     asyncio.run(scenario())
 
 
-def test_completed_is_read_only(monkeypatch):
+def test_completed_is_read_only(fake_client, monkeypatch):
     completed = {**DRAFT, "status": 2}
-    _patch(monkeypatch, record=completed)
+    _patch(monkeypatch)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
@@ -199,14 +161,14 @@ def test_completed_is_read_only(monkeypatch):
             assert [r[0] for r in screen._list._rows] == ["t1"]  # only batch txns
             screen.action_delete()  # blocked while completed
             await pilot.pause(0.05)
-            assert not _FakeClient.deletes
+            assert not fake_client.deletes
 
     asyncio.run(scenario())
 
 
-def test_revert_posts(monkeypatch):
+def test_revert_posts(fake_client, monkeypatch):
     completed = {**DRAFT, "status": 2}
-    _patch(monkeypatch, record=completed)
+    _patch(monkeypatch)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
@@ -217,18 +179,15 @@ def test_revert_posts(monkeypatch):
             screen.action_revert()
             await pilot.pause(0.05)
             await pilot.press("y")
-            for _ in range(40):
-                await pilot.pause(0.02)
-                if _FakeClient.posts:
-                    break
-            assert _FakeClient.posts == [("/reconciliations/r1/revert", None)]
+            await wait_for(pilot, lambda: fake_client.posts)
+            assert fake_client.posts == [("/reconciliations/r1/revert", None)]
 
     asyncio.run(scenario())
 
 
-def test_detail_fetch_error_notifies_not_crash(monkeypatch):
+def test_detail_fetch_error_notifies_not_crash(fake_client, monkeypatch):
     """An engine/config error in _load_txns must not exit the app (backlog 1.3)."""
-    _patch(monkeypatch, record=DRAFT)
+    _patch(monkeypatch)
 
     def boom(cfg, **k):
         raise RuntimeError("engine down")
@@ -244,10 +203,7 @@ def test_detail_fetch_error_notifies_not_crash(monkeypatch):
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
-            for _ in range(40):
-                await pilot.pause(0.02)
-                if notices:
-                    break
+            await wait_for(pilot, lambda: notices)
             assert notices and "engine down" in notices[0]
             assert app.is_running
             assert app.screen is screen

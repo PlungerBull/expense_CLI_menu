@@ -5,8 +5,10 @@ import asyncio
 import pytest
 from textual.widgets import Input
 
+from expense.errors import EngineConnectionError
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.quick_log import QuickAddLogScreen, amount_to_text, parse_amount
+from tests.unit.helpers import wait_for
 
 ACCOUNTS = [
     {"id": "acc1", "name": "BCP PEN", "currency_code": "PEN", "is_person": False},
@@ -35,31 +37,8 @@ def test_amount_to_text_roundtrips():
     assert parse_amount(amount_to_text(-123456)) == -123456
 
 
-class _FakeClient:
-    calls: list = []  # POST (path, body)
-    puts: list = []  # PUT (path, body)
-
-    def __init__(self, *a, **k):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def post(self, path, json_body=None):
-        _FakeClient.calls.append((path, json_body))
-        return {}
-
-    def put(self, path, json_body=None):
-        _FakeClient.puts.append((path, json_body))
-        return {}
-
-
 def _patch(monkeypatch):
-    _FakeClient.calls = []
-    _FakeClient.puts = []
+    """Screen-specific patches; the client/config seams come from fake_client."""
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
     monkeypatch.setattr(
         "expense.commands.categories_cmd.fetch_categories", lambda *a, **k: CATEGORIES
@@ -68,9 +47,6 @@ def _patch(monkeypatch):
     monkeypatch.setattr("expense.tui.screens.quick_log.load_account_name_map", lambda: {})
     monkeypatch.setattr("expense.tui.screens.quick_log.load_category_name_map", lambda: {})
     monkeypatch.setattr("expense.tui.screens.quick_log.load_hashtag_name_map", lambda: {})
-    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
-    monkeypatch.setattr("expense.http.ExpenseClient", _FakeClient)
-    monkeypatch.setattr("expense.cache.refresh_after_write", lambda *a, **k: None)
 
 
 def _enter(screen, text):
@@ -80,24 +56,7 @@ def _enter(screen, text):
 
 
 async def _wait_loaded(screen, pilot):
-    for _ in range(40):
-        await pilot.pause(0.02)
-        if screen._accounts:
-            return
-
-
-async def _wait_post(pilot):
-    for _ in range(40):
-        await pilot.pause(0.02)
-        if _FakeClient.calls:
-            return
-
-
-async def _wait_put(pilot):
-    for _ in range(40):
-        await pilot.pause(0.02)
-        if _FakeClient.puts:
-            return
+    await wait_for(pilot, lambda: screen._accounts)
 
 
 TXN = {
@@ -113,7 +72,7 @@ TXN = {
 }
 
 
-def test_quick_log_normal_flow_submits_payload(monkeypatch):
+def test_quick_log_normal_flow_submits_payload(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -131,8 +90,8 @@ def test_quick_log_normal_flow_submits_payload(monkeypatch):
             _enter(screen, "#dog")  # hashtag add (# stripped)
             _enter(screen, "")  # hashtags done
             _enter(screen, "")  # note → creates
-            await _wait_post(pilot)
-            path, body = _FakeClient.calls[0]
+            await wait_for(pilot, lambda: fake_client.posts)
+            path, body = fake_client.posts[0]
             assert path == "/transactions"
             assert body["amount_cents"] == -9992 and body["account_id"] == "acc1"
             assert body["category_id"] == "cat1" and body["hashtag_ids"] == ["h1"]
@@ -141,7 +100,7 @@ def test_quick_log_normal_flow_submits_payload(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_quick_log_transfer_flow_submits_pair(monkeypatch):
+def test_quick_log_transfer_flow_submits_pair(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -159,8 +118,8 @@ def test_quick_log_transfer_flow_submits_pair(monkeypatch):
             assert screen._values["to_amount"] == 50000  # auto-mirrored opposite sign
             _enter(screen, "")  # to amount → accept the auto value
             _enter(screen, "")  # note → creates
-            await _wait_post(pilot)
-            path, body = _FakeClient.calls[0]
+            await wait_for(pilot, lambda: fake_client.posts)
+            path, body = fake_client.posts[0]
             assert path == "/transactions"
             assert body["amount_cents"] == -50000 and body["account_id"] == "acc1"
             assert "category_id" not in body  # engine assigns it for transfers
@@ -171,7 +130,7 @@ def test_quick_log_transfer_flow_submits_pair(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_quick_log_guards_double_submit(monkeypatch):
+def test_quick_log_guards_double_submit(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -184,9 +143,9 @@ def test_quick_log_guards_double_submit(monkeypatch):
             screen.action_submit()
             screen.action_submit()  # in flight → ignored
             screen.action_submit()
-            await _wait_post(pilot)
+            await wait_for(pilot, lambda: fake_client.posts)
             await pilot.pause(0.1)
-            assert len(_FakeClient.calls) == 1
+            assert len(fake_client.posts) == 1
 
     asyncio.run(scenario())
 
@@ -206,7 +165,7 @@ def test_suggest_window_keeps_highlight_visible():
     assert "Cat17" in out and "more" in out
 
 
-def test_edit_prefills_and_puts_only_changed_fields(monkeypatch):
+def test_edit_prefills_and_puts_only_changed_fields(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -221,16 +180,16 @@ def test_edit_prefills_and_puts_only_changed_fields(monkeypatch):
             screen._current = screen._sequence().index("title")
             _enter(screen, "Farmacia Inkafarma")
             screen.action_submit()
-            await _wait_put(pilot)
-            path, body = _FakeClient.puts[0]
+            await wait_for(pilot, lambda: fake_client.puts)
+            path, body = fake_client.puts[0]
             assert path == "/transactions/tx1"
             assert body == {"title": "Farmacia Inkafarma"}  # diff only
-            assert not _FakeClient.calls  # never POSTs in edit mode
+            assert not fake_client.posts  # never POSTs in edit mode
 
     asyncio.run(scenario())
 
 
-def test_edit_no_changes_does_not_submit(monkeypatch):
+def test_edit_no_changes_does_not_submit(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -241,7 +200,7 @@ def test_edit_no_changes_does_not_submit(monkeypatch):
             await _wait_loaded(screen, pilot)
             screen.action_submit()  # nothing changed
             await pilot.pause(0.1)
-            assert not _FakeClient.puts and not _FakeClient.calls
+            assert not fake_client.calls
 
     asyncio.run(scenario())
 
@@ -260,7 +219,7 @@ def test_edit_inbox_sequence_has_no_hashtags():
     assert "cleared" in screen._sequence()
 
 
-def test_quick_log_rejects_zero_and_unknown_account(monkeypatch):
+def test_quick_log_rejects_zero_and_unknown_account(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -280,7 +239,7 @@ def test_quick_log_rejects_zero_and_unknown_account(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_quick_log_fetch_error_notifies_not_crash(monkeypatch):
+def test_quick_log_fetch_error_notifies_not_crash(fake_client, monkeypatch):
     """An engine/config error in _load_entities must not exit the app (backlog 1.3)."""
     _patch(monkeypatch)
 
@@ -298,12 +257,33 @@ def test_quick_log_fetch_error_notifies_not_crash(monkeypatch):
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
-            for _ in range(40):
-                await pilot.pause(0.02)
-                if notices:
-                    break
+            await wait_for(pilot, lambda: notices)
             assert notices and "engine down" in notices[0]
             assert app.is_running
             assert app.screen is screen
+
+    asyncio.run(scenario())
+
+
+def test_quick_log_fetch_error_uses_canonical_renderer(fake_client, monkeypatch):
+    """Engine errors surface with the canonical text, not bare str(exc) (backlog 2.1)."""
+    _patch(monkeypatch)
+
+    def boom(*a, **k):
+        raise EngineConnectionError(url="https://x.invalid", original=Exception("refused"))
+
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", boom)
+    notices: list = []
+    monkeypatch.setattr(
+        QuickAddLogScreen, "notify", lambda self, message, **kw: notices.append(message)
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen()
+            await app.push_screen(screen)
+            await wait_for(pilot, lambda: notices)
+            assert notices and "could not reach engine at https://x.invalid" in notices[0]
 
     asyncio.run(scenario())

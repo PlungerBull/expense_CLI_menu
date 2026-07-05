@@ -5,15 +5,12 @@ render_pagination_hint, run_toggle (including the hints= path added in
 the audit refactor).
 """
 
-from uuid import uuid4
-
 import httpx
 import pytest
 import respx
 import typer
 from typer.testing import CliRunner
 
-from expense import config as config_module
 from expense.commands._resource import (
     build_update_payload,
     format_cents,
@@ -26,20 +23,6 @@ from expense.commands._resource import (
 from expense.errors import EngineError, handle_errors
 
 runner = CliRunner()
-
-
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
-    config_path = tmp_path / ".expense-config"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    yield
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +72,17 @@ def test_require_yes_exits_in_non_tty_without_yes(monkeypatch):
     result = runner.invoke(app, [])
     assert result.exit_code == 1
     assert "non-interactive" in result.output
+
+
+def test_require_yes_declined_prompt_aborts(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(typer, "confirm", lambda prompt: False)
+
+    with pytest.raises(typer.Exit) as exc:
+        require_yes(False, "Delete?")
+
+    assert exc.value.exit_code == 1
+    assert "Aborted." in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------

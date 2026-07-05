@@ -10,30 +10,7 @@ from expense.tui.screens.create_forms import (
     NewCategoryScreen,
     NewHashtagScreen,
 )
-
-
-class _FakeClient:
-    calls: list = []
-
-    def __init__(self, *a, **k):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def post(self, path, json_body=None):
-        _FakeClient.calls.append((path, json_body))
-        return {}
-
-
-def _patch(monkeypatch):
-    _FakeClient.calls = []
-    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
-    monkeypatch.setattr("expense.http.ExpenseClient", _FakeClient)
-    monkeypatch.setattr("expense.cache.refresh_after_write", lambda *a, **k: None)
+from tests.unit.helpers import wait_for
 
 
 def _enter(screen, text):
@@ -42,16 +19,7 @@ def _enter(screen, text):
     screen.on_input_submitted(None)
 
 
-async def _wait_post(pilot):
-    for _ in range(40):
-        await pilot.pause(0.02)
-        if _FakeClient.calls:
-            return
-
-
-def _run(monkeypatch, screen, steps):
-    _patch(monkeypatch)
-
+def _run(fake_client, screen, steps):
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
@@ -59,36 +27,34 @@ def _run(monkeypatch, screen, steps):
             await pilot.pause(0.05)
             for text in steps:
                 _enter(screen, text)
-            await _wait_post(pilot)
-            return _FakeClient.calls[0]
+            await wait_for(pilot, lambda: fake_client.posts)
+            return fake_client.posts[0]
 
     return asyncio.run(scenario())
 
 
-def test_new_hashtag_posts_name(monkeypatch):
-    path, body = _run(monkeypatch, NewHashtagScreen(), ["#groceries"])  # last field → submits
+def test_new_hashtag_posts_name(fake_client):
+    path, body = _run(fake_client, NewHashtagScreen(), ["#groceries"])  # last field → submits
     assert path == "/hashtags"
     assert body["name"] == "groceries" and "id" in body  # leading # stripped
 
 
-def test_new_category_requires_color_then_posts(monkeypatch):
+def test_new_category_requires_color_then_posts(fake_client):
     # name, then pick a color (type 'green' → matches the palette)
-    path, body = _run(monkeypatch, NewCategoryScreen(), ["Educación", "green"])
+    path, body = _run(fake_client, NewCategoryScreen(), ["Educación", "green"])
     assert path == "/categories"
     assert body["name"] == "Educación" and body["color"] == "#5ab87a"
 
 
-def test_new_account_bank_only_with_currency(monkeypatch):
+def test_new_account_bank_only_with_currency(fake_client):
     # name, currency PEN, skip color (empty → optional)
-    path, body = _run(monkeypatch, NewAccountScreen(), ["Interbank Sueldo", "PEN", ""])
+    path, body = _run(fake_client, NewAccountScreen(), ["Interbank Sueldo", "PEN", ""])
     assert path == "/accounts"
     assert body["name"] == "Interbank Sueldo" and body["currency_code"] == "PEN"
     assert "color" not in body and "is_person" not in body  # bank-only, no person flag
 
 
-def test_new_account_required_name_blocks_submit(monkeypatch):
-    _patch(monkeypatch)
-
+def test_new_account_required_name_blocks_submit(fake_client):
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
@@ -97,6 +63,6 @@ def test_new_account_required_name_blocks_submit(monkeypatch):
             await pilot.pause(0.05)
             screen.action_submit()  # nothing entered
             await pilot.pause(0.1)
-            assert not _FakeClient.calls
+            assert not fake_client.calls
 
     asyncio.run(scenario())

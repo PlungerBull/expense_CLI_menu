@@ -8,6 +8,7 @@ from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen, account_rows
 from expense.tui.screens.modals import RecordModal
 from expense.tui.widgets.cursor_list import CursorList
+from tests.unit.helpers import wait_for
 
 ITEMS = [
     {
@@ -64,13 +65,14 @@ def test_accounts_screen_lists_and_opens_detail(monkeypatch):
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
-            cl = None
-            for _ in range(50):
-                await pilot.pause(0.02)
-                found = app.screen.query(CursorList)
-                if found and not app.screen.query("#content LoadingIndicator"):
-                    cl = found.first()
-                    break
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            cl = app.screen.query(CursorList).first()
             assert cl is not None
             await pilot.press("enter")
             await pilot.pause(0.05)

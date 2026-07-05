@@ -1,27 +1,17 @@
 import json
-from uuid import uuid4
 
 import httpx
 import pytest
 import respx
-import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
 from expense.cache import db as cache_db
 from expense.commands.auth_cmd import app as auth_app
 from expense.commands.auth_cmd import whoami as whoami_impl
+from tests.unit.helpers import make_cli_app, sync_payload
 
-cli_app = typer.Typer()
-
-
-@cli_app.callback()
-def _root() -> None:
-    pass
-
-
-cli_app.add_typer(auth_app, name="auth")
-cli_app.command("whoami")(whoami_impl)
+cli_app = make_cli_app(auth_app, "auth", commands={"whoami": whoami_impl})
 
 runner = CliRunner()
 
@@ -51,35 +41,6 @@ BOOTSTRAP_RESPONSE = {
         "deleted_at": None,
     },
 }
-
-
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
-    config_path = tmp_path / ".expense-config"
-    cache_path = tmp_path / "cache.sqlite3"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    yield
-
-
-def _sync_payload() -> dict:
-    return {
-        "sync_token": "tok-1",
-        "accounts": [],
-        "categories": [],
-        "hashtags": [],
-        "inbox": [],
-        "transactions": [],
-        "reconciliations": [],
-        "settings": {"user_id": "u_123", "main_currency": "USD", "version": 1},
-    }
 
 
 @pytest.fixture
@@ -340,7 +301,10 @@ def test_settings_triggers_post_write_sync(cache_present):
         return_value=httpx.Response(200, json=BOOTSTRAP_RESPONSE["settings"])
     )
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload())
+        return_value=httpx.Response(
+            200,
+            json=sync_payload(settings={"user_id": "u_123", "main_currency": "USD", "version": 1}),
+        )
     )
     result = runner.invoke(cli_app, ["auth", "settings", "--theme", "1"])
     assert result.exit_code == 0, result.output
@@ -353,7 +317,10 @@ def test_profile_triggers_post_write_sync(cache_present):
         return_value=httpx.Response(200, json=BOOTSTRAP_RESPONSE["user"])
     )
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload())
+        return_value=httpx.Response(
+            200,
+            json=sync_payload(settings={"user_id": "u_123", "main_currency": "USD", "version": 1}),
+        )
     )
     result = runner.invoke(cli_app, ["auth", "profile", "--display-name", "Alex"])
     assert result.exit_code == 0, result.output
@@ -366,7 +333,10 @@ def test_bootstrap_triggers_post_write_sync(cache_present):
         return_value=httpx.Response(200, json=BOOTSTRAP_RESPONSE)
     )
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload())
+        return_value=httpx.Response(
+            200,
+            json=sync_payload(settings={"user_id": "u_123", "main_currency": "USD", "version": 1}),
+        )
     )
     result = runner.invoke(
         cli_app,

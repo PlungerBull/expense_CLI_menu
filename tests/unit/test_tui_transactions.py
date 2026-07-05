@@ -6,6 +6,7 @@ from expense.tui.app import ExpenseApp
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.screens.transactions import TransactionsScreen, transaction_rows
 from expense.tui.widgets.cursor_list import CursorList
+from tests.unit.helpers import wait_for
 
 ITEMS = [
     {
@@ -61,14 +62,13 @@ def test_transactions_screen_lists_and_opens_detail(monkeypatch):
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             await app.push_screen(TransactionsScreen())
-            cl = None
-            for _ in range(50):
-                await pilot.pause(0.02)
-                found = app.screen.query(CursorList)
-                if found and not app.screen.query("#content LoadingIndicator"):
-                    cl = found.first()
-                    break
-            assert cl is not None
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
             await pilot.press("enter")  # opens the edit screen, pre-filled
             await pilot.pause(0.05)
             assert isinstance(app.screen, QuickAddLogScreen)

@@ -1,35 +1,22 @@
 """respx-mocked apply tests + CLI dry-run for `expense import`."""
 
 import json
-from uuid import uuid4
 
 import httpx
-import pytest
 import respx
-import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
 from expense.commands import import_cmd
-from expense.context import AppContext
 from expense.http import ExpenseClient
 from expense.import_ import apply as apply_mod
 from expense.import_ import plan as plan_mod
 from expense.import_.parse import ParsedRow
 from expense.import_.reader import RawRow, SheetData
+from tests.unit.helpers import ENGINE_URL as BASE
+from tests.unit.helpers import make_cli_app, sync_payload
 
-BASE = "https://api.example.com"
 runner = CliRunner()
-
-
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
-    monkeypatch.setenv("EXPENSE_CONFIG", str(tmp_path / ".expense-config"))
-    monkeypatch.setenv("EXPENSE_CACHE", str(tmp_path / "cache.sqlite3"))
-    config_module.save(
-        config_module.Config(engine_url=BASE, token="ewe_pat_test", client_id=uuid4())
-    )
-    yield
 
 
 def _prow(line: int, **over: object) -> ParsedRow:
@@ -193,6 +180,32 @@ def test_chunking_splits_batches(configured):
     assert sizes == [200, 200, 50]
 
 
+@respx.mock
+def test_batch_connection_failure_marks_remaining_failed_and_stops(configured):
+    plan = _plan([_prow(2), _prow(3), _prow(4)])
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=[httpx.Response(201, json={"created": []}), httpx.ConnectError("down")]
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res, chunk_size=1)
+
+    assert result.tx_created == 1
+    assert result.tx_failed == 2  # the failing chunk plus the unsent one
+    assert result.failures and result.failures[0][0] == 1
+    assert "could not reach engine" in result.failures[0][1]
+    assert batch_route.call_count == 2  # loop broke; third chunk never sent
+
+
 # --- CLI surface -----------------------------------------------------------
 
 _HEADERS = [
@@ -211,15 +224,7 @@ _HEADERS = [
 _CELLS = ["Groomers", "WANTS", "Salidas", 44896, -44, "BCP PEN", "None", "PEN", -44, "None", "None"]
 
 
-def _build_app() -> typer.Typer:
-    app = typer.Typer()
-
-    @app.callback()
-    def _root(ctx: typer.Context) -> None:
-        ctx.obj = AppContext()
-
-    app.command("import")(import_cmd.run_import)
-    return app
+cli_app = make_cli_app(commands={"import": import_cmd.run_import})
 
 
 @respx.mock
@@ -229,10 +234,123 @@ def test_dry_run_writes_nothing(configured, monkeypatch):
         "read_workbook",
         lambda path, **k: SheetData(headers=_HEADERS, rows=[RawRow(2, list(_CELLS))]),
     )
-    result = runner.invoke(_build_app(), ["import", "whatever.xlsx"])
+    result = runner.invoke(cli_app, ["import", "whatever.xlsx"])
     assert result.exit_code == 0
     assert "Dry run" in result.output
     assert not respx.calls  # nothing hit the engine
+
+
+@respx.mock
+def test_dry_run_json_emits_plan(configured, monkeypatch):
+    """--json emits the raw plan (and suppresses the human dry-run trailer)."""
+    monkeypatch.setattr(
+        import_cmd,
+        "read_workbook",
+        lambda path, **k: SheetData(headers=_HEADERS, rows=[RawRow(2, list(_CELLS))]),
+    )
+    result = runner.invoke(cli_app, ["import", "whatever.xlsx", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)  # pure JSON, no trailer mixed in
+    assert payload["valid_rows"] == 1
+    assert payload["skipped"] == []
+    assert payload["accounts"] == [{"name": "BCP PEN", "currency": "PEN"}]
+    assert set(payload["categories"]) == {"WANTS"}
+    assert set(payload["hashtags"]) == {"Salidas"}
+    assert "Dry run" not in result.output
+    assert not respx.calls
+
+
+@respx.mock
+def test_apply_happy_path_syncs_cache(configured_synced, monkeypatch):
+    """`import --apply` wires cache_after_write: the post-write delta sync fires."""
+    monkeypatch.setattr(
+        import_cmd,
+        "read_workbook",
+        lambda path, **k: SheetData(headers=_HEADERS, rows=[RawRow(2, list(_CELLS))]),
+    )
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    respx.post(f"{BASE}/v1/transactions/batch").mock(
+        return_value=httpx.Response(201, json={"created": []})
+    )
+    sync_route = respx.get(f"{BASE}/v1/sync").mock(
+        return_value=httpx.Response(200, json=sync_payload())
+    )
+
+    result = runner.invoke(cli_app, ["import", "whatever.xlsx", "--apply"])
+    assert result.exit_code == 0, result.output
+    assert "Transactions: created 1" in result.output
+    assert sync_route.called  # cache_after_write ran (import_cmd.py:145)
+    assert "Cache refresh failed" not in result.output  # and it succeeded
+
+
+@respx.mock
+def test_apply_json_result_with_failures(configured, monkeypatch):
+    """--apply --json emits the raw result envelope and still exits 1 on failures."""
+    second_cells = list(_CELLS)
+    second_cells[4] = -55  # different amount → distinct transaction
+    monkeypatch.setattr(
+        import_cmd,
+        "read_workbook",
+        lambda path, **k: SheetData(
+            headers=_HEADERS, rows=[RawRow(2, list(_CELLS)), RawRow(3, second_cells)]
+        ),
+    )
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=[httpx.Response(201, json={"created": []}), httpx.ConnectError("down")]
+    )
+
+    result = runner.invoke(
+        cli_app, ["import", "whatever.xlsx", "--apply", "--chunk-size", "1", "--json"]
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["accounts_reused"] == 1 and payload["accounts_created"] == 0
+    assert payload["tx_created"] == 1 and payload["tx_failed"] == 1
+    assert payload["failures"][0]["chunk"] == 1
+    assert "could not reach engine" in payload["failures"][0]["error"]
+
+
+@respx.mock
+def test_apply_cli_reports_summary_on_connection_failure(configured, monkeypatch):
+    """A mid-run connection drop still renders the summary and exits 1 (backlog 2.2)."""
+    second_cells = list(_CELLS)
+    second_cells[4] = -55  # different amount → distinct transaction
+    monkeypatch.setattr(
+        import_cmd,
+        "read_workbook",
+        lambda path, **k: SheetData(
+            headers=_HEADERS, rows=[RawRow(2, list(_CELLS)), RawRow(3, second_cells)]
+        ),
+    )
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=[httpx.Response(201, json={"created": []}), httpx.ConnectError("down")]
+    )
+
+    result = runner.invoke(cli_app, ["import", "whatever.xlsx", "--apply", "--chunk-size", "1"])
+    assert result.exit_code == 1
+    assert "Transactions: created 1" in result.output
+    assert "failed 1" in result.output
+    assert "chunk 1: CONNECTION_ERROR: could not reach engine" in result.output
 
 
 def test_missing_openpyxl_friendly_error(configured, monkeypatch):
@@ -242,6 +360,6 @@ def test_missing_openpyxl_friendly_error(configured, monkeypatch):
         raise ImportDependencyError("openpyxl is required for `expense import`.")
 
     monkeypatch.setattr(import_cmd, "read_workbook", boom)
-    result = runner.invoke(_build_app(), ["import", "whatever.xlsx"])
+    result = runner.invoke(cli_app, ["import", "whatever.xlsx"])
     assert result.exit_code == 1
     assert "openpyxl" in result.output

@@ -1,31 +1,18 @@
 import json
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import httpx
 import pytest
 import respx
-import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
 from expense.cache import db as cache_db
 from expense.cache import state as cache_state
 from expense.commands.accounts_cmd import app as accounts_app
-from expense.context import AppContext
+from tests.unit.helpers import insert_account, make_cli_app, sync_payload
 
-cli_app = typer.Typer()
-
-
-@cli_app.callback()
-def _root(
-    ctx: typer.Context,
-    no_cache: bool = typer.Option(False, "--no-cache", envvar="EXPENSE_STATELESS"),
-    no_sync_after: bool = typer.Option(False, "--no-sync-after", envvar="EXPENSE_NO_SYNC_AFTER"),
-) -> None:
-    ctx.obj = AppContext(no_cache=no_cache, no_sync_after=no_sync_after)
-
-
-cli_app.add_typer(accounts_app, name="accounts")
+cli_app = make_cli_app(accounts_app, "accounts")
 
 runner = CliRunner()
 
@@ -48,53 +35,6 @@ ACCOUNT_RESPONSE = {
 }
 
 LIST_RESPONSE = [ACCOUNT_RESPONSE]
-
-
-def _sync_payload(accounts_rows: list[dict]) -> dict:
-    return {
-        "sync_token": "tok-1",
-        "accounts": accounts_rows,
-        "categories": [],
-        "hashtags": [],
-        "inbox": [],
-        "transactions": [],
-        "reconciliations": [],
-        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
-    }
-
-
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
-    config_path = tmp_path / ".expense-config"
-    cache_path = tmp_path / "cache.sqlite3"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    yield
-
-
-def _insert_account(conn, row: dict) -> None:
-    conn.execute(
-        "INSERT OR REPLACE INTO accounts "
-        "(id, user_id, is_archived, is_person, deleted_at, sort_order, version, body) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            row["id"],
-            row.get("user_id"),
-            1 if row.get("is_archived") else 0,
-            1 if row.get("is_person") else 0,
-            row.get("deleted_at"),
-            row.get("sort_order"),
-            row.get("version"),
-            json.dumps(row),
-        ),
-    )
 
 
 @pytest.fixture
@@ -149,7 +89,7 @@ def cache_populated(configured):
             },
         ]
         for row in rows:
-            _insert_account(conn, row)
+            insert_account(conn, row)
         cache_state.write_identity(
             conn,
             user_id="u1",
@@ -299,7 +239,7 @@ def test_get_replica_not_found(cache_populated):
 def test_list_auto_cold_start_when_cache_empty(configured):
     """First-time read triggers a cold-start and prints the stderr notice."""
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload([ACCOUNT_RESPONSE]))
+        return_value=httpx.Response(200, json=sync_payload(accounts=[ACCOUNT_RESPONSE]))
     )
     accounts_route = respx.get("https://api.example.com/v1/accounts")
     result = runner.invoke(cli_app, ["accounts", "list"])
@@ -344,7 +284,7 @@ def test_list_engine_url_swap_triggers_cold_start(cache_populated):
 
     with respx.mock(base_url="https://api.example.com") as router:
         sync_route = router.get("/v1/sync").mock(
-            return_value=httpx.Response(200, json=_sync_payload([ACCOUNT_RESPONSE]))
+            return_value=httpx.Response(200, json=sync_payload(accounts=[ACCOUNT_RESPONSE]))
         )
         result = runner.invoke(cli_app, ["accounts", "list"])
 
@@ -502,7 +442,7 @@ def test_create_triggers_post_write_sync(cache_populated):
         return_value=httpx.Response(201, json=ACCOUNT_RESPONSE)
     )
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload([ACCOUNT_RESPONSE]))
+        return_value=httpx.Response(200, json=sync_payload(accounts=[ACCOUNT_RESPONSE]))
     )
     result = runner.invoke(
         cli_app,
@@ -562,7 +502,7 @@ def test_archive_triggers_post_write_sync_via_run_toggle(cache_populated):
         return_value=httpx.Response(200, json={**ACCOUNT_RESPONSE, "is_archived": True})
     )
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload([ACCOUNT_RESPONSE]))
+        return_value=httpx.Response(200, json=sync_payload(accounts=[ACCOUNT_RESPONSE]))
     )
     result = runner.invoke(cli_app, ["accounts", "archive", "abc", "--yes"])
     assert result.exit_code == 0, result.output

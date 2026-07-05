@@ -1,31 +1,19 @@
 import json
 import re
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import httpx
 import pytest
 import respx
-import typer
 from typer.testing import CliRunner
 
 from expense import config as config_module
 from expense.cache import db as cache_db
 from expense.cache import state as cache_state
 from expense.commands.reconcile_cmd import app as reconcile_app
-from expense.context import AppContext
+from tests.unit.helpers import insert_reconciliation, insert_transaction, make_cli_app, sync_payload
 
-cli_app = typer.Typer()
-
-
-@cli_app.callback()
-def _root(
-    ctx: typer.Context,
-    no_cache: bool = typer.Option(False, "--no-cache", envvar="EXPENSE_STATELESS"),
-) -> None:
-    ctx.obj = AppContext(no_cache=no_cache)
-
-
-cli_app.add_typer(reconcile_app, name="reconcile")
+cli_app = make_cli_app(reconcile_app, "reconcile")
 
 runner = CliRunner()
 
@@ -108,73 +96,14 @@ DETAIL_EMPTY_TRANSACTIONS = {
 
 
 @pytest.fixture
-def configured(tmp_path, monkeypatch):
-    config_path = tmp_path / ".expense-config"
-    cache_path = tmp_path / "cache.sqlite3"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    yield
-
-
-def _insert_reconciliation(conn, row: dict) -> None:
-    conn.execute(
-        "INSERT OR REPLACE INTO reconciliations "
-        "(id, user_id, account_id, status, sort_order, date_end, deleted_at, version, body) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            row["id"],
-            row.get("user_id"),
-            row.get("account_id"),
-            row.get("status"),
-            row.get("sort_order"),
-            row.get("date_end"),
-            row.get("deleted_at"),
-            row.get("version"),
-            json.dumps(row),
-        ),
-    )
-
-
-def _insert_transaction(conn, row: dict) -> None:
-    conn.execute(
-        "INSERT OR REPLACE INTO transactions "
-        "(id, user_id, account_id, category_id, reconciliation_id, parent_transaction_id, "
-        "transfer_transaction_id, inbox_id, date, deleted_at, version, updated_at, body) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            row["id"],
-            row.get("user_id"),
-            row.get("account_id"),
-            row.get("category_id"),
-            row.get("reconciliation_id"),
-            row.get("parent_transaction_id"),
-            row.get("transfer_transaction_id"),
-            row.get("inbox_id"),
-            row.get("date"),
-            row.get("deleted_at"),
-            row.get("version"),
-            row.get("updated_at"),
-            json.dumps(row),
-        ),
-    )
-
-
-@pytest.fixture
 def cache_populated(configured):
     cfg = config_module.ensure_loaded()
     conn = cache_db.connect()
     try:
-        _insert_reconciliation(conn, {**RECON_DRAFT_RESPONSE, "user_id": "u1"})
-        _insert_reconciliation(conn, {**RECON_MANUAL_RESPONSE, "user_id": "u1"})
+        insert_reconciliation(conn, {**RECON_DRAFT_RESPONSE, "user_id": "u1"})
+        insert_reconciliation(conn, {**RECON_MANUAL_RESPONSE, "user_id": "u1"})
 
-        _insert_transaction(
+        insert_transaction(
             conn,
             {
                 "id": "tx-001",
@@ -191,7 +120,7 @@ def cache_populated(configured):
                 "deleted_at": None,
             },
         )
-        _insert_transaction(
+        insert_transaction(
             conn,
             {
                 "id": "tx-002",
@@ -208,7 +137,7 @@ def cache_populated(configured):
                 "deleted_at": None,
             },
         )
-        _insert_transaction(
+        insert_transaction(
             conn,
             {
                 "id": "tx-003",
@@ -233,19 +162,6 @@ def cache_populated(configured):
     finally:
         conn.close()
     yield
-
-
-def _sync_payload() -> dict:
-    return {
-        "sync_token": "tok-1",
-        "accounts": [],
-        "categories": [],
-        "hashtags": [],
-        "inbox": [],
-        "transactions": [],
-        "reconciliations": [{**RECON_DRAFT_RESPONSE, "user_id": "u1"}],
-        "settings": {"user_id": "u1", "main_currency": "PEN", "version": 1},
-    }
 
 
 @respx.mock
@@ -1093,7 +1009,9 @@ def test_get_replica_not_found(cache_populated):
 @respx.mock
 def test_list_auto_cold_start_when_cache_empty(configured):
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload())
+        return_value=httpx.Response(
+            200, json=sync_payload(reconciliations=[{**RECON_DRAFT_RESPONSE, "user_id": "u1"}])
+        )
     )
     recon_route = respx.get("https://api.example.com/v1/reconciliations")
     result = runner.invoke(cli_app, ["reconcile", "list"])
@@ -1109,7 +1027,9 @@ def test_create_triggers_post_write_sync(cache_populated):
         return_value=httpx.Response(201, json=RECON_DRAFT_RESPONSE)
     )
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(200, json=_sync_payload())
+        return_value=httpx.Response(
+            200, json=sync_payload(reconciliations=[{**RECON_DRAFT_RESPONSE, "user_id": "u1"}])
+        )
     )
     result = runner.invoke(
         cli_app,

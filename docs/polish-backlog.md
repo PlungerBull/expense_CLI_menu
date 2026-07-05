@@ -72,28 +72,30 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
 
 ## 2. Error-handling consistency
 
-- [ ] **2.1 Route TUI errors through the canonical renderer.**
-  All 13 TUI error sites notify `str(exc)`, dropping the engine error `code`,
-  per-field 422 hints, and the "could not reach engine at {url}" guidance that
-  flat commands render (`_base.py:56-57,142-143`, `system.py:126,247,272,407,624`,
-  `create_forms.py:237`, `quick_log.py:610`,
-  `reconciliations.py:303,628,808,887`). Fix: add `format_error(exc) -> str`
-  in `expense/errors.py` sharing `render()`'s human branch; use it at all 13
-  sites. Same banners/toasts, richer text.
+- [x] **2.1 Route TUI errors through the canonical renderer.**
+  All 16 TUI error sites notified `str(exc)` (13 when filed; 3 fetch-worker
+  sites were added by the 1.3 fix, commit 795c0cd), dropping the engine error
+  `code`, per-field 422 hints, and the "could not reach engine at {url}"
+  guidance that flat commands render. Fixed: `format_error(exc) -> str` in
+  `expense/errors.py` shares `render()`'s human branch (render is now
+  `"Error: " + format_error(err)`); all 16 sites in `_base.py`, `system.py`,
+  `create_forms.py`, `quick_log.py`, `reconciliations.py` use it. Same
+  banners/toasts, richer text.
 
-- [ ] **2.2 Importer: survive mid-run connection failure.**
-  `apply_plan`'s chunk loop catches only `EngineError`
-  (`expense/import_/apply.py:161-171`); an `EngineConnectionError` mid-run
-  aborts before `_render_result`, so committed chunks go unreported and
-  `cache_after_write` is skipped. Fix: catch `EngineConnectionError` in the
-  loop, mark remaining chunks failed, break, still render the summary and
-  exit non-zero.
+- [x] **2.2 Importer: survive mid-run connection failure.**
+  `apply_plan`'s chunk loop caught only `EngineError`
+  (`expense/import_/apply.py`); an `EngineConnectionError` mid-run aborted
+  before `_render_result`, so committed chunks went unreported. Fixed: the
+  loop catches `EngineConnectionError`, marks the failing and remaining
+  chunks failed, breaks, and returns normally — summary renders, exit 1.
+  (The backlog's `cache_after_write` concern was moot: `refresh_after_write`
+  already swallows all failures with a stderr warning.)
 
-- [ ] **2.3 One destructive-confirm implementation, one exit code.**
-  `require_yes` (`_resource.py:216-232`, exits 1) is re-implemented inline in
-  `auth settings` (`auth_cmd.py:267-279`, exits 1) and `config clear`
-  (`config_cmd.py:103-109`, exits **3** — colliding with CONFIG_MISSING).
-  Fix: both call `require_yes`; missing-confirmation exits 1 everywhere.
+- [x] **2.3 One destructive-confirm implementation, one exit code.**
+  `require_yes` (`_resource.py`, exits 1) was re-implemented inline in
+  `auth settings` (exits 1) and `config clear` (exited **3** — colliding with
+  CONFIG_MISSING). Fixed: both call `require_yes`; missing-confirmation exits
+  1 everywhere.
 
 ## 3. Help text & CLI output polish (highest polish-per-effort)
 
@@ -200,46 +202,53 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
 
 ## 6. Test infrastructure & coverage of existing behavior
 
-- [ ] **6.1 Create `tests/unit/conftest.py`.**
-  No conftest exists anywhere. Consolidate: the `configured` fixture
-  (byte-identical in ~16 files), a `make_cli_app(sub_app, name)` factory for
-  the Typer root wiring (duplicated 16×), and a `sync_payload(**overrides)`
-  builder. Migrate files incrementally.
+- [x] **6.1 Create `tests/unit/conftest.py`.**
+  Done: `tests/unit/conftest.py` (fixtures `configured` /
+  `configured_stateless` / `configured_synced` / `fake_client`) +
+  `tests/unit/helpers.py` (`make_cli_app`, `sync_payload`, `insert_*`,
+  `FakeClient`, `wait_for`). All 16 files migrated in one pass (not
+  incrementally); local `configured`/wiring/`_sync_payload`/`_insert_*`
+  copies deleted.
 
-- [ ] **6.2 One canonical `FakeClient` + wait helper for TUI tests.**
-  Six divergent `_FakeClient` classes (`test_tui_writes.py:18`,
-  `test_tui_create_forms.py:15`, `test_tui_quick_log.py:38`,
-  `test_tui_reconciliations.py:54`, `test_tui_reconcile_detail.py:73`,
-  `test_tui_system.py:48`) with mutable class-level `calls` needing manual
-  reset (state-leak hazard), plus the `for _ in range(50): await
-  pilot.pause(0.02)` idiom copy-pasted ~20×. Superset recorder + autouse
-  reset fixture + `wait_for(pilot, predicate)` helper.
+- [x] **6.2 One canonical `FakeClient` + wait helper for TUI tests.**
+  Done: the six `_FakeClient` classes are one instance-level
+  `helpers.FakeClient` handed out by the `fake_client` fixture (per-test
+  instance — no class-level state, nothing to reset; the fixture also bundles
+  the ExpenseClient/ensure_loaded/refresh_after_write patches). All 25
+  pause-loops and the 5 file-scoped `_wait*` helpers are
+  `wait_for(pilot, predicate)`, which `pytest.fail`s at the wait site on
+  timeout instead of falling through silently.
 
-- [ ] **6.3 Cover HomeScreen menu dispatch (48% coverage).**
-  The 14-branch elif mapping menu entries to screens (`home.py:67-97`) has
-  zero coverage — a typo'd branch leaves a menu entry dead with a green
-  suite. One parametrized headless test selecting each option id.
+- [x] **6.3 Cover HomeScreen menu dispatch (48% coverage).**
+  Done: `tests/unit/test_tui_home_dispatch.py` — parametrized headless test
+  drives focus → highlight → enter for each of the 13 wired entries and
+  asserts the pushed screen type; `soon` asserts the notify + stays home; an
+  armor test keeps `_MENU` and the case list in lock-step.
 
-- [ ] **6.4 Cover SectionScreen failure paths.**
-  `action_reload`, fetch-exception → error banner, and `run_write`'s
-  error-notify (`_base.py:41-58,98-102,142-144`) are all missed — no TUI test
-  ever renders "Could not load." or a write-failure toast. Two small tests
-  with a raising fetch/FakeClient.
+- [x] **6.4 Cover SectionScreen failure paths.**
+  Done: `tests/unit/test_tui_section_errors.py` — fetch error renders the
+  "Could not load." banner with the canonical `format_error` text; `r`
+  reloads and recovers after an error; a failing `run_write` toasts
+  title=Failed/severity=error with no success toast and no replica refresh.
 
-- [ ] **6.5 Exercise `import --apply` through the CLI; test the xlsx reader.**
-  Only dry-run and missing-openpyxl go through `runner.invoke`; the --apply
-  wiring incl. `cache_after_write` and exit-1-on-failures
-  (`import_cmd.py:138-149`) and both `--json` renderers are untested;
-  `import_/reader.py` is 37% covered (real `read_workbook` never runs). Add a
-  respx-mocked `--apply` test, a `--json` dry-run test, and one real tmp-path
-  workbook test.
+- [x] **6.5 Exercise `import --apply` through the CLI; test the xlsx reader.**
+  Done: `test_cmd_import.py` gained a respx-mocked `--apply` happy path
+  (asserts the post-write `/v1/sync` fired via `cache_after_write`), a
+  `--json` dry-run test (pure JSON, no trailer), and a `--json` apply test
+  with a mid-run failure (envelope + exit 1). New
+  `tests/unit/test_import_reader.py` runs real openpyxl workbooks: happy
+  path, reader→parser roundtrip (serial dates, major amounts), missing
+  file/sheet, empty sheet, garbage file, missing-dependency guard.
 
-- [ ] **6.6 Smaller coverage items:** activity name resolution tested for 1 of
-  6 resource kinds (`activity_cmd.py:80-107`); `expand_hashtags` range
-  rendering unreachable + untested (`reports_cmd.py:134-150` — decide: cover
-  or delete); surface guard emits 41 skips and doesn't enforce the
-  confirm-destructive convention that has already drifted
-  (`test_command_surface.py:69-77`).
+- [x] **6.6 Smaller coverage items:** activity name resolution now covered for
+  all 6 kinds incl. plural aliases, the `#` hashtag prefix, reconciliation
+  composite labels, and every fallback; `expand_hashtags` **deleted** from
+  `reports_cmd.py` (decision: the single-month report already renders the
+  breakdown by default and `--json` carries it for ranges — the range-table
+  variant was unreachable); surface guard parametrizes read leaves only
+  (41 skips → 0) and a new check enforces `--yes` on all 11
+  delete/archive/revert/clear leaves, with a pinned count so renames can't
+  evade it.
 
 ## 7. Remaining low-severity nits (batch opportunistically)
 

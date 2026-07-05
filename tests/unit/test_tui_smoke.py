@@ -20,6 +20,7 @@ from expense.tui.screens.outstanding import (
     _accounts_table,
     _totals_table,
 )
+from tests.unit.helpers import wait_for
 
 SAMPLE = {
     "month": {"year": 2026, "month": 3},
@@ -103,14 +104,15 @@ def test_outstanding_screen_populates_and_tree_collapses(monkeypatch):
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             await app.push_screen(OutstandingScreen())
-            view = None
-            for _ in range(50):
-                await pilot.pause(0.02)
-                found = app.screen.query(CategoriesView)
-                if found and not app.screen.query("#content LoadingIndicator"):
-                    view = found.first()
-                    break
-            assert view is not None  # worker fetched + populate mounted the tree
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CategoriesView)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            # worker fetched + populate mounted the tree
+            view = app.screen.query(CategoriesView).first()
             assert view._collapsed == set()
             await pilot.press("left")  # collapse focused category
             assert view._collapsed == {0}

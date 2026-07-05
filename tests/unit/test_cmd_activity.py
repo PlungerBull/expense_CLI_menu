@@ -1,26 +1,16 @@
 import json
-from uuid import uuid4
 
 import httpx
 import pytest
 import respx
-import typer
 from typer.testing import CliRunner
 
-from expense import config as config_module
+from expense.commands import activity_cmd
 from expense.commands.activity_cmd import app as activity_app
-from expense.context import AppContext
 from expense.errors import EngineError
+from tests.unit.helpers import make_cli_app
 
-cli_app = typer.Typer()
-
-
-@cli_app.callback()
-def _root(ctx: typer.Context) -> None:
-    ctx.obj = AppContext()
-
-
-cli_app.add_typer(activity_app, name="activity")
+cli_app = make_cli_app(activity_app, "activity")
 
 runner = CliRunner()
 
@@ -41,25 +31,8 @@ ACTIVITY_ROW = {
 LIST_RESPONSE = [ACTIVITY_ROW]
 
 
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
-    config_path = tmp_path / ".expense-config"
-    monkeypatch.setenv("EXPENSE_CONFIG", str(config_path))
-    config_module.save(
-        config_module.Config(
-            engine_url="https://api.example.com",
-            token="ewe_pat_test",
-            client_id=uuid4(),
-        )
-    )
-    # Cache may not be initialized in unit tests; force the resolver's
-    # cache-miss fallback (UUID prefix) so tests don't depend on a live replica.
-    monkeypatch.setenv("EXPENSE_STATELESS", "1")
-    yield
-
-
 @respx.mock
-def test_list_happy_no_filters(configured):
+def test_list_happy_no_filters(configured_stateless):
     route = respx.get("https://api.example.com/v1/activity").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
@@ -81,7 +54,7 @@ def test_list_happy_no_filters(configured):
 
 
 @respx.mock
-def test_list_with_filters_and_pagination_params(configured):
+def test_list_with_filters_and_pagination_params(configured_stateless):
     route = respx.get("https://api.example.com/v1/activity").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
@@ -110,7 +83,7 @@ def test_list_with_filters_and_pagination_params(configured):
 
 
 @respx.mock
-def test_list_pagination_hint(configured):
+def test_list_pagination_hint(configured_stateless):
     paginated = {
         "items": [ACTIVITY_ROW],
         "total": 5,
@@ -126,7 +99,7 @@ def test_list_pagination_hint(configured):
 
 
 @respx.mock
-def test_list_json_mode_passthrough(configured):
+def test_list_json_mode_passthrough(configured_stateless):
     respx.get("https://api.example.com/v1/activity").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
@@ -136,7 +109,7 @@ def test_list_json_mode_passthrough(configured):
 
 
 @respx.mock
-def test_list_empty(configured):
+def test_list_empty(configured_stateless):
     respx.get("https://api.example.com/v1/activity").mock(return_value=httpx.Response(200, json=[]))
     result = runner.invoke(cli_app, ["activity", "list"])
     assert result.exit_code == 0, result.output
@@ -144,7 +117,7 @@ def test_list_empty(configured):
 
 
 @respx.mock
-def test_list_human_renderer_omits_snapshots(configured):
+def test_list_human_renderer_omits_snapshots(configured_stateless):
     """Snapshots are large nested dicts; only --json should surface them."""
     respx.get("https://api.example.com/v1/activity").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
@@ -159,7 +132,7 @@ def test_list_human_renderer_omits_snapshots(configured):
 
 
 @respx.mock
-def test_list_unknown_action_code_falls_back_to_int(configured):
+def test_list_unknown_action_code_falls_back_to_int(configured_stateless):
     weird = {**ACTIVITY_ROW, "action": 99}
     respx.get("https://api.example.com/v1/activity").mock(
         return_value=httpx.Response(200, json=[weird])
@@ -171,7 +144,7 @@ def test_list_unknown_action_code_falls_back_to_int(configured):
 
 
 @respx.mock
-def test_list_422_bad_resource_id(configured):
+def test_list_422_bad_resource_id(configured_stateless):
     respx.get("https://api.example.com/v1/activity").mock(
         return_value=httpx.Response(
             422,
@@ -191,7 +164,7 @@ def test_list_422_bad_resource_id(configured):
 
 
 @respx.mock
-def test_list_resource_name_resolved_from_cache(configured, monkeypatch):
+def test_list_resource_name_resolved_from_cache(configured_stateless, monkeypatch):
     """When the cache has the row, the Resource column shows the human name."""
     from expense.cache import queries
 
@@ -210,7 +183,7 @@ def test_list_resource_name_resolved_from_cache(configured, monkeypatch):
 
 
 @respx.mock
-def test_list_resource_name_fallback_to_uuid_prefix(configured, monkeypatch):
+def test_list_resource_name_fallback_to_uuid_prefix(configured_stateless, monkeypatch):
     """When the cache raises NOT_FOUND, the Resource column shows the 8-char UUID."""
     from expense.cache import queries
 
@@ -226,3 +199,67 @@ def test_list_resource_name_fallback_to_uuid_prefix(configured, monkeypatch):
     result = runner.invoke(cli_app, ["activity", "list"])
     assert result.exit_code == 0, result.output
     assert "22222222" in result.output
+
+
+# --- _resolve_resource_name, all six kinds (backlog 6.6a) -------------------
+
+
+@pytest.mark.parametrize(
+    ("rtype", "getter", "row", "expected"),
+    [
+        ("account", "get_account", {"name": "BCP"}, "BCP"),
+        ("accounts", "get_account", {"name": "BCP"}, "BCP"),  # plural alias
+        ("category", "get_category", {"name": "Comida"}, "Comida"),
+        ("categories", "get_category", {"name": "Comida"}, "Comida"),
+        ("hashtag", "get_hashtag", {"name": "viajes"}, "#viajes"),  # '#' prefix
+        ("hashtags", "get_hashtag", {"name": "viajes"}, "#viajes"),
+        ("inbox", "get_inbox", {"title": "Almuerzo"}, "Almuerzo"),
+        ("inbox_items", "get_inbox", {"description": "nota"}, "nota"),  # title fallback
+        ("transaction", "get_transaction", {"title": "Latte"}, "Latte"),
+        ("expense_transactions", "get_transaction", {"description": "sin título"}, "sin título"),
+    ],
+)
+def test_resolve_resource_name_per_kind(monkeypatch, rtype, getter, row, expected):
+    from expense.cache import queries
+
+    monkeypatch.setattr(queries, getter, lambda _id: dict(row))
+    assert activity_cmd._resolve_resource_name(rtype, "abc-123") == expected
+
+
+def test_resolve_reconciliation_composite_labels(monkeypatch):
+    """date+account → 'date / name'; degrades to date-only, name-only, then prefix."""
+    from expense.cache import queries
+
+    monkeypatch.setattr(
+        queries,
+        "get_reconciliation",
+        lambda _id: {"statement_date": "2026-05-01T00:00:00Z", "account_id": "acc1"},
+    )
+    monkeypatch.setattr(queries, "get_account", lambda _id: {"name": "BCP"})
+    assert activity_cmd._resolve_resource_name("reconciliation", "r-1") == "2026-05-01 / BCP"
+
+    def _miss(_id):
+        raise EngineError("NOT_FOUND", "not found", None, 404, {})
+
+    monkeypatch.setattr(queries, "get_account", _miss)  # account gone → date only
+    assert activity_cmd._resolve_resource_name("reconciliations", "r-1") == "2026-05-01"
+
+    monkeypatch.setattr(queries, "get_reconciliation", lambda _id: {"account_id": "acc1"})
+    monkeypatch.setattr(queries, "get_account", lambda _id: {"name": "BCP"})
+    assert activity_cmd._resolve_resource_name("reconciliation", "r-1") == "BCP"  # no date
+
+    monkeypatch.setattr(queries, "get_reconciliation", lambda _id: {})
+    assert activity_cmd._resolve_resource_name("reconciliation", "0123456789ab") == "01234567"
+
+
+def test_resolve_empty_name_falls_back_to_prefix(monkeypatch):
+    from expense.cache import queries
+
+    monkeypatch.setattr(queries, "get_hashtag", lambda _id: {"name": ""})
+    assert activity_cmd._resolve_resource_name("hashtag", "0123456789ab") == "01234567"
+
+
+def test_resolve_unknown_kind_and_bad_id():
+    assert activity_cmd._resolve_resource_name("user", "0123456789ab") == "01234567"
+    assert activity_cmd._resolve_resource_name(None, "0123456789ab") == "01234567"
+    assert activity_cmd._resolve_resource_name("account", None) == "—"

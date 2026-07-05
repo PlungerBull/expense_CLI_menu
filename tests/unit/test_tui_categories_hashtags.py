@@ -9,6 +9,7 @@ from expense.tui.screens.categories import CategoriesScreen, category_rows
 from expense.tui.screens.hashtags import HashtagsScreen, hashtag_rows
 from expense.tui.screens.modals import RecordModal
 from expense.tui.widgets.cursor_list import CursorList
+from tests.unit.helpers import wait_for
 
 CATS = [
     {"id": "c1", "name": "Comida", "color": "#d9744a", "is_system": False, "is_archived": False},
@@ -46,14 +47,13 @@ def _run_list_screen(monkeypatch, screen_cls, fetch_mod, fetch_name, items):
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             await app.push_screen(screen_cls())
-            cl = None
-            for _ in range(50):
-                await pilot.pause(0.02)
-                found = app.screen.query(CursorList)
-                if found and not app.screen.query("#content LoadingIndicator"):
-                    cl = found.first()
-                    break
-            assert cl is not None
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
             await pilot.press("enter")
             await pilot.pause(0.05)
             assert isinstance(app.screen, RecordModal)

@@ -11,6 +11,7 @@ from expense.tui.screens.reconciliations import (
     reconciliation_rows,
 )
 from expense.tui.widgets.cursor_list import CursorList
+from tests.unit.helpers import wait_for
 
 ACCOUNTS = {"acc1": "BCP PEN", "acc2": "Interbank USD"}
 ITEMS = [
@@ -51,25 +52,8 @@ def test_reconciliation_rows_format():
     assert reconciliation_rows([ITEMS[1]], ACCOUNTS)[0][1][2] == "—"
 
 
-class _FakeClient:
-    calls: list = []
-
-    def __init__(self, *a, **k):
-        pass
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def post(self, path, json_body=None):
-        _FakeClient.calls.append((path, json_body))
-        return {}
-
-
 def _patch(monkeypatch):
-    _FakeClient.calls = []
+    """Screen-specific patches; the client/config seams come from fake_client."""
     monkeypatch.setattr(
         "expense.commands.accounts_cmd.fetch_accounts",
         lambda *a, **k: [
@@ -77,9 +61,6 @@ def _patch(monkeypatch):
             {"id": "acc2", "name": "Interbank USD", "currency_code": "USD"},
         ],
     )
-    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
-    monkeypatch.setattr("expense.http.ExpenseClient", _FakeClient)
-    monkeypatch.setattr("expense.cache.refresh_after_write", lambda *a, **k: None)
 
 
 def _enter(screen, text):
@@ -88,21 +69,11 @@ def _enter(screen, text):
     screen.on_input_submitted(None)
 
 
-async def _wait_post(pilot):
-    for _ in range(40):
-        await pilot.pause(0.02)
-        if _FakeClient.calls:
-            return
-
-
 async def _wait_accounts(screen, pilot):
-    for _ in range(40):
-        await pilot.pause(0.02)
-        if screen._accounts:
-            return
+    await wait_for(pilot, lambda: screen._accounts)
 
 
-def test_new_reconciliation_chained_omits_begin(monkeypatch):
+def test_new_reconciliation_chained_omits_begin(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -117,8 +88,8 @@ def test_new_reconciliation_chained_omits_begin(monkeypatch):
             _enter(screen, "")  # date_end skip
             _enter(screen, "chained")  # source → no begin field
             _enter(screen, "9460.00")  # end → submits
-            await _wait_post(pilot)
-            path, body = _FakeClient.calls[0]
+            await wait_for(pilot, lambda: fake_client.posts)
+            path, body = fake_client.posts[0]
             assert path == "/reconciliations"
             assert body["account_id"] == "acc1" and body["name"] == "April 2026"
             assert body["beginning_balance_source"] == "chained"
@@ -128,7 +99,7 @@ def test_new_reconciliation_chained_omits_begin(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_new_reconciliation_manual_includes_begin(monkeypatch):
+def test_new_reconciliation_manual_includes_begin(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -145,8 +116,8 @@ def test_new_reconciliation_manual_includes_begin(monkeypatch):
             assert "begin" in screen._sequence()
             _enter(screen, "5000.00")  # begin
             _enter(screen, "")  # end skip → submits
-            await _wait_post(pilot)
-            path, body = _FakeClient.calls[0]
+            await wait_for(pilot, lambda: fake_client.posts)
+            path, body = fake_client.posts[0]
             assert body["beginning_balance_source"] == "manual"
             assert body["beginning_balance_cents"] == 500000
             assert "ending_balance_cents" not in body
@@ -173,12 +144,13 @@ def test_reconciliations_browse_account_first(monkeypatch):
         async with app.run_test() as pilot:
             screen = ReconciliationsScreen()
             await app.push_screen(screen)
-            for _ in range(50):
-                await pilot.pause(0.02)
-                if app.screen.query(CursorList) and not app.screen.query(
-                    "#content LoadingIndicator"
-                ):
-                    break
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
             # account focus: first account (acc1) selected → its batch (r1) shown below
             assert screen._mode == "accts"
             assert set(screen._by_id) == {"r1"}
@@ -198,9 +170,8 @@ def test_new_reconciliation_from_account_drops_account_field():
     assert screen.crumb == ("Reconciliations", "BCP PEN", "New")
 
 
-def test_new_reconciliation_fetch_error_notifies_not_crash(monkeypatch):
+def test_new_reconciliation_fetch_error_notifies_not_crash(fake_client, monkeypatch):
     """An engine/config error in _load_accounts must not exit the app (backlog 1.3)."""
-    _patch(monkeypatch)
 
     def boom(*a, **k):
         raise RuntimeError("engine down")
@@ -216,10 +187,7 @@ def test_new_reconciliation_fetch_error_notifies_not_crash(monkeypatch):
         async with app.run_test() as pilot:
             screen = NewReconciliationScreen()
             await app.push_screen(screen)
-            for _ in range(40):
-                await pilot.pause(0.02)
-                if notices:
-                    break
+            await wait_for(pilot, lambda: notices)
             assert notices and "engine down" in notices[0]
             assert app.is_running
             assert app.screen is screen
