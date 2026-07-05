@@ -89,7 +89,7 @@ def _render_single_month(body: dict, *, json_mode: bool, show_hashtags: bool = T
     render_totals(body.get("totals"))
 
 
-def _render_range_table(body: dict, *, json_mode: bool, expand_hashtags: bool = False) -> None:
+def _render_range_table(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
@@ -125,36 +125,8 @@ def _render_range_table(body: dict, *, json_mode: bool, expand_hashtags: bool = 
         totals = month_payload.get("totals") or {}
         totals_row[label] = totals.get("net_home_cents")
 
-    # Per-category sub-row plan: for each category, collect the ordered set of
-    # hashtag-combo keys (tuple of ids) seen across months, plus per-month cell
-    # values. Only built when expand_hashtags=True.
-    name_map: dict[str, str] = {}
-    sub_keys: dict[str, list[tuple[str, ...]]] = {}
-    sub_cells: dict[tuple[str, tuple[str, ...], str], int | None] = {}
-    if expand_hashtags:
-        name_map = load_hashtag_name_map()
-        for cid in category_order:
-            sub_keys[cid] = []
-        seen_keys: dict[str, set[tuple[str, ...]]] = {cid: set() for cid in category_order}
-        for label, month_payload in zip(month_labels, months, strict=True):
-            for cat in month_payload.get("categories") or []:
-                cid = cat.get("id")
-                if not isinstance(cid, str) or cid not in seen_keys:
-                    continue
-                for row in cat.get("hashtag_breakdown") or []:
-                    ids = row.get("hashtag_ids") or []
-                    key = tuple(ids)
-                    if key not in seen_keys[cid]:
-                        seen_keys[cid].add(key)
-                        sub_keys[cid].append(key)
-                    sub_cells[(cid, key, label)] = row.get("spent_home_cents")
-
     name_widths = [len("Category"), len("Totals (net)")]
     name_widths.extend(len(cat_names[cid]) for cid in category_order)
-    if expand_hashtags:
-        for cid in category_order:
-            for key in sub_keys.get(cid, []):
-                name_widths.append(len("  " + hashtag_label(list(key), name_map)))
     name_col_w = max(name_widths)
 
     def fmt_cell(val: int | None) -> str:
@@ -165,9 +137,6 @@ def _render_range_table(body: dict, *, json_mode: bool, expand_hashtags: bool = 
         widest = len(label)
         for cid in category_order:
             widest = max(widest, len(fmt_cell(cells.get((cid, label)))))
-            if expand_hashtags:
-                for key in sub_keys.get(cid, []):
-                    widest = max(widest, len(fmt_cell(sub_cells.get((cid, key, label)))))
         widest = max(widest, len(fmt_cell(totals_row.get(label))))
         col_widths.append(widest)
 
@@ -182,13 +151,6 @@ def _render_range_table(body: dict, *, json_mode: bool, expand_hashtags: bool = 
         for label, w in zip(month_labels, col_widths, strict=True):
             row_parts.append(f"{fmt_cell(cells.get((cid, label))):>{w}}")
         typer.echo("  ".join(row_parts))
-        if expand_hashtags:
-            for key in sub_keys.get(cid, []):
-                sub_label = "  " + hashtag_label(list(key), name_map)
-                sub_parts = [f"{sub_label:<{name_col_w}}"]
-                for label, w in zip(month_labels, col_widths, strict=True):
-                    sub_parts.append(f"{fmt_cell(sub_cells.get((cid, key, label))):>{w}}")
-                typer.echo("  ".join(sub_parts))
 
     typer.echo("  ".join(["-" * name_col_w] + ["-" * w for w in col_widths]))
     totals_parts = [f"{'Totals (net)':<{name_col_w}}"]
@@ -231,8 +193,6 @@ def run_range(
     to_ym: tuple[int, int],
     verbose: bool = False,
     json_mode: bool = False,
-    expand_hashtags: bool = False,
-    no_cache: bool = False,
 ) -> None:
     """Engine round-trip + render for a month range. Shared by flat + TUI.
 
@@ -244,17 +204,9 @@ def run_range(
         "to_year": str(to_ym[0]),
         "to_month": str(to_ym[1]),
     }
-    # See run_single_month: best-effort replica warm, after the report fetch,
-    # only when the hashtag breakdown (which needs name resolution) is rendered.
-    warm = expand_hashtags and not json_mode and not no_cache
     with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
         body = client.get("/reports/monthly", params=params)
-        if warm:
-            try:
-                ensure_synced(client, cfg)
-            except Exception:
-                pass
-    _render_range_table(body, json_mode=json_mode, expand_hashtags=expand_hashtags)
+    _render_range_table(body, json_mode=json_mode)
 
 
 @app.command("monthly")
@@ -336,5 +288,4 @@ def monthly(
         to_ym=to_ym,
         verbose=verbose,
         json_mode=json_output,
-        no_cache=no_cache,
     )
