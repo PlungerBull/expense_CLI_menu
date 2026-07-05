@@ -22,6 +22,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands._resource import format_field_value
+from expense.errors import format_error
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
 from expense.tui.widgets.cursor_list import CursorList
@@ -123,7 +124,7 @@ class ConfigScreen(SectionScreen):
         try:
             config_module.save(self._cfg.model_copy(update=updates))
         except Exception as exc:
-            self.notify(str(exc), title="Couldn't save", severity="error")
+            self.notify(format_error(exc), title="Couldn't save", severity="error")
             return
         self.notify("Config saved.")
         self._load()
@@ -244,7 +245,7 @@ class AuthScreen(SectionScreen):
                 )
         except Exception as exc:
             self.app.call_from_thread(
-                self.notify, str(exc), title="Bootstrap failed", severity="error"
+                self.notify, format_error(exc), title="Bootstrap failed", severity="error"
             )
             return
         self.app.call_from_thread(self._done, "Provisioned.")
@@ -269,7 +270,7 @@ class AuthScreen(SectionScreen):
             config_module.save(cfg.model_copy(update={"main_currency": currency}))
         except Exception as exc:
             self.app.call_from_thread(
-                self.notify, str(exc), title="Couldn't update", severity="error"
+                self.notify, format_error(exc), title="Couldn't update", severity="error"
             )
             return
         self.app.call_from_thread(self._done, f"Main currency set to {currency}.")
@@ -404,7 +405,9 @@ class SyncScreen(SectionScreen):
                     cache_pkg.cold_start(client, cfg) if full else cache_pkg.delta_sync(client, cfg)
                 )
         except Exception as exc:
-            self.app.call_from_thread(self.notify, str(exc), title="Sync failed", severity="error")
+            self.app.call_from_thread(
+                self.notify, format_error(exc), title="Sync failed", severity="error"
+            )
             return
         self.app.call_from_thread(self._synced, summary)
 
@@ -621,7 +624,7 @@ class RatesScreen(SectionScreen):
         except Exception as exc:
             self._result = None
             self.app.call_from_thread(
-                self.notify, str(exc), title="Lookup failed", severity="error"
+                self.notify, format_error(exc), title="Lookup failed", severity="error"
             )
             self.app.call_from_thread(self._load)
             return

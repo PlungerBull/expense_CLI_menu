@@ -1,13 +1,12 @@
 import json
 import os
-import sys
 import zoneinfo
 from pathlib import Path
 
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import JSON_OPT, YES_OPT, cache_after_write
+from expense.commands._resource import JSON_OPT, YES_OPT, cache_after_write, require_yes
 from expense.config import Config
 from expense.context import get_verbose
 from expense.errors import EngineError, handle_errors
@@ -269,19 +268,12 @@ def settings(
         typer.echo("Error: No settings to update; pass at least one flag.", err=True)
         raise typer.Exit(code=1)
 
-    if main_currency is not None and not yes:
-        if not sys.stdin.isatty():
-            typer.echo(
-                "Error: --yes is required for --main-currency changes in non-interactive mode.",
-                err=True,
-            )
-            raise typer.Exit(code=1)
-        if not typer.confirm(
+    if main_currency is not None:
+        require_yes(
+            yes,
             "Changing main_currency triggers synchronous home-currency "
-            "recalculation on the engine. Continue?"
-        ):
-            typer.echo("Aborted.")
-            raise typer.Exit(code=1)
+            "recalculation on the engine. Continue?",
+        )
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.put("/auth/settings", json_body=payload)

@@ -37,16 +37,13 @@ class ConfigInvalidError(Exception):
     pass
 
 
-def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
-    """Render an error.
+def format_error(err: Exception) -> str:
+    """Human-readable error text, without the leading 'Error: ' prefix.
 
-    Returns (output_text, exit_code, use_stderr).
-    JSON mode writes to stdout so output is pipe-friendly; human mode writes to stderr.
+    Shared by render()'s human branch (CLI) and the TUI toasts/banners.
     """
     if isinstance(err, EngineError):
-        if json_mode:
-            return json.dumps(err.raw_body, indent=2), 1, False
-        lines = [f"Error: {err.code} — {err.message}"]
+        lines = [f"{err.code} — {err.message}"]
         if err.fields:
             for field, message in err.fields.items():
                 lines.append(f"  {field}: {message}")
@@ -57,7 +54,24 @@ def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
                 "'expense config set --token <pat>' to install a fresh PAT, "
                 "or 'expense auth bootstrap' if your account is not yet provisioned."
             )
-        return "\n".join(lines), 1, True
+        return "\n".join(lines)
+    if isinstance(err, EngineConnectionError):
+        return f"could not reach engine at {err.url} (is it running?)"
+    # ConfigMissing/ConfigInvalid render as their message, same as any other
+    # exception — one fallback covers both.
+    return str(err)
+
+
+def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
+    """Render an error.
+
+    Returns (output_text, exit_code, use_stderr).
+    JSON mode writes to stdout so output is pipe-friendly; human mode writes to stderr.
+    """
+    if isinstance(err, EngineError):
+        if json_mode:
+            return json.dumps(err.raw_body, indent=2), 1, False
+        return "Error: " + format_error(err), 1, True
 
     if isinstance(err, EngineConnectionError):
         if json_mode:
@@ -69,7 +83,7 @@ def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
                 }
             }
             return json.dumps(envelope, indent=2), 2, False
-        return f"Error: could not reach engine at {err.url} (is it running?)", 2, True
+        return "Error: " + format_error(err), 2, True
 
     if isinstance(err, ConfigMissingError):
         if json_mode:
@@ -81,7 +95,7 @@ def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
                 }
             }
             return json.dumps(envelope, indent=2), 3, False
-        return f"Error: {err}", 3, True
+        return "Error: " + format_error(err), 3, True
 
     if isinstance(err, ConfigInvalidError):
         if json_mode:
@@ -93,7 +107,7 @@ def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
                 }
             }
             return json.dumps(envelope, indent=2), 3, False
-        return f"Error: {err}", 3, True
+        return "Error: " + format_error(err), 3, True
 
     raise err
 

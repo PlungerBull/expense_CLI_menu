@@ -19,6 +19,7 @@ from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Footer, LoadingIndicator, Static
 
+from expense.errors import format_error
 from expense.tui.widgets.header import Breadcrumb
 
 
@@ -54,7 +55,7 @@ class SectionScreen(Screen):
         try:
             data = self.fetch()
         except Exception as exc:  # surface engine/config errors in-app, don't crash
-            self.app.call_from_thread(self._error, str(exc))
+            self.app.call_from_thread(self._error, format_error(exc))
             return
         self.app.call_from_thread(self._show, data)
 
@@ -140,7 +141,9 @@ class SectionScreen(Screen):
                     notice_stream=io.StringIO(),
                 )
         except Exception as exc:
-            self.app.call_from_thread(self.notify, str(exc), title="Failed", severity="error")
+            self.app.call_from_thread(
+                self.notify, format_error(exc), title="Failed", severity="error"
+            )
             return
         self.app.call_from_thread(self._after_write, success)
 

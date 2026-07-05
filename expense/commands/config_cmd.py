@@ -1,10 +1,9 @@
 import json
-import sys
 
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import YES_OPT
+from expense.commands._resource import YES_OPT, require_yes
 from expense.config import Config
 from expense.errors import handle_errors
 
@@ -101,13 +100,7 @@ def clear_cmd(
         typer.echo("No config file to clear.")
         return
 
-    if not yes:
-        if not sys.stdin.isatty():
-            typer.echo("Error: --yes is required in non-interactive mode.", err=True)
-            raise typer.Exit(code=3)
-        if not typer.confirm(f"Remove {path}?"):
-            typer.echo("Aborted.")
-            raise typer.Exit(code=1)
+    require_yes(yes, f"Remove {path}?")
 
     config_module.clear()
     typer.echo(f"Config removed: {path}")

@@ -41,6 +41,7 @@ from expense.commands._resource import (
 )
 from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.dates import to_canonical_aware
+from expense.errors import format_error
 from expense.tui.widgets.header import Breadcrumb
 
 _LABELS = {
@@ -237,7 +238,7 @@ class QuickAddLogScreen(Screen):
             # full maps (incl system/archived) for resolving pre-filled edit values
             maps = (load_account_name_map(), load_category_name_map(), load_hashtag_name_map())
         except Exception as exc:  # surface engine/config errors in-app, don't crash
-            self.app.call_from_thread(self.notify, str(exc), severity="error")
+            self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
         accounts = [
             (a["id"], a.get("name") or "(unnamed)", a.get("currency_code") or "?")
@@ -611,7 +612,7 @@ class QuickAddLogScreen(Screen):
                     notice_stream=io.StringIO(),
                 )
         except Exception as exc:
-            self.app.call_from_thread(self._failed, str(exc))
+            self.app.call_from_thread(self._failed, format_error(exc))
             return
         self.app.call_from_thread(self._done)
 

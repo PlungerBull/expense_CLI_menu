@@ -7,6 +7,7 @@ from expense.errors import (
     ConfigMissingError,
     EngineConnectionError,
     EngineError,
+    format_error,
     handle_errors,
     render,
 )
@@ -121,6 +122,66 @@ def test_render_config_missing_human():
     assert use_stderr is True
     assert "Error:" in output
     assert "config set" in output
+
+
+def test_format_error_engine_error_with_fields():
+    err = EngineError(
+        code="VALIDATION_ERROR",
+        message="Amount must not be zero",
+        fields={"amount_cents": "Must not be zero"},
+        status=422,
+        raw_body={},
+    )
+    output = format_error(err)
+    assert not output.startswith("Error:")
+    assert output.startswith("VALIDATION_ERROR — Amount must not be zero")
+    assert "  amount_cents: Must not be zero" in output
+
+
+def test_format_error_401_includes_hint():
+    err = EngineError(
+        code="UNAUTHORIZED",
+        message="Missing or invalid token",
+        fields=None,
+        status=401,
+        raw_body={},
+    )
+    output = format_error(err)
+    assert "\n\nHint: token is missing or invalid" in output
+    assert "expense config set --token" in output
+
+
+def test_format_error_connection_error():
+    err = EngineConnectionError(
+        url="https://nonexistent.invalid",
+        original=ConnectionRefusedError("refused"),
+    )
+    assert format_error(err) == (
+        "could not reach engine at https://nonexistent.invalid (is it running?)"
+    )
+
+
+def test_format_error_falls_back_to_str():
+    assert format_error(RuntimeError("boom")) == "boom"
+
+
+@pytest.mark.parametrize(
+    "err",
+    [
+        EngineError(
+            code="UNAUTHORIZED",
+            message="Missing or invalid token",
+            fields={"token": "expired"},
+            status=401,
+            raw_body={},
+        ),
+        EngineConnectionError(url="https://x.invalid", original=TimeoutError("timeout")),
+        ConfigMissingError("No config found. Run: expense config set ..."),
+    ],
+)
+def test_render_human_is_prefix_plus_format_error(err):
+    output, _, _ = render(err, json_mode=False)
+    assert output == "Error: " + format_error(err)
 
 
 def test_render_unknown_exception_reraises():

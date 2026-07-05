@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from expense.dates import to_canonical_aware
-from expense.errors import EngineError
+from expense.errors import EngineConnectionError, EngineError, format_error
 from expense.http import ExpenseClient
 from expense.import_ import mapping
 from expense.import_.parse import ParsedRow
@@ -168,4 +168,16 @@ def apply_plan(
             else:
                 result.tx_failed += len(chunk)
                 result.failures.append((chunk_index, f"{err.code}: {err.message}"))
+        except EngineConnectionError as err:
+            # Stop sending, but return normally so the caller still renders the
+            # summary of committed chunks (cache_after_write is already best-effort).
+            remaining = len(items) - chunk_index * chunk_size
+            result.tx_failed += remaining
+            result.failures.append(
+                (
+                    chunk_index,
+                    f"CONNECTION_ERROR: {format_error(err)} — this and later chunks were not sent",
+                )
+            )
+            break
     return result

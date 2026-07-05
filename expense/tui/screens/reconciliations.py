@@ -41,6 +41,7 @@ from expense.commands._resource import (
 )
 from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.dates import to_canonical_aware
+from expense.errors import format_error
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
@@ -301,7 +302,7 @@ class ReconciliationsScreen(SectionScreen):
                 )
         except Exception as exc:
             self.app.call_from_thread(
-                self.notify, str(exc), title="Couldn't reorder", severity="error"
+                self.notify, format_error(exc), title="Couldn't reorder", severity="error"
             )
             return
         self.app.call_from_thread(self._reordered)
@@ -409,7 +410,7 @@ class NewReconciliationScreen(Screen):
                 notice_stream=io.StringIO(),
             )
         except Exception as exc:  # surface engine/config errors in-app, don't crash
-            self.app.call_from_thread(self.notify, str(exc), severity="error")
+            self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
         items = body.get("items", body) if isinstance(body, dict) else (body or [])
         accounts = [
@@ -629,7 +630,7 @@ class NewReconciliationScreen(Screen):
                     notice_stream=io.StringIO(),
                 )
         except Exception as exc:
-            self.app.call_from_thread(self._failed, str(exc))
+            self.app.call_from_thread(self._failed, format_error(exc))
             return
         self.app.call_from_thread(self._done)
 
@@ -757,7 +758,7 @@ class ReconciliationDetailScreen(Screen):
             cat_names = load_category_name_map()
             tag_names = load_hashtag_name_map()
         except Exception as exc:  # surface engine/config errors in-app, don't crash
-            self.app.call_from_thread(self.notify, str(exc), severity="error")
+            self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
         rows, checked, seen = [], [], set()
         for it in [*assigned, *available]:
@@ -813,7 +814,7 @@ class ReconciliationDetailScreen(Screen):
                     notice_stream=io.StringIO(),
                 )
         except Exception as exc:
-            self.app.call_from_thread(self._assign_failed, str(exc))
+            self.app.call_from_thread(self._assign_failed, format_error(exc))
 
     def _assign_failed(self, message: str) -> None:
         self.notify(message, title="Couldn't update", severity="error")
@@ -892,7 +893,7 @@ class ReconciliationDetailScreen(Screen):
                     notice_stream=io.StringIO(),
                 )
         except Exception as exc:
-            self.app.call_from_thread(self._action_failed, str(exc), verb)
+            self.app.call_from_thread(self._action_failed, format_error(exc), verb)
             return
         self.app.call_from_thread(self._action_done, new_status, verb)
 

@@ -20,6 +20,7 @@ from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Static
 
+from expense.errors import format_error
 from expense.tui.widgets.header import Breadcrumb
 
 _PALETTE = [
@@ -234,7 +235,7 @@ class BarFormScreen(Screen):
                     notice_stream=io.StringIO(),
                 )
         except Exception as exc:
-            self.app.call_from_thread(self._failed, str(exc))
+            self.app.call_from_thread(self._failed, format_error(exc))
             return
         self.app.call_from_thread(self._done)
 

@@ -135,5 +135,5 @@ def test_clear_without_yes_in_non_tty_errors(tmp_config):
     runner.invoke(app, ["set", "--engine-url", "https://x.com"])
 
     result = runner.invoke(app, ["clear"])
-    assert result.exit_code == 3
+    assert result.exit_code == 1  # missing confirmation, not CONFIG_MISSING (3)
     assert "non-interactive" in result.output
