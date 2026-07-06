@@ -51,6 +51,7 @@ def _render_category_list(body: dict, *, json_mode: bool) -> None:
             "color": color_swatch(item.get("color"), color=color),
             "system": format_bool(item.get("is_system")),
             "archived": format_bool(item.get("is_archived")),
+            "deleted": format_bool(item.get("deleted_at")),
         }
         for item in items
     ]
@@ -60,6 +61,7 @@ def _render_category_list(body: dict, *, json_mode: bool) -> None:
             "color": "Color",
             "system": "System",
             "archived": "Archived",
+            "deleted": "Deleted",
         },
         rows=rows,
     )

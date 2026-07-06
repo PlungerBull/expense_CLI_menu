@@ -52,20 +52,10 @@ from expense.tui.widgets.checklist import CheckList
 from expense.tui.widgets.cursor_list import CursorList
 from expense.tui.widgets.header import Breadcrumb
 
-_STATUS = {1: "draft", 2: "completed"}
+# Status labels + period formatting are owned by the commands layer
+# (reconcile_cmd.format_status / format_period) — one copy, per the §5 rule.
+_period = reconcile_cmd.format_period
 _LIST_HEADERS = ["Account", "Name", "Period", "Begin", "End", "Source", "Status"]
-
-
-def _period(item: dict) -> str:
-    ds = (item.get("date_start") or "")[:10]
-    de = (item.get("date_end") or "")[:10]
-    if ds and de:
-        return f"{ds} → {de}"
-    if ds:
-        return f"{ds} → …"
-    if de:
-        return f"… → {de}"
-    return "—"
 
 
 def reconciliation_rows(
@@ -82,7 +72,7 @@ def reconciliation_rows(
             amount_cell(it.get("beginning_balance_cents"), palette, BALANCE_RULE),
             amount_cell(it.get("ending_balance_cents"), palette, BALANCE_RULE),
             it.get("beginning_balance_source") or "—",
-            _STATUS.get(status, str(status) if status is not None else "—"),
+            reconcile_cmd.format_status(status),
         ]
         rows.append((it.get("id"), cells, "dim" if status == 2 else ""))
     return rows
@@ -107,7 +97,7 @@ def batch_rows(items: list[dict], palette: Palette | None = None) -> list:
             amount_cell(it.get("beginning_balance_cents"), palette, BALANCE_RULE),
             amount_cell(it.get("ending_balance_cents"), palette, BALANCE_RULE),
             it.get("beginning_balance_source") or "—",
-            _STATUS.get(status, str(status) if status is not None else "—"),
+            reconcile_cmd.format_status(status),
         ]
         rows.append((it.get("id"), cells, "dim" if status == 2 else ""))
     return rows
@@ -569,7 +559,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
         r = self._record
         palette = resolve_palette(self.app)
         acct = load_account_name_map().get(self._account_id, (self._account_id or "?")[:8])
-        status = _STATUS.get(r.get("status"), "—")
+        status = reconcile_cmd.format_status(r.get("status"))
         begin = amount_cell(r.get("beginning_balance_cents"), palette, BALANCE_RULE)
         end = amount_cell(r.get("ending_balance_cents"), palette, BALANCE_RULE)
         text = Text.assemble(

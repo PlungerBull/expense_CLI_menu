@@ -15,11 +15,16 @@ from expense.commands._resource import (
     build_update_payload,
     cache_after_write,
     fetch_body,
+    format_bool,
+    format_cents,
     format_field_value,
     items_of,
+    load_account_name_map,
     render_pagination_hint,
     render_record,
+    render_table,
     require_yes,
+    resolve_name,
     run_toggle,
 )
 from expense.context import get_no_cache, get_verbose
@@ -32,6 +37,28 @@ app = typer.Typer(help="Reconciliations.", no_args_is_help=True)
 _RESOURCE = "reconciliations"
 
 _SOURCE_CHOICES = ("manual", "chained")
+
+STATUS_LABELS = {1: "draft", 2: "completed"}
+
+
+def format_status(value: object) -> str:
+    """Human label for the engine's integer status. Shared by flat table + TUI."""
+    if value is None:
+        return "—"
+    return STATUS_LABELS.get(value, str(value))
+
+
+def format_period(item: dict) -> str:
+    """`date_start → date_end` (date parts only). Shared by flat table + TUI."""
+    ds = (item.get("date_start") or "")[:10]
+    de = (item.get("date_end") or "")[:10]
+    if ds and de:
+        return f"{ds} → {de}"
+    if ds:
+        return f"{ds} → …"
+    if de:
+        return f"… → {de}"
+    return "—"
 
 
 def fetch_reconciliations(
@@ -123,15 +150,37 @@ def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
     if not items:
         typer.echo("(no reconciliations)")
         return
-    for index, item in enumerate(items):
-        if index > 0:
-            typer.echo("")
-        for key, value in item.items():
-            typer.echo(f"  {key}: {format_field_value(key, value)}")
-        marker = _format_source_marker(item)
-        if marker:
-            typer.echo(f"  {marker}")
 
+    account_names = load_account_name_map()
+    rows = [
+        {
+            "account": resolve_name(item.get("account_id"), account_names),
+            "name": item.get("name") or "(unnamed)",
+            "period": format_period(item),
+            "begin": format_cents(item.get("beginning_balance_cents")),
+            "end": format_cents(item.get("ending_balance_cents")),
+            "source": item.get("beginning_balance_source") or "—",
+            "status": format_status(item.get("status")),
+            "deleted": format_bool(item.get("deleted_at")),
+            "id": item.get("id") or "—",
+        }
+        for item in items
+    ]
+    render_table(
+        headers={
+            "account": "Account",
+            "name": "Name",
+            "period": "Period",
+            "begin": "Begin",
+            "end": "End",
+            "source": "Source",
+            "status": "Status",
+            "deleted": "Deleted",
+            "id": "Id",
+        },
+        rows=rows,
+        align_right={"begin", "end"},
+    )
     render_pagination_hint(body, items)
 
 

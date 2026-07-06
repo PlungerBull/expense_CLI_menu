@@ -116,6 +116,31 @@ def test_list_engine_path_with_no_cache(configured):
 
 
 @respx.mock
+def test_list_deleted_column_marks_soft_deleted_rows(configured):
+    deleted = {
+        **ACCOUNT_RESPONSE,
+        "id": "55555555-5555-5555-5555-555555555555",
+        "name": "Closed USD",
+        "deleted_at": "2026-06-01T09:00:00Z",
+    }
+    route = respx.get("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(200, json=[ACCOUNT_RESPONSE, deleted])
+    )
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "list", "--include-deleted"])
+    assert result.exit_code == 0, result.output
+    assert "Deleted" in result.output
+
+    lines = result.output.splitlines()
+    live_row = next(line for line in lines if "BCP Soles" in line)
+    deleted_row = next(line for line in lines if "Closed USD" in line)
+    assert live_row.rstrip().endswith("no")
+    assert deleted_row.rstrip().endswith("yes")
+
+    request = route.calls.last.request
+    assert request.url.params.get("include_deleted") == "true"
+
+
+@respx.mock
 def test_list_pagination_hint_engine_path(configured):
     paginated = {
         "items": [ACCOUNT_RESPONSE],

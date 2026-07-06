@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense CLI — §7 flat tables: reconcile list + Deleted markers</title>
+<style>
+  /* ----------------------------------------------------------------------
+     Polish-backlog §7 — the two UI-adjacent nits, flat commands only
+     (no TUI screens change; TUI shares fetch functions, not rendering):
+       · reconcile list is the only list command without a table
+       · deleted rows are invisible in accounts/categories lists, while
+         hashtags already shows a Deleted column
+     Tables below are the EXACT render_table output (generated with the
+     repo's own helpers), shown as terminal transcripts.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --term:#121216; --panel:#1d1d22;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9db1c2; --sel:#2b303a;
+    --pos:#7fbf8f; --warn:#d6b878; --neg:#cf8d8d;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:22px;
+       padding:38px 20px 70px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  .lbl{width:min(1080px,100%);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .step{width:min(1080px,100%);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:14px}
+  .term{background:var(--term);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:12.5px;line-height:1.55}
+  .solo{width:min(1080px,100%)}
+  .bar{display:flex;align-items:center;gap:9px;padding:8px 13px;background:#101015}
+  .ttl{color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .tag{margin-left:auto;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+       padding:2px 9px;border-radius:999px;border:1px solid var(--dimmer);color:var(--accent);white-space:nowrap}
+  .tag.rec{color:var(--pos);border-color:#2f4636}
+  .screen{padding:13px 16px 15px;overflow-x:auto}
+  .screen pre{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.5;color:var(--text)}
+  .screen pre .p{color:var(--pos)}       /* prompt */
+  .screen pre .d{color:var(--dim)}       /* dim / headers */
+  .screen pre .del{color:var(--neg)}     /* deleted marker */
+  .legend{color:var(--dim);font-size:11.5px;margin-top:10px;border-top:1px solid #20202a;padding-top:8px}
+  .note{width:min(1080px,100%);color:var(--dim);font-size:12.5px;line-height:1.55}
+  .note b{color:var(--muted)} .note .hd{color:var(--accent);letter-spacing:.12em;text-transform:uppercase;font-size:11.5px}
+</style>
+</head>
+<body>
+
+<div class="lbl">expense CLI — §7 flat tables · reconcile list table + Deleted markers
+  <span><br/>Flat commands only — the TUI already has its own reconciliations table and is untouched.
+  Two picks needed: <b>reconcile columns (A or B)</b> and <b>Deleted-column visibility (C or D)</b>.</span>
+</div>
+
+<!-- ============ today ============ -->
+<div class="step">1 · Today — reconcile list dumps every field, line by line, per record</div>
+<div class="term solo">
+  <div class="bar"><div class="ttl">18 lines per reconciliation — the only list command without a table</div><span class="tag">today</span></div>
+  <div class="screen"><pre><span class="p">$</span> expense reconcile list
+  id: 8c1d4b2e-6a9f-4e3d-b1c7-2f5a8e9d0c34
+  user_id: ffffffff-ffff-ffff-ffff-ffffffffffff
+  account_id: 22222222-2222-2222-2222-222222222222
+  name: Statement April 2026
+  date_start: 2026-04-01T00:00:00Z
+  date_end: 2026-04-30T23:59:59Z
+  beginning_balance_cents: 1,000.00
+  beginning_balance_home_cents: 1,000.00
+  ending_balance_cents: 1,500.00
+  ending_balance_home_cents: 1,500.00
+  status: 1
+  sort_order: 4
+  beginning_balance_source: chained
+  chained_from_reconciliation_id: 5e2a9c07-1b8d-4f6a-9e3c-7d4b0a1f8e52
+  version: 1
+  created_at: 2026-04-15T10:00:00Z
+  updated_at: 2026-04-15T10:00:00Z
+  deleted_at: (null)
+  [chained from 5e2a9c07-1b8d-4f6a-9e3c-7d4b0a1f8e52]
+<span class="d">  … and 18 more lines for every further record …</span></pre></div>
+</div>
+
+<!-- ============ reconcile proposed ============ -->
+<div class="step">2 · Proposed — reconcile list as a table (pick A or B)</div>
+
+<div class="term solo">
+  <div class="bar"><div class="ttl"><b>A — no Id column.</b> Matches every other list table (accounts/categories/hashtags show no ids; ids come from --json or get). Mirrors the TUI's approved columns.</div><span class="tag rec">A · recommended</span></div>
+  <div class="screen"><pre><span class="p">$</span> expense reconcile list
+<span class="d">Account    Name                  Period                      Begin       End  Source   Status
+---------  --------------------  -----------------------  --------  --------  -------  ---------</span>
+BCP Soles  Statement April 2026  2026-04-01 → 2026-04-30  1,000.00  1,500.00  chained  draft
+BCP Soles  Statement March 2026  2026-03-01 → 2026-03-31    850.00  1,000.00  manual   completed
+Cash USD   Q1 cash count         2026-01-01 → 2026-03-31    120.00     80.00  manual   completed</pre>
+  <div class="legend">Account resolves via the replica name map (raw UUID in --no-cache/stateless mode, same as inbox). Status: 1→draft, 2→completed (same map as the TUI). Source replaces the [manual]/[chained from …] marker lines.</div>
+  </div>
+</div>
+
+<div class="term solo">
+  <div class="bar"><div class="ttl"><b>B — Id column last.</b> Every reconcile action (get/update/complete/revert/delete) takes an ID; with B the list alone feeds the next command — no --json detour. Costs ~38 columns of width.</div><span class="tag">B</span></div>
+  <div class="screen"><pre><span class="p">$</span> expense reconcile list
+<span class="d">Account    Name                  Period                      Begin       End  Source   Status     Id
+---------  --------------------  -----------------------  --------  --------  -------  ---------  ------------------------------------</span>
+BCP Soles  Statement April 2026  2026-04-01 → 2026-04-30  1,000.00  1,500.00  chained  draft      8c1d4b2e-6a9f-4e3d-b1c7-2f5a8e9d0c34
+BCP Soles  Statement March 2026  2026-03-01 → 2026-03-31    850.00  1,000.00  manual   completed  5e2a9c07-1b8d-4f6a-9e3c-7d4b0a1f8e52
+Cash USD   Q1 cash count         2026-01-01 → 2026-03-31    120.00     80.00  manual   completed  d7f3e1b9-4c2a-48d5-a6e8-9b0c3f7d2a16</pre>
+  <div class="legend">Same table as A plus Id. Note: accounts/categories/hashtags tables would stay id-less — B makes reconcile the one exception.</div>
+  </div>
+</div>
+
+<div class="term solo">
+  <div class="bar"><div class="ttl"><b>Either pick, with --include-deleted</b> — a Deleted column appears (or is always there, per your C/D pick below), soft-deleted rows read <b>yes</b></div><span class="tag">applies to A and B</span></div>
+  <div class="screen"><pre><span class="p">$</span> expense reconcile list --include-deleted
+<span class="d">Account    Name                  Period                      Begin       End  Source   Status     Deleted
+---------  --------------------  -----------------------  --------  --------  -------  ---------  -------</span>
+BCP Soles  Statement April 2026  2026-04-01 → 2026-04-30  1,000.00  1,500.00  chained  draft      no
+BCP Soles  Statement March 2026  2026-03-01 → 2026-03-31    850.00  1,000.00  manual   completed  no
+Cash USD   Q1 cash count         2026-01-01 → 2026-03-31    120.00     80.00  manual   completed  no
+Cash USD   Old count             2026-02-01 → 2026-02-28    100.00     90.00  manual   completed  <span class="del">yes</span></pre></div>
+</div>
+
+<!-- ============ deleted column ============ -->
+<div class="step">3 · Proposed — Deleted column for accounts + categories (pick C or D)</div>
+
+<div class="term solo">
+  <div class="bar"><div class="ttl"><b>The nit:</b> today --include-deleted fetches soft-deleted rows but nothing marks them — Cash USD below is deleted and indistinguishable</div><span class="tag">today</span></div>
+  <div class="screen"><pre><span class="p">$</span> expense accounts list --include-deleted
+<span class="d">Name       Currency  Person  Color     Balance  Archived
+---------  --------  ------  -------  --------  --------</span>
+BCP Soles  PEN       no      #4a90d9  1,500.00  no
+Old BCP    PEN       no      #808080      0.00  yes
+Cash USD   USD       no      #2ecc71    120.00  no       <span class="d">← soft-deleted, but you can't tell</span></pre></div>
+</div>
+
+<div class="term solo">
+  <div class="bar"><div class="ttl"><b>C — Deleted column always visible.</b> Exact hashtags parity (its Deleted column is always on). Table shape never changes with flags; without --include-deleted the column is simply all-"no".</div><span class="tag rec">C · recommended</span></div>
+  <div class="screen"><pre><span class="p">$</span> expense accounts list --include-deleted
+<span class="d">Name       Currency  Person  Color     Balance  Archived  Deleted
+---------  --------  ------  -------  --------  --------  -------</span>
+BCP Soles  PEN       no      #4a90d9  1,500.00  no        no
+Old BCP    PEN       no      #808080      0.00  yes       no
+Cash USD   USD       no      #2ecc71    120.00  no        <span class="del">yes</span>
+
+<span class="p">$</span> expense accounts list
+<span class="d">Name       Currency  Person  Color     Balance  Archived  Deleted
+---------  --------  ------  -------  --------  --------  -------</span>
+BCP Soles  PEN       no      #4a90d9  1,500.00  no        no
+Old BCP    PEN       no      #808080      0.00  yes       no
+
+<span class="p">$</span> expense categories list --include-deleted
+<span class="d">Name           Color    System  Archived  Deleted
+-------------  -------  ------  --------  -------</span>
+Food           #e67e22  no      no        no
+Transport      #3498db  no      no        <span class="del">yes</span>
+Uncategorized  #95a5a6  yes     no        no</pre></div>
+</div>
+
+<div class="term solo">
+  <div class="bar"><div class="ttl"><b>D — Deleted column only with --include-deleted.</b> Plain lists stay exactly as today (no always-"no" noise); the column appears only when deleted rows can actually be present. Diverges from hashtags.</div><span class="tag">D</span></div>
+  <div class="screen"><pre><span class="p">$</span> expense accounts list
+<span class="d">Name       Currency  Person  Color     Balance  Archived
+---------  --------  ------  -------  --------  --------</span>
+BCP Soles  PEN       no      #4a90d9  1,500.00  no
+Old BCP    PEN       no      #808080      0.00  yes
+
+<span class="p">$</span> expense accounts list --include-deleted
+<span class="d">Name       Currency  Person  Color     Balance  Archived  Deleted
+---------  --------  ------  -------  --------  --------  -------</span>
+BCP Soles  PEN       no      #4a90d9  1,500.00  no        no
+Old BCP    PEN       no      #808080      0.00  yes       no
+Cash USD   USD       no      #2ecc71    120.00  no        <span class="del">yes</span></pre>
+  <div class="legend">If D is picked, hashtags would be aligned to it too (drop its always-on Deleted column when the flag is absent) so all four lists behave identically — say so if you'd rather leave hashtags untouched.</div>
+  </div>
+</div>
+
+<div class="note">
+  <span class="hd">Semantics to confirm</span><br/>
+  · <b>Detail lost vs today's dump:</b> the table drops user_id, home-currency balances, sort_order, version,
+  timestamps, and the upstream id behind "chained" — all still available via <b>reconcile get &lt;id&gt;</b> or
+  <b>--json</b> (verbatim engine body, unchanged). Flag any field you want kept as a column.<br/>
+  · <b>Status labels</b> draft/completed reuse the TUI's map — it moves into the commands layer (shared, per §5
+  dedup) so there is exactly one copy.<br/>
+  · <b>Sorting</b> stays the engine's order, rendered verbatim — no client-side sort.<br/>
+  · <b>Deleted cell</b> is format_bool(deleted_at) → yes/no, identical to hashtags.<br/>
+  · Empty state "(no reconciliations)" and the pagination hint are unchanged.
+</div>
+
+</body>
+</html>

@@ -51,6 +51,7 @@ def _render_account_list(body: dict, *, json_mode: bool) -> None:
             "color": color_swatch(item.get("color"), color=color),
             "balance": format_cents(item.get("current_balance_cents")),
             "archived": format_bool(item.get("is_archived")),
+            "deleted": format_bool(item.get("deleted_at")),
         }
         for item in items
     ]
@@ -62,6 +63,7 @@ def _render_account_list(body: dict, *, json_mode: bool) -> None:
             "color": "Color",
             "balance": "Balance",
             "archived": "Archived",
+            "deleted": "Deleted",
         },
         rows=rows,
         align_right={"balance"},

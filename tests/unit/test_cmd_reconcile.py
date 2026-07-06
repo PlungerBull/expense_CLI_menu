@@ -174,9 +174,27 @@ def test_list_happy_with_account_filter(configured):
         ["--no-cache", "reconcile", "list", "--account-id", "22222222-2222-2222-2222-222222222222"],
     )
     assert result.exit_code == 0, result.output
+    for header in (
+        "Account",
+        "Name",
+        "Period",
+        "Begin",
+        "End",
+        "Source",
+        "Status",
+        "Deleted",
+        "Id",
+    ):
+        assert header in result.output
     assert "Statement April 2026" in result.output
-    assert "[chained from 00000000-0000-0000-0000-000000000003]" in result.output
-    assert "[manual]" in result.output
+    assert "2026-04-01 → 2026-04-30" in result.output
+
+    lines = result.output.splitlines()
+    chained_row = next(line for line in lines if RECON_DRAFT_RESPONSE["id"] in line)
+    assert "chained" in chained_row
+    assert "draft" in chained_row
+    manual_row = next(line for line in lines if RECON_MANUAL_RESPONSE["id"] in line)
+    assert "manual" in manual_row
 
     request = route.calls.last.request
     assert request.url.params.get("account_id") == "22222222-2222-2222-2222-222222222222"
