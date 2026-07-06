@@ -57,9 +57,11 @@ def parse_year_month(user_input: str, *, param_hint: str = "--date") -> tuple[in
     """Parse a YYYY-MM string into (year, month) integers.
 
     Used by `expense reports monthly` for --date / --from / --to. Strict shape:
-    exactly four-digit year, dash, two-digit month. Month must be in 1..12.
+    exactly four-digit year, dash, two-digit month. Value ranges (month 1..12,
+    year bounds) are the engine's rules — out-of-range values are sent as-is so
+    its 422 surfaces.
 
-    Raises typer.BadParameter on bad shape or out-of-range month.
+    Raises typer.BadParameter on bad shape only.
     """
     parts = user_input.split("-")
     if len(parts) != 2 or len(parts[0]) != 4 or len(parts[1]) != 2:
@@ -75,9 +77,4 @@ def parse_year_month(user_input: str, *, param_hint: str = "--date") -> tuple[in
             f"Invalid month {user_input!r}. Use YYYY-MM (e.g. 2026-04).",
             param_hint=param_hint,
         ) from exc
-    if not 1 <= month <= 12:
-        raise typer.BadParameter(
-            f"Invalid month {user_input!r}. Month must be 01..12.",
-            param_hint=param_hint,
-        )
     return year, month

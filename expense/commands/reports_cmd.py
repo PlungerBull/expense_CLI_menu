@@ -21,13 +21,6 @@ from expense.http import ExpenseClient
 app = typer.Typer(help="Historical reports.", no_args_is_help=True)
 
 
-_MAX_RANGE_MONTHS = 24
-
-
-def _months_between(from_ym: tuple[int, int], to_ym: tuple[int, int]) -> int:
-    return (to_ym[0] - from_ym[0]) * 12 + (to_ym[1] - from_ym[1]) + 1
-
-
 def _render_single_month_categories(categories: list[dict] | None, *, show_hashtags: bool) -> None:
     """Render the Categories block as an ASCII table.
 
@@ -186,7 +179,8 @@ def run_range(
 ) -> None:
     """Engine round-trip + render for a month range. Shared by flat + TUI.
 
-    Caller is responsible for span validation (use _months_between + _MAX_RANGE_MONTHS).
+    Range rules (inverted range, max span) are the engine's — invalid ranges
+    are sent as-is so its 422 surfaces.
     """
     params = {
         "from_year": str(from_ym[0]),
@@ -260,17 +254,6 @@ def monthly(
     assert date_from is not None and date_to is not None
     from_ym = parse_year_month(date_from, param_hint="--from")
     to_ym = parse_year_month(date_to, param_hint="--to")
-    span = _months_between(from_ym, to_ym)
-    if span < 1:
-        raise typer.BadParameter(
-            f"--from ({date_from}) must be on or before --to ({date_to}).",
-            param_hint="--from/--to",
-        )
-    if span > _MAX_RANGE_MONTHS:
-        raise typer.BadParameter(
-            f"Range span is {span} months; max is {_MAX_RANGE_MONTHS}.",
-            param_hint="--from/--to",
-        )
 
     run_range(
         cfg,

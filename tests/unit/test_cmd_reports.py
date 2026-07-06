@@ -267,21 +267,75 @@ def test_monthly_partial_range_errors_before_http(configured_synced):
 
 
 @respx.mock
-def test_monthly_range_too_wide_errors_before_http(configured_synced):
-    route = respx.get("https://api.example.com/v1/reports/monthly")
+def test_monthly_range_too_wide_sent_to_engine_422_surfaces(configured_synced):
+    route = respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Range span exceeds 24 months.",
+                    "fields": {"to_month": "Range span exceeds 24 months."},
+                }
+            },
+        )
+    )
     result = runner.invoke(cli_app, ["reports", "monthly", "--from", "2024-01", "--to", "2026-04"])
-    assert result.exit_code != 0
-    assert "max is 24" in _strip_panel(result.output)
-    assert route.call_count == 0
+    assert result.exit_code == 1
+    assert route.call_count == 1
+    assert "VALIDATION_ERROR" in result.output
+    assert "24 months" in result.output
 
 
 @respx.mock
-def test_monthly_range_inverted_errors_before_http(configured_synced):
-    route = respx.get("https://api.example.com/v1/reports/monthly")
+def test_monthly_range_inverted_sent_to_engine_422_surfaces(configured_synced):
+    route = respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Range start must be on or before range end.",
+                    "fields": None,
+                }
+            },
+        )
+    )
     result = runner.invoke(cli_app, ["reports", "monthly", "--from", "2026-04", "--to", "2025-11"])
-    assert result.exit_code != 0
-    assert "must be on or before" in _strip_panel(result.output)
-    assert route.call_count == 0
+    assert result.exit_code == 1
+    assert route.call_count == 1
+    assert "VALIDATION_ERROR" in result.output
+
+    request = route.calls.last.request
+    assert request.url.params.get("from_year") == "2026"
+    assert request.url.params.get("from_month") == "4"
+    assert request.url.params.get("to_year") == "2025"
+    assert request.url.params.get("to_month") == "11"
+
+
+@respx.mock
+def test_monthly_out_of_range_month_sent_to_engine_422_surfaces(configured_synced):
+    route = respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid month payload.",
+                    "fields": {"month": "Must be between 1 and 12."},
+                }
+            },
+        )
+    )
+    result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-13"])
+    assert result.exit_code == 1
+    assert route.call_count == 1
+    assert "VALIDATION_ERROR" in result.output
+    assert "month" in result.output
+
+    request = route.calls.last.request
+    assert request.url.params.get("year") == "2026"
+    assert request.url.params.get("month") == "13"
 
 
 @respx.mock
