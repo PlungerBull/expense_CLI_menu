@@ -214,11 +214,20 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   "Unarchived."), archive keeps its ConfirmModal. One philosophy on both
   clients; covers Accounts/Categories/Hashtags via the shared helper.
 
-- [ ] **4.8 Convert Rates to the bar-cycle form idiom** (like quick-log /
-  create forms) instead of `t`/`b`/`d` letter-jumps — it's the only screen
-  that sets form values via letters; converting dissolves the d/b/t
-  cross-screen reuse at the root. Low priority (rare reference screen); do
-  not add another letter-jump screen in the meantime.
+- [x] **4.8 Redesign Rates as a history TABLE** — direction changed at review
+  (2026-07-06): not a bar-form conversion (v1 sketch superseded) but a plain
+  read table, `Date · Base · Target · Rate`, one row per pair per day,
+  newest first, with a single optional `f`=filter-by-date. Approved sketch:
+  `docs/mockups/expense-world-rates-form-4.8.html` (v2).
+  *(done 2026-07-06)* Engine shipped `GET /v1/exchange-rates/history`
+  same-day (request doc:
+  `../expense_world_engine/docs/exchange-rates-history-request.md`; items
+  carry `rate_date`, rate as JSON number, `date DESC, base, target`
+  ordering, standard envelope). Flat `expense rates list` wraps it first
+  (contract validator; `--date/--limit/--offset/--json`, 4-decimal table);
+  TUI RatesScreen rewritten as the table — `t`/`b`/`d` letter-jumps and
+  their PromptModals deleted, dissolving the d/b/t cross-screen reuse;
+  `f` filters (blank clears). `expense rates get` lookup unchanged.
 
 ## 5. Deduplication refactors (pure, no behavior change)
 

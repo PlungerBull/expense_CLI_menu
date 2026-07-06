@@ -14,7 +14,6 @@ from expense.tui.screens.system import (
     RatesScreen,
     SyncScreen,
     _delta_table,
-    _rate_table,
     _redact_token,
     _short_token,
 )
@@ -127,12 +126,6 @@ def test_delta_table_cold_start_only_inserts():
     s = SyncSummary(kind="cold_start", inserts={"transactions": 5}, settings_changed=True)
     t = _delta_table(s)
     assert t.row_count == 7  # 6 resources + settings
-
-
-def test_rate_table_columns_track_response():
-    body = {"base": "USD", "target": "PEN", "rate": "3.7520", "date": "2026-07-02"}
-    assert len(_rate_table(body).columns) == 4
-    assert _rate_table({}).row_count == 0  # empty body → empty table, no crash
 
 
 def test_sync_screen_disabled_under_no_cache(monkeypatch):
@@ -284,25 +277,65 @@ def test_activity_resolves_singular_resource_types(monkeypatch):
     assert ac._resolve_resource_name("user", "0123456789ab") == "01234567"
 
 
-def test_rates_screen_lookup(monkeypatch):
+def test_rates_screen_lists_history(monkeypatch):
+    """Rates is a read table now (backlog 4.8): newest first, 4-decimal rates."""
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: CFG)
     captured = {}
 
-    def fake_fetch_rate(cfg, *, target, base=None, date=None, verbose=False):
-        captured.update(target=target, base=base, date=date)
-        return {"base": base or "USD", "target": target, "rate": "3.7520"}
+    def fake_history(cfg, *, date=None, limit=None, offset=None, verbose=False):
+        captured.update(date=date, limit=limit)
+        return {
+            "items": [
+                {"rate_date": "2026-07-05", "base": "USD", "target": "PEN", "rate": 3.6},
+                {"rate_date": "2026-07-04", "base": "USD", "target": "PEN", "rate": 3.59},
+            ],
+            "total": 132,
+        }
 
-    monkeypatch.setattr("expense.commands.rates_cmd.fetch_rate", fake_fetch_rate)
+    monkeypatch.setattr("expense.commands.rates_cmd.fetch_rates_history", fake_history)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             screen = RatesScreen()
             await app.push_screen(screen)
-            await wait_for(pilot, lambda: bool(app.screen.query(".legend")))
-            screen.action_lookup()  # target defaults to PEN, base/date to engine defaults
-            await wait_for(pilot, lambda: screen._result is not None)
-            assert captured == {"target": "PEN", "base": None, "date": None}
-            assert screen._result["rate"] == "3.7520"
+            from expense.tui.widgets.cursor_list import CursorList
+
+            await wait_for(pilot, lambda: bool(app.screen.query(CursorList)))
+            assert captured == {"date": None, "limit": 50}
+            rows = app.screen.query_one(CursorList)._rows
+            assert rows[0][1] == ["2026-07-05", "USD", "PEN", "3.6000"]
+            assert rows[1][1] == ["2026-07-04", "USD", "PEN", "3.5900"]
+
+    asyncio.run(scenario())
+
+
+def test_rates_screen_date_filter_refetches(monkeypatch):
+    """Real `f` keypress → PromptModal → submitted date refetches; blank clears."""
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: CFG)
+    calls: list = []
+
+    def fake_history(cfg, *, date=None, limit=None, offset=None, verbose=False):
+        calls.append(date)
+        return {"items": [], "total": 0}
+
+    monkeypatch.setattr("expense.commands.rates_cmd.fetch_rates_history", fake_history)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = RatesScreen()
+            await app.push_screen(screen)
+            await wait_for(pilot, lambda: calls)
+            await pilot.press("f")
+            await pilot.pause(0.05)
+            app.screen.query_one("#prompt").value = "2026-07-04"
+            await pilot.press("enter")
+            await wait_for(pilot, lambda: calls[-1] == "2026-07-04")
+            await pilot.press("f")  # blank enter clears the filter
+            await pilot.pause(0.05)
+            app.screen.query_one("#prompt").value = ""
+            await pilot.press("enter")
+            await wait_for(pilot, lambda: len(calls) >= 3 and calls[-1] is None)
 
     asyncio.run(scenario())

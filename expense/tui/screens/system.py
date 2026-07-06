@@ -22,7 +22,6 @@ from textual import work
 from textual.widget import Widget
 from textual.widgets import Static
 
-from expense.commands._resource import format_field_value
 from expense.errors import format_error
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
@@ -518,142 +517,86 @@ class ActivityScreen(SectionScreen):
         )
 
 
-class RatesScreen(SectionScreen):
-    """Reference FX lookup — GET /v1/exchange-rates.
+_RATES_PAGE = 50
+_RATES_HEADERS = ["Date", "Base", "Target", "Rate"]
 
-    Cross-currency writes convert automatically engine-side; this screen only
-    *reads* a rate for reference. `t/b/d` set target/base/date, `enter` looks up.
+
+class RatesScreen(SectionScreen):
+    """Stored daily FX rates — GET /v1/exchange-rates/history (backlog 4.8).
+
+    A plain read table: newest first, one row per currency pair per day.
+    Cross-currency writes convert automatically engine-side, so this is
+    reference data only. `f` filters to an exact day; blank enter clears.
+    Replaced the t/b/d letter-jump lookup per the approved v2 mockup.
     """
 
     crumb = ("System", "Rates")
-    CARD_WIDTH = 90
+    CARD_WIDTH = 72
     BINDINGS = [
-        ("t", "set_target", "Target"),
-        ("b", "set_base", "Base"),
-        ("d", "set_date", "Date"),
-        ("enter", "lookup", "Look up"),
+        ("f", "filter_date", "Filter date"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
-        self._target = "PEN"
-        self._base: str | None = None  # None → engine default (USD)
-        self._date: str | None = None  # None → engine default (today)
-        self._result: dict | None = None
+        self._date: str | None = None  # exact-day filter; None = full history
 
     def fetch(self) -> dict:
-        return {}  # nothing to preload — this is an on-demand lookup
-
-    def build(self, data: dict) -> list[Widget]:
-        widgets: list[Widget] = [
-            Static(Text("Exchange rates — reference lookup"), classes="section-title"),
-            Static(
-                Text(
-                    "Cross-currency transactions convert to your home currency automatically "
-                    "when you save them — you never type a rate. This only looks one up.",
-                    style="dim",
-                ),
-                classes="legend",
-            ),
-            Static(
-                _kv_table(
-                    [
-                        ("base", self._base or "USD (default)"),
-                        ("target", self._target),
-                        ("date", self._date or "today (default)"),
-                    ]
-                )
-            ),
-        ]
-        if self._result is not None:
-            widgets.append(Static(Text("result"), classes="section-title"))
-            widgets.append(Static(_rate_table(self._result)))
-        widgets.append(
-            Static(
-                Text("t target · b base · d date · ↵ look up", style="dim"),
-                classes="legend",
-            )
-        )
-        return widgets
-
-    def action_set_target(self) -> None:
-        def cb(value: str | None) -> None:
-            if value:
-                self._target = value.strip().upper()
-                self._load()
-
-        self.app.push_screen(
-            PromptModal("Target currency", "e.g. PEN", value=self._target or ""), cb
-        )
-
-    def action_set_base(self) -> None:
-        def cb(value: str | None) -> None:
-            if value is None:
-                return
-            self._base = value.strip().upper() or None
-            self._load()
-
-        self.app.push_screen(
-            PromptModal("Base currency", "blank = USD (engine default)", value=self._base or ""), cb
-        )
-
-    def action_set_date(self) -> None:
-        def cb(value: str | None) -> None:
-            if value is None:
-                return
-            self._date = value.strip() or None
-            self._load()
-
-        self.app.push_screen(
-            PromptModal("Date", "YYYY-MM-DD · blank = today", value=self._date or ""), cb
-        )
-
-    def action_lookup(self) -> None:
-        if not self._target:
-            self.notify("Set a target currency first (t).", severity="warning")
-            return
-        self._run_lookup()
-
-    @work(thread=True, exclusive=True)
-    def _run_lookup(self) -> None:
         from expense import config as config_module
         from expense.commands import rates_cmd
 
         cfg = config_module.ensure_loaded()
-        try:
-            body = rates_cmd.fetch_rate(
-                cfg,
-                target=self._target,
-                base=self._base,
-                date=self._date,
-                verbose=self.app._verbose,
+        body = rates_cmd.fetch_rates_history(
+            cfg, date=self._date, limit=_RATES_PAGE, verbose=self.app._verbose
+        )
+        items = body.get("items", body) if isinstance(body, dict) else (body or [])
+        total = body.get("total") if isinstance(body, dict) else None
+        return {"items": items, "total": total}
+
+    def build(self, data: dict) -> list[Widget]:
+        from expense.commands.rates_cmd import format_rate
+
+        rows = [
+            (
+                f"{it.get('rate_date')}:{it.get('base')}:{it.get('target')}",
+                [
+                    str(it.get("rate_date") or "—"),
+                    str(it.get("base") or "—"),
+                    str(it.get("target") or "—"),
+                    format_rate(it.get("rate")),
+                ],
             )
-        except Exception as exc:
-            self._result = None
-            self.app.call_from_thread(
-                self.notify, format_error(exc), title="Lookup failed", severity="error"
-            )
-            self.app.call_from_thread(self._load)
-            return
-        self._result = body
-        self.app.call_from_thread(self._looked_up)
+            for it in data["items"]
+            if isinstance(it, dict)
+        ]
+        total = data["total"]
+        shown = len(rows)
+        count = f"showing {shown} of {total}" if isinstance(total, int) else f"showing {shown}"
+        filtered = f"filtered: {self._date}   ·   " if self._date else ""
+        empty = f"(no rates stored for {self._date})" if self._date else "(no rates stored yet)"
+        return [
+            Static(Text("Exchange rates — stored daily history"), classes="section-title"),
+            Static(
+                Text(
+                    "Cross-currency writes convert automatically — this is the reference table.",
+                    style="dim",
+                ),
+                classes="legend",
+            ),
+            CursorList(_RATES_HEADERS, rows, align_right={3}, empty=empty),
+            Static(
+                Text(f"{filtered}{count}   ·   newest first   ·   f filter date"),
+                classes="legend",
+            ),
+        ]
 
-    def _looked_up(self) -> None:
-        self.notify("Rate fetched.")
-        self._load()
+    def action_filter_date(self) -> None:
+        def cb(value: str | None) -> None:
+            if value is None:
+                return  # esc — keep the current filter
+            self._date = value.strip() or None  # blank enter clears
+            self._load()
 
-
-def _rate_table(body: dict) -> Table:
-    """One-row table of the engine's exchange-rate response.
-
-    Columns are whatever fields the engine returns (base/target/rate/date/…),
-    so new fields render without a code change — same spirit as the CLI's
-    generic key/value renderer, just tabular per the approved mockup.
-    """
-    if not isinstance(body, dict) or not body:
-        return Table(box=box.SIMPLE)
-    t = Table(box=box.SIMPLE, pad_edge=False)
-    for key in body:
-        t.add_column(str(key))
-    t.add_row(*[format_field_value(key, value) for key, value in body.items()])
-    return t
+        self.app.push_screen(
+            PromptModal("Filter by date", "YYYY-MM-DD · blank = all days", value=self._date or ""),
+            cb,
+        )

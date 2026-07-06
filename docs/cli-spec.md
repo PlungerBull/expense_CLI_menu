@@ -119,6 +119,8 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ### `expense exchange-rates`
 - `rates get --target <code> [--base USD] [--date YYYY-MM-DD]` → `GET /v1/exchange-rates`.
+- `rates list [--date YYYY-MM-DD] [--limit N] [--offset N]` → `GET /v1/exchange-rates/history`
+  (stored daily rates, newest first, one row per pair per day; exact-day filter, no fallback).
 
 ### `expense sync`
 - `sync --full` — wildcard `*`, prints per-resource counts. Stateless.
