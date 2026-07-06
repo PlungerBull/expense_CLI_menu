@@ -83,12 +83,13 @@ class SnapshotModal(ModalScreen):
 
 
 class ConfirmModal(ModalScreen[bool]):
-    """Yes/no confirmation. `y`/`enter` confirm, `n`/`esc` cancel. Dismisses with
-    the boolean result (use `push_screen(modal, callback)` to act on it)."""
+    """Yes/no confirmation. Only `y` confirms; `enter`/`n`/`esc` cancel — enter is
+    the safe default so a reflexive keypress can never apply a write. Dismisses
+    with the boolean result (use `push_screen(modal, callback)` to act on it)."""
 
     BINDINGS = [
-        ("y,enter", "confirm", "Yes"),
-        ("n,escape", "cancel", "No"),
+        ("y", "confirm", "Yes"),
+        ("n,escape,enter", "cancel", "No"),
     ]
 
     def __init__(self, title: str, message: str) -> None:
@@ -100,7 +101,7 @@ class ConfirmModal(ModalScreen[bool]):
         yield Vertical(
             Static(Text(self._title), classes="modal-title"),
             Static(Text(self._message)),
-            Static(Text("[y / enter] confirm    [n / esc] cancel", style="dim")),
+            Static(Text("[y] confirm    [enter / n / esc] cancel", style="dim")),
             id="modal",
         )
         yield Footer()

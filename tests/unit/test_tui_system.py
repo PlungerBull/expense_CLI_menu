@@ -6,7 +6,7 @@ from uuid import uuid4
 from expense.cache import SyncSummary
 from expense.config import Config
 from expense.tui.app import ExpenseApp
-from expense.tui.screens.modals import SnapshotModal
+from expense.tui.screens.modals import ConfirmModal, SnapshotModal
 from expense.tui.screens.system import (
     ActivityScreen,
     AuthScreen,
@@ -173,6 +173,59 @@ def test_sync_screen_delta_refresh(fake_client, monkeypatch):
             await wait_for(pilot, lambda: screen._last is not None)
             assert screen._last is summary
             assert screen._last.kind == "delta"
+
+    asyncio.run(scenario())
+
+
+def test_full_rebuild_confirms_first(fake_client, monkeypatch):
+    """`f` opens a confirm (backlog 4.1): enter cancels, y runs cold_start."""
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: CFG)
+    monkeypatch.setattr(
+        "expense.cache.db.connect", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no db"))
+    )
+    summary = SyncSummary(kind="cold_start", inserts={"transactions": 9})
+    calls: list = []
+
+    def fake_cold_start(*a, **k):
+        calls.append(1)
+        return summary
+
+    monkeypatch.setattr("expense.cache.cold_start", fake_cold_start)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=False)
+        async with app.run_test() as pilot:
+            screen = SyncScreen()
+            await app.push_screen(screen)
+            await wait_for(pilot, lambda: bool(app.screen.query(".legend")))
+            await pilot.press("f")  # real key: covers routing
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("enter")  # safe default → cancels
+            await wait_for(pilot, lambda: app.screen is screen)
+            await pilot.pause(0.05)
+            assert calls == []
+            await pilot.press("f")
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("y")
+            await wait_for(pilot, lambda: screen._last is summary)
+            assert calls == [1]
+
+    asyncio.run(scenario())
+
+
+def test_system_screens_inherit_escape_and_r(monkeypatch):
+    """4.5 dropped the re-declared escape/r; SectionScreen must still supply them."""
+    monkeypatch.setattr("expense.config.load", lambda: CFG)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ConfigScreen()
+            await app.push_screen(screen)
+            await wait_for(pilot, lambda: screen._cfg is not None)
+            keys = set(screen.active_bindings)
+            assert {"escape", "r", "e", "t"} <= keys
+            assert screen.active_bindings["r"].binding.description == "Refresh"
 
     asyncio.run(scenario())
 

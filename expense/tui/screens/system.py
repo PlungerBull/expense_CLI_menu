@@ -7,7 +7,8 @@ bootstraps (provisions the user record), `m` sets the main currency (PUT
 /auth/settings, which triggers the engine's home-currency recalc).
 
 System reads (the last three sections before TUI parity):
-  Sync     — status of the local replica + `s` delta refresh / `f` full rebuild.
+  Sync     — status of the local replica + `s` sync (delta) / `f` full rebuild
+             (confirms first: a long re-download, though never engine data loss).
   Activity — engine-direct audit log; `enter` shows one entry's before/after.
   Rates    — reference FX lookup (conversion on writes is automatic engine-side).
 """
@@ -49,8 +50,6 @@ class ConfigScreen(SectionScreen):
     crumb = ("System", "Config")
     CARD_WIDTH = 76
     BINDINGS = [
-        ("escape", "app.pop_screen", "Back"),
-        ("r", "reload", "Refresh"),
         ("e", "set_engine", "Engine URL"),
         ("t", "set_token", "Token"),
     ]
@@ -134,8 +133,6 @@ class AuthScreen(SectionScreen):
     crumb = ("System", "Auth & profile")
     CARD_WIDTH = 76
     BINDINGS = [
-        ("escape", "app.pop_screen", "Back"),
-        ("r", "reload", "Refresh"),
         ("b", "bootstrap", "Bootstrap"),
         ("m", "currency", "Main currency"),
     ]
@@ -304,9 +301,7 @@ class SyncScreen(SectionScreen):
     crumb = ("System", "Sync")
     CARD_WIDTH = 80
     BINDINGS = [
-        ("escape", "app.pop_screen", "Back"),
-        ("r", "reload", "Reload view"),
-        ("s", "sync", "Refresh (delta)"),
+        ("s", "sync", "Sync"),
         ("f", "full", "Full rebuild"),
     ]
 
@@ -373,7 +368,7 @@ class SyncScreen(SectionScreen):
         widgets.append(
             Static(
                 Text(
-                    "s refresh (delta) · f full rebuild · engine is the source of truth",
+                    "s sync · f full rebuild · engine is the source of truth",
                     style="dim",
                 ),
                 classes="legend",
@@ -385,7 +380,20 @@ class SyncScreen(SectionScreen):
         self._run_sync(full=False)
 
     def action_full(self) -> None:
-        self._run_sync(full=True)
+        # confirms not because data is at risk (replica only; next read
+        # auto-cold-starts) but because an f=Filter slip buys a long re-download
+        def _cb(confirmed: bool | None) -> None:
+            if confirmed:
+                self._run_sync(full=True)
+
+        self.app.push_screen(
+            ConfirmModal(
+                "Rebuild local cache?",
+                "Deletes ~/.expense-cache.sqlite3 and re-downloads everything — "
+                "no engine data is touched, but it can take a while.",
+            ),
+            _cb,
+        )
 
     @work(thread=True, exclusive=True)
     def _run_sync(self, *, full: bool) -> None:
@@ -520,7 +528,6 @@ class RatesScreen(SectionScreen):
     crumb = ("System", "Rates")
     CARD_WIDTH = 90
     BINDINGS = [
-        ("escape", "app.pop_screen", "Back"),
         ("t", "set_target", "Target"),
         ("b", "set_base", "Base"),
         ("d", "set_date", "Date"),

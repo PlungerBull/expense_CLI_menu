@@ -127,13 +127,24 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
 
 ## 4. TUI polish — **[UI] items need mockup review first**
 
-- [ ] **4.1 [UI] Resolve the `r` keybinding collision.**
-  `r` = Refresh on every SectionScreen (`_base.py:28`) but Revert (a write!)
-  on `ReconciliationDetailScreen` (`reconciliations.py:664-669`), which has no
-  refresh key at all — and `ConfirmModal` accepts plain `enter`
-  (`modals.py:90`), so refresh muscle-memory can revert a batch. Also audit:
-  `d` Delete vs Date, `b` Bootstrap vs Base currency, `t` Token vs Target
-  (`system.py`). One meaning per key per verb class.
+- [x] **4.1 [UI] Resolve the `r` keybinding collision.** *(done 2026-07-05,
+  per approved mockup `expense-world-keymap-4.1.html` v2, validated by a
+  four-agent adversarial review)* Revert moved to `u` ("unlock", vim-style,
+  opposite hand from r — `v` rejected: same finger column as r/f and reserved
+  for a future "view"); recon detail gained `r` = refresh that refetches the
+  batch record too (stale header/status would misrepresent state) on its own
+  worker group; `ConfirmModal` now confirms on `y` only — `enter` CANCELS
+  (safe default; dead-enter looks hung and flips meaning mid PromptModal→
+  ConfirmModal chains); Sync `f` full rebuild now confirms (guards an
+  f=Filter slip into a long re-download — not data loss; replica only).
+  `d`/`b`/`t` cross-screen reuse kept deliberately: slips can't mutate
+  (writes confirm; Rates letters open prompts). Keymap contract: **r always
+  refreshes · y alone confirms · enter never mutates (submits typed
+  forms/prompts, cancels confirms) · no single unmodified keypress performs
+  an irreversible write without a modal.** Exempt by design: `space`
+  checklist toggle + `ctrl+↑↓` chain reorder (modified chord, self-reversing).
+  Future: rename on Manage screens must ship as `e`, never `r` (two older
+  mockups show `r rename` — superseded).
 
 - [ ] **4.2 [UI] Theme-resolve hardcoded colors; settle amount-coloring rule.**
   `"green"/"red"` by sign and `"green"/"dim"` in
@@ -149,8 +160,31 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
 - [ ] **4.4 [UI] `#field` label column (width: 11) clips longer form labels**
   like "TRANSFER TO?" / "BEGIN BALANCE" (`app.tcss:59-65`).
 
-- [ ] **4.5 Drop redundant re-declared escape/r bindings on System screens**
+- [x] **4.5 Drop redundant re-declared escape/r bindings on System screens**
   (`system.py:50-55,135-140,305-310`) — inherited already; pure cleanup.
+  *(done 2026-07-05, with 4.1)* Also dropped: the Reconciliations browse's
+  `r` re-declare (it IS a SectionScreen; its custom `escape`→back stays) and
+  Rates' `escape` re-declare. Sync's `s` relabeled "Refresh (delta)" → "Sync"
+  to mirror the flat `expense sync` command (`f` ↔ `expense sync --full`).
+  Verified against installed Textual 8.2.7: bindings merge per-key up the
+  MRO, so the merged map (footer order/labels included) is bit-identical.
+
+- [ ] **4.6 [UI] `q` quits the app instantly from inside ConfirmModal and
+  every list screen** (letters bubble to App's `q`=Quit, `app.py:23`; modals
+  contain nothing focusable). Pre-existing, found by the 4.1 key audit.
+  Decide: scope `q` to Home, add a quit confirm, or drop `q` for `ctrl+q`
+  (the built-in priority quit, which works everywhere including forms —
+  plain `q` is already dead wherever an Input has focus).
+
+- [ ] **4.7 Align unarchive-confirm philosophy across clients.** The TUI
+  confirms both archive and unarchive (`_base.py:166-179`) while backlog 1.2
+  deliberately made CLI `unarchive` prompt-free. Pick one rule.
+
+- [ ] **4.8 Convert Rates to the bar-cycle form idiom** (like quick-log /
+  create forms) instead of `t`/`b`/`d` letter-jumps — it's the only screen
+  that sets form values via letters; converting dissolves the d/b/t
+  cross-screen reuse at the root. Low priority (rare reference screen); do
+  not add another letter-jump screen in the meantime.
 
 ## 5. Deduplication refactors (pure, no behavior change)
 

@@ -15,7 +15,8 @@ while chained (engine 422). POST /reconciliations.
 Working screen (ReconciliationDetailScreen): a checklist of the account's
 unassigned + already-in-batch transactions (draft) or a read-only list of the
 batch's transactions (completed). `space` toggles membership (PUT the
-transaction's reconciliation_id); `c`/`r`/`d` complete/revert/delete. Complete
+transaction's reconciliation_id); `c`/`u`/`d` complete/revert/delete; `r`
+refetches the batch + checklist. Complete
 needs ≥1 transaction and locks amount/account/title/date on them; delete is
 draft-only and just detaches the transactions.
 """
@@ -123,8 +124,7 @@ class ReconciliationsScreen(SectionScreen):
     crumb = ("Capture & ledger", "Reconciliations")
     CARD_WIDTH = 100
     BINDINGS = [
-        ("escape", "back", "Back"),
-        ("r", "reload", "Refresh"),
+        ("escape", "back", "Back"),  # not the inherited pop: two-stage batches → accounts → home
         ("n", "new", "New"),
         ("ctrl+up", "reorder(-1)", "Move up"),
         ("ctrl+down", "reorder(1)", "Move down"),
@@ -664,12 +664,14 @@ def _txn_sub(it: dict, cat_names: dict, tag_names: dict) -> str:
 
 class ReconciliationDetailScreen(Screen):
     """One batch: header + a transaction checklist (draft) or read-only list
-    (completed). `space` toggles membership; `c`/`r`/`d` complete/revert/delete."""
+    (completed). `space` toggles membership; `c`/`u`/`d` complete/revert/delete;
+    `r` refetches the batch + checklist (r = refresh everywhere, never a write)."""
 
     BINDINGS = [
         ("escape", "back", "Back"),
+        ("r", "reload", "Refresh"),
         ("c", "complete", "Complete"),
-        ("r", "revert", "Revert"),
+        ("u", "revert", "Revert"),
         ("d", "delete", "Delete"),
     ]
 
@@ -717,14 +719,17 @@ class ReconciliationDetailScreen(Screen):
         )
         self.query_one("#rhead", Static).update(text)
         hint = (
-            "read-only while completed · r revert to edit · esc back"
+            "read-only while completed · u revert to edit · r refresh · esc back"
             if self._completed
-            else "space toggle in/out of this batch · c complete · r revert · d delete · esc back"
+            else "space toggle in/out of this batch · c complete · u revert · d delete"
+            " · r refresh · esc back"
         )
         self.query_one("#rhint", Static).update(Text(hint, style="dim"))
 
-    @work(thread=True, exclusive=True)
-    def _load_txns(self) -> None:
+    # own group: sharing the default exclusive group with _status_action would let
+    # a refresh mid-POST cancel the write's worker while its thread still lands
+    @work(thread=True, exclusive=True, group="recon-detail-load")
+    def _load_txns(self, refresh_record: bool = False) -> None:
         from expense import config as config_module
 
         try:
@@ -735,6 +740,22 @@ class ReconciliationDetailScreen(Screen):
                 cold_start_notice=False,
                 notice_stream=io.StringIO(),
             )
+            if refresh_record:
+                # refetch the batch itself too — a stale header/status would
+                # misrepresent balances and the read-only gate
+                fresh = next(
+                    (
+                        it
+                        for it in _items(reconcile_cmd.fetch_reconciliations(cfg, **kw))
+                        if it.get("id") == self._id
+                    ),
+                    None,
+                )
+                if fresh is None:
+                    self.app.call_from_thread(self._record_gone)
+                    return
+                self._record = fresh
+                self.app.call_from_thread(self._render_header)
             # assigned-to-this-batch transactions (always; any date)
             assigned = _items(
                 transactions_cmd.fetch_transactions(cfg, reconciliation=self._id, limit=500, **kw)
@@ -822,6 +843,13 @@ class ReconciliationDetailScreen(Screen):
 
     # ---- status actions --------------------------------------------------
     def action_back(self) -> None:
+        self.dismiss()
+
+    def action_reload(self) -> None:
+        self._load_txns(refresh_record=True)
+
+    def _record_gone(self) -> None:
+        self.notify("This reconciliation no longer exists.", severity="error")
         self.dismiss()
 
     def action_complete(self) -> None:

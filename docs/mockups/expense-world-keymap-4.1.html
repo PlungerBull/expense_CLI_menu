@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — keymap fix v2 (backlog 4.1 + 4.5)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     Backlog 4.1 (r-collision + key audit) and 4.5 (redundant bindings).
+     v2 — revised after a four-agent adversarial review (coverage audit,
+     Textual 8.2.7 mechanics, UX challenge, plans/tests/docs consistency).
+     Changes vs v1: revert lands on u (not v), enter now CANCELS confirms
+     (not dead), Sync s relabeled "Sync" (not "Delta sync"), audit table
+     extended with framework keys + missed surfaces.
+     Neutral theme, same shell as expense-world-reconciliations.html.
+     Before/after pairs: red = removed/dangerous, green = new/safe.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --term:#121216; --surface:#16161a; --panel:#1d1d22;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9db1c2; --accent-bg:#273039; --sel:#2b303a;
+    --pos:#7fbf8f; --neg:#cf8d8d; --warn:#d6b878;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:22px;
+       padding:38px 20px 70px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  .lbl{width:min(980px,100%);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .step{width:min(980px,100%);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:14px}
+
+  .term{width:min(980px,100%);background:var(--term);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:14px;line-height:1.5}
+  .bar{display:flex;align-items:center;gap:9px;padding:9px 14px;background:#101015}
+  .dots{display:flex;gap:7px}.dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#c95b4b}.dot.y{background:#c79a3a}.dot.g{background:#4fa06a}
+  .ttl{color:var(--dim);font-size:12.5px}.ttl b{color:var(--muted)}
+  .screen{padding:14px 18px 16px}
+  .crumb{color:var(--muted);font-size:13px;margin-bottom:12px}
+  .crumb b{color:var(--text);font-weight:600}.crumb .s{color:var(--dimmer)}
+
+  /* before/after pairing */
+  .pair{width:min(980px,100%);display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .pair .term{width:auto;font-size:13px}
+  .tag{font-size:11px;letter-spacing:.16em;text-transform:uppercase;padding:2px 9px;border-radius:999px;border:1px solid}
+  .tag.before{color:var(--neg);border-color:#4a2f2f}
+  .tag.after{color:var(--pos);border-color:#2f4636}
+
+  /* recon detail bits */
+  .rhead b{color:var(--text)} .rhead .mut{color:var(--dim)}
+  .rhead .ok{color:var(--pos)} .rhead .draft{color:var(--warn)}
+  .txn{padding:3px 8px;border-radius:6px}
+  .txn.on{background:var(--sel)}
+  .txn .ln1{display:grid;grid-template-columns:34px 1fr 96px 96px;gap:12px;align-items:center}
+  .txn .sub{color:var(--dim);font-size:12px;padding-left:46px}
+  .amt{text-align:right;font-variant-numeric:tabular-nums}
+  .ck{color:var(--pos)} .un{color:var(--dim)}
+  .hint{color:var(--dim);font-size:12.5px;margin-top:10px}
+  .hint .chg{color:var(--pos)} .hint .bad{color:var(--neg)}
+
+  .keybar{display:flex;flex-wrap:wrap;gap:11px;margin-top:12px;padding-top:10px;border-top:1px solid #20202a;
+          color:var(--muted);font-size:12.5px}
+  .keybar b{color:var(--bg);background:var(--muted);border-radius:4px;padding:0 6px;margin-right:5px;font-weight:600}
+  .keybar b.k{background:var(--accent)}
+  .keybar b.new{background:var(--pos)}
+  .keybar b.gone{background:var(--neg);text-decoration:line-through}
+  .keybar span.gone{opacity:.55}
+
+  /* modal */
+  .modalwrap{display:flex;justify-content:center;padding:26px 0 30px;background:rgba(0,0,0,.35)}
+  .modal{background:var(--panel);border:1px solid var(--dimmer);border-radius:10px;padding:16px 20px;min-width:64%;
+         box-shadow:0 18px 44px -20px #000}
+  .modal .mtitle{font-weight:700;margin-bottom:6px}
+  .modal .mmsg{color:var(--muted);font-size:13px;margin-bottom:12px}
+  .modal .mkeys{color:var(--dim);font-size:12.5px}
+  .modal .mkeys .chg{color:var(--pos)} .modal .mkeys .bad{color:var(--neg);text-decoration:line-through}
+
+  /* audit table */
+  .audit{width:min(980px,100%);background:var(--term);border:1px solid #23232a;border-radius:12px;padding:16px 20px;font-size:13px}
+  .audit .row{display:grid;grid-template-columns:86px 230px 1fr 200px;gap:14px;padding:4px 8px;border-radius:6px;align-items:baseline}
+  .audit .row.head{color:var(--dim);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase}
+  .audit .rule{height:1px;background:#23232a;margin:4px 2px}
+  .audit .key{color:var(--bg);background:var(--muted);border-radius:4px;padding:0 7px;font-weight:600;justify-self:start;white-space:nowrap}
+  .audit .key.hot{background:var(--neg)}
+  .audit .key.new{background:var(--pos)}
+  .audit .mut{color:var(--dim)}
+  .audit .keep{color:var(--pos)} .audit .change{color:var(--warn)} .audit .drop{color:var(--neg)} .audit .flag{color:var(--accent)}
+  .note{width:min(980px,100%);color:var(--dim);font-size:12.5px;line-height:1.55}
+  .note b{color:var(--muted)}
+  .note .hd{color:var(--accent);letter-spacing:.12em;text-transform:uppercase;font-size:11.5px;margin-top:10px}
+</style>
+</head>
+<body>
+
+<div class="lbl">expense world — keymap contract v2 · backlog 4.1 + 4.5 · validated by 4-agent adversarial review
+  <span><br/>The contract: <b style="color:var(--text)">r always refreshes · y alone confirms · enter never mutates
+  (it submits typed forms and safely CANCELS confirm dialogs) · no single unmodified keypress performs an
+  irreversible write without a modal.</b></span>
+</div>
+
+<!-- ================= 1. recon detail (draft) ==================== -->
+<div class="step">1 · Reconciliation detail (draft) — revert moves r → u ("unlock"), r becomes refresh</div>
+<div class="pair">
+  <div class="term">
+    <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="ttl">before <b>— r is a write here, refresh doesn't exist</b></div><span class="tag before" style="margin-left:auto">before</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Reconciliations <span class="s">›</span> May groceries</div>
+      <div class="rhead"><b>May groceries</b> <span class="mut">· BCP Soles · 2026-05-01 → 2026-05-31</span><br/>
+        <span class="mut">begin</span> S/ 1,240.00 <span class="mut">(prior)</span>
+        <span class="mut">&nbsp;&nbsp;end</span> S/ 862.10
+        <span class="mut">&nbsp;&nbsp;status</span> <span class="draft">draft</span></div>
+      <div style="height:8px"></div>
+      <div class="txn on"><div class="ln1"><span class="ck">[x]</span><span>Wong groceries</span><span class="amt">-182.40</span><span class="amt mut">2026-05-04</span></div>
+        <div class="sub">Food &nbsp;·&nbsp; #weekly</div></div>
+      <div class="txn"><div class="ln1"><span class="un">[ ]</span><span>Tambo snacks</span><span class="amt">-24.50</span><span class="amt mut">2026-05-06</span></div>
+        <div class="sub">Food</div></div>
+      <div class="hint">space toggle in/out of this batch · c complete · <span class="bad">r revert</span> · d delete · esc back</div>
+      <div class="keybar"><span><b class="k">space</b>toggle</span><span><b>c</b>complete</span><span class="gone"><b class="gone">r</b>revert</span><span><b>d</b>delete</span><span><b>esc</b>back</span></div>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="ttl">after <b>— r matches every other screen; u is the write (far from r, vim-style undo)</b></div><span class="tag after" style="margin-left:auto">after</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Reconciliations <span class="s">›</span> May groceries</div>
+      <div class="rhead"><b>May groceries</b> <span class="mut">· BCP Soles · 2026-05-01 → 2026-05-31</span><br/>
+        <span class="mut">begin</span> S/ 1,240.00 <span class="mut">(prior)</span>
+        <span class="mut">&nbsp;&nbsp;end</span> S/ 862.10
+        <span class="mut">&nbsp;&nbsp;status</span> <span class="draft">draft</span></div>
+      <div style="height:8px"></div>
+      <div class="txn on"><div class="ln1"><span class="ck">[x]</span><span>Wong groceries</span><span class="amt">-182.40</span><span class="amt mut">2026-05-04</span></div>
+        <div class="sub">Food &nbsp;·&nbsp; #weekly</div></div>
+      <div class="txn"><div class="ln1"><span class="un">[ ]</span><span>Tambo snacks</span><span class="amt">-24.50</span><span class="amt mut">2026-05-06</span></div>
+        <div class="sub">Food</div></div>
+      <div class="hint">space toggle in/out of this batch · c complete · <span class="chg">u revert</span> · d delete · <span class="chg">r refresh</span> · esc back</div>
+      <div class="keybar"><span><b class="k">space</b>toggle</span><span><b>c</b>complete</span><span><b class="new">u</b>revert</span><span><b>d</b>delete</span><span><b class="new">r</b>refresh</span><span><b>esc</b>back</span></div>
+    </div>
+  </div>
+</div>
+<div class="note">Why <b>u</b> and not v (v1 proposed v): v shares the left-index-finger column with r/f on QWERTY —
+it relocates the write onto the most likely fumble key — and v is the natural future "view" key, which would
+re-create this exact collision later. u is taught by the app's own confirm copy ("<b>Unlocks</b> the assigned
+transactions…"), matches the earlier approved mockup label "revert (unlock)", follows vim/taskwarrior-tui u=undo,
+sits on the opposite hand from r, and is unbound everywhere. Implementation note: the new r=refresh must re-fetch
+the reconciliation record itself, not just the transaction list — otherwise the header balances, status, and the
+read-only gate go stale (worse than no refresh key).</div>
+
+<!-- ================= 2. recon detail (completed) ==================== -->
+<div class="step">2 · Reconciliation detail (completed) — same swap on the read-only variant</div>
+<div class="pair">
+  <div class="term">
+    <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="ttl">before</div><span class="tag before" style="margin-left:auto">before</span></div>
+    <div class="screen">
+      <div class="rhead"><b>May groceries</b> <span class="mut">· status</span> <span class="ok">completed</span></div>
+      <div class="hint">read-only while completed · <span class="bad">r revert to edit</span> · esc back</div>
+      <div class="keybar"><span><b>c</b>complete</span><span class="gone"><b class="gone">r</b>revert</span><span><b>d</b>delete</span><span><b>esc</b>back</span></div>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="ttl">after</div><span class="tag after" style="margin-left:auto">after</span></div>
+    <div class="screen">
+      <div class="rhead"><b>May groceries</b> <span class="mut">· status</span> <span class="ok">completed</span></div>
+      <div class="hint">read-only while completed · <span class="chg">u revert to edit</span> · <span class="chg">r refresh</span> · esc back</div>
+      <div class="keybar"><span><b>c</b>complete</span><span><b class="new">u</b>revert</span><span><b>d</b>delete</span><span><b class="new">r</b>refresh</span><span><b>esc</b>back</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 3. confirm modal ==================== -->
+<div class="step">3 · Confirm modal — y alone confirms; enter becomes the SAFE default (cancel), not dead</div>
+<div class="pair">
+  <div class="term">
+    <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="ttl">before <b>— reflexive enter = accidental write</b></div><span class="tag before" style="margin-left:auto">before</span></div>
+    <div class="modalwrap"><div class="modal">
+      <div class="mtitle">Revert to draft?</div>
+      <div class="mmsg">Unlocks the assigned transactions and this batch's balances.</div>
+      <div class="mkeys">[y / <span class="bad">enter</span>] confirm &nbsp;&nbsp; [n / esc] cancel</div>
+    </div></div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="ttl">after <b>— enter can never double-apply; it dismisses harmlessly</b></div><span class="tag after" style="margin-left:auto">after</span></div>
+    <div class="modalwrap"><div class="modal">
+      <div class="mtitle">Revert to draft?</div>
+      <div class="mmsg">Unlocks the assigned transactions and this batch's balances.</div>
+      <div class="mkeys">[<span class="chg">y</span>] confirm &nbsp;&nbsp; [<span class="chg">enter</span> / n / esc] cancel</div>
+    </div></div>
+  </div>
+</div>
+<div class="note">Why enter=cancel and not enter=dead (v1 proposed dead): a dead key makes the modal look hung, and
+PromptModal→ConfirmModal chains (Auth main-currency) would flip enter's meaning mid-flow — a double-enter user
+stalls silently. Enter-as-safe-default has real precedent (k9s default-focuses Cancel; mutt takes enter as the
+bracketed default), keeps one-keystroke dismissal, and is self-revealing: the list is unchanged, the item is still
+there. This is the TUI analog of the flat CLI's required <b>--yes</b> on <b>reconcile revert</b>.</div>
+
+<!-- ================= 4. sync footer (4.5) ==================== -->
+<div class="step">4 · System › Sync — drop redundant bindings (4.5); s = "Sync" (mirrors `expense sync`); f confirms</div>
+<div class="pair">
+  <div class="term">
+    <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="ttl">before <b>— re-declared escape/r; "Reload view" vs "Refresh (delta)"; f fires instantly</b></div><span class="tag before" style="margin-left:auto">before</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> System <span class="s">›</span> Sync</div>
+      <div class="keybar"><span><b>esc</b>back</span><span><b class="k">r</b>reload view</span><span><b>s</b>refresh (delta)</span><span><b>f</b>full rebuild</span></div>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="ttl">after <b>— inherited esc/r; s named like the flat command; f gains a confirm</b></div><span class="tag after" style="margin-left:auto">after</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> System <span class="s">›</span> Sync</div>
+      <div class="keybar"><span><b>esc</b>back</span><span><b class="k">r</b>refresh</span><span><b class="new">s</b>sync</span><span><b>f</b>full rebuild</span></div>
+      <div class="hint">f now opens: <span class="chg">"Rebuild local cache? Deletes ~/.expense-cache.sqlite3 and
+      re-downloads everything — no engine data is touched, but it can take a while."</span> [y] confirm · [enter/n/esc] cancel</div>
+    </div>
+  </div>
+</div>
+<div class="note">Label rationale: the flat command is plain <b>expense sync</b> (bare = delta, --full = rebuild),
+so the footer mirrors the command surface — s ↔ `expense sync`, f ↔ `expense sync --full`. "Delta" is mechanism,
+not intent. The f confirm is honest about what it guards: <b>not data loss</b> (the replica is read-only; the engine
+is untouched and the next read auto-cold-starts even after a failed rebuild) but an f=Filter muscle-memory slip from
+Inbox into a long, uncancelable re-download. <b>Corrected 4.5 scope:</b> Config + Auth drop their escape/r
+re-declares; Sync drops escape/r and relabels s; <b>Reconciliations list drops its r re-declare too — it IS a
+SectionScreen</b> (v1 said otherwise — wrong); its custom escape (two-stage back: batches → accounts → home) stays;
+<b>Rates drops its escape re-declare</b> (same pure-dupe class). All verified safe against installed Textual 8.2.7:
+bindings merge per-key up the MRO, so the merged map — footer order and labels included — is bit-identical after
+the deletions.</div>
+
+<!-- ================= 5. audit table ==================== -->
+<div class="step">5 · Full key audit v2 — now including framework keys and surfaces v1 missed</div>
+<div class="audit">
+  <div class="row head"><span>key</span><span>where</span><span>meaning</span><span>verdict</span></div>
+  <div class="rule"></div>
+  <div class="row"><span class="key hot">r</span><span>every SectionScreen <span class="mut">(incl. Outstanding, Activity, Rates — inherited)</span></span><span>Refresh (read)</span><span class="keep">keep — canonical</span></div>
+  <div class="row"><span class="key hot">r</span><span>Reconciliation detail</span><span>Revert <span class="mut">(write!)</span></span><span class="change">change → u</span></div>
+  <div class="row"><span class="key hot">r</span><span>Sync · Recon list</span><span>re-declared dupes of Refresh</span><span class="drop">drop re-declares (4.5)</span></div>
+  <div class="row"><span class="key new">u</span><span>Reconciliation detail</span><span>Revert / unlock <span class="mut">(new home, confirms via modal)</span></span><span class="keep">new</span></div>
+  <div class="row"><span class="key">v</span><span>—</span><span>reserved for a future "view" action</span><span class="flag">keep unbound</span></div>
+  <div class="row"><span class="key hot">r</span><span>future: rename <span class="mut">(sections/collapse mockups)</span></span><span>Rename on Accounts/Categories/Hashtags <span class="mut">(unbuilt)</span></span><span class="change">must ship as e, not r</span></div>
+  <div class="rule"></div>
+  <div class="row"><span class="key hot">enter</span><span>ConfirmModal</span><span>was Confirm <span class="mut">(write trigger)</span> → now Cancel <span class="mut">(safe default)</span></span><span class="change">change</span></div>
+  <div class="row"><span class="key">enter</span><span>forms <span class="mut">(quick-log, create, new-recon)</span> · PromptModal</span><span>advance field / submit typed input <span class="mut">(deliberate multi-keystroke flow)</span></span><span class="keep">keep — explicit carve-out</span></div>
+  <div class="row"><span class="key">enter</span><span>lists · Rates · Home menu</span><span>Open · Look up · Select (read)</span><span class="keep">keep</span></div>
+  <div class="rule"></div>
+  <div class="row"><span class="key">d</span><span>Inbox · Recon detail</span><span>Delete <span class="mut">(write, confirms)</span></span><span class="keep">keep</span></div>
+  <div class="row"><span class="key">d</span><span>System › Rates</span><span>Date <span class="mut">(prompt, read)</span></span><span class="keep">keep — slip is harmless</span></div>
+  <div class="row"><span class="key">b</span><span>System › Auth</span><span>Bootstrap <span class="mut">(PromptModal → POST on typed enter; no ConfirmModal)</span></span><span class="keep">keep — typed flow = deliberate</span></div>
+  <div class="row"><span class="key">b</span><span>System › Rates</span><span>Base <span class="mut">(prompt, read)</span></span><span class="keep">keep — slip is harmless</span></div>
+  <div class="row"><span class="key">t</span><span>System › Config</span><span>Token <span class="mut">(local config edit)</span></span><span class="keep">keep</span></div>
+  <div class="row"><span class="key">t</span><span>System › Rates</span><span>Target <span class="mut">(prompt, read)</span></span><span class="keep">keep — slip is harmless</span></div>
+  <div class="rule"></div>
+  <div class="row"><span class="key hot">f</span><span>Inbox</span><span>Filter (read)</span><span class="keep">keep</span></div>
+  <div class="row"><span class="key hot">f</span><span>System › Sync</span><span>Full rebuild <span class="mut">(replica wipe + long refetch; no engine data at risk)</span></span><span class="change">add ConfirmModal</span></div>
+  <div class="rule"></div>
+  <div class="row"><span class="key">ctrl+↑↓</span><span>Recon list</span><span>Reorder chain <span class="mut">(unconfirmed engine PUT; re-derives chained balances)</span></span><span class="keep">keep — modified chord + self-reversing; exempt, documented</span></div>
+  <div class="row"><span class="key">space</span><span>Recon checklist</span><span>Assign/unassign <span class="mut">(instant PUT, self-reversing)</span></span><span class="keep">keep — reversible by design</span></div>
+  <div class="rule"></div>
+  <div class="row"><span class="key">n</span><span>Accounts · Categories · Hashtags · Recon list</span><span>New (opens form)</span><span class="keep">keep — consistent</span></div>
+  <div class="row"><span class="key">a</span><span>Accounts · Categories · Hashtags</span><span>Archive/unarchive (write, confirms)</span><span class="keep">keep — consistent</span></div>
+  <div class="row"><span class="key">c</span><span>Recon detail</span><span>Complete (write, confirms)</span><span class="keep">keep</span></div>
+  <div class="row"><span class="key">p</span><span>Inbox</span><span>Promote (write, confirms)</span><span class="keep">keep</span></div>
+  <div class="row"><span class="key">e</span><span>System › Config</span><span>Engine URL (local config edit)</span><span class="keep">keep</span></div>
+  <div class="row"><span class="key">m</span><span>System › Auth</span><span>Main currency (PromptModal → ConfirmModal)</span><span class="keep">keep</span></div>
+  <div class="row"><span class="key">s</span><span>System › Sync</span><span>Sync <span class="mut">(relabel from "Refresh (delta)")</span></span><span class="change">relabel only</span></div>
+  <div class="rule"></div>
+  <div class="row"><span class="key hot">q</span><span>app <span class="mut">(where no Input is focused)</span></span><span>Quit — <span class="mut">fires instantly even inside ConfirmModal; types "q" in forms</span></span><span class="flag">flag → new backlog item</span></div>
+  <div class="row"><span class="key">ctrl+q</span><span>app (priority)</span><span>Quit — the true global quit, works everywhere</span><span class="keep">keep — framework</span></div>
+  <div class="row"><span class="key">ctrl+p</span><span>app</span><span>Textual command palette <span class="mut">(already live; Phase 3 populates it)</span></span><span class="keep">keep — framework</span></div>
+  <div class="row"><span class="key">tab</span><span>everywhere</span><span>focus next/previous <span class="mut">(can move focus off a list onto the scroll container)</span></span><span class="keep">keep — framework</span></div>
+  <div class="row"><span class="key">esc</span><span>everywhere</span><span>Back / Cancel / No</span><span class="keep">keep</span></div>
+</div>
+
+<div class="note">
+  <span class="hd">Why d/b/t stay</span><br/>
+  Habits form on the daily screens (d=Delete on Inbox); the slip onto Rates opens a harmless prompt, and the reverse
+  slip opens a confirm that dies on enter/n/esc. Unique non-mnemonic letters would trade three learnable collisions
+  for six unlearnable keys. <b>Longer-term direction (not blocking):</b> Rates is the only screen that uses
+  letter-jumps to set form values — every other multi-field surface uses the bar-cycle form idiom. Converting Rates
+  to a three-field form dissolves d/b/t at the root; write it down so no fourth letter-jump screen gets added.<br/>
+
+  <span class="hd">Implementation traps (from the mechanics review)</span><br/>
+  1. Recon-detail r=refresh: <b>_load_txns</b> and the write worker share the default exclusive worker group — give
+  the reload its own <b>group=</b> or a refresh mid-POST cancels the wrapper while the thread still lands the write.
+  2. The reload must re-fetch the reconciliation record (header balances + read-only gate), not just the checklist.
+  3. Keymap text lives in four places that drift: BINDINGS (footer), hand-written hint Statics, module/class
+  docstrings, and mockups — update all, and add a test pinning hint ↔ binding agreement.<br/>
+
+  <span class="hd">Tests to add in the same PR (none break; gaps found by the consistency review)</span><br/>
+  · ConfirmModal: enter cancels (modal closes, no write) · press u → modal → y → POST; press r → refetch, no POST ·
+  Sync f → modal → y calls cold_start; enter/n/esc doesn't · inheritance smoke: r still reloads on ConfigScreen
+  after 4.5 · binding-level assertions (tests currently call actions directly, so a screen still binding r=revert
+  would pass today's suite).<br/>
+
+  <span class="hd">Out of scope, filed as follow-ups</span><br/>
+  · <b>q quits instantly from inside ConfirmModal / any list</b> (letters bubble to App) — pre-existing; new backlog
+  item, not 4.1. · TUI confirms unarchive while backlog 1.2 made CLI unarchive prompt-free — pick one philosophy.
+  · Sequencing: land 4.1+4.5 before 4.2 (same _render_header function) and before 5.1 (touches the same write workers).
+</div>
+
+</body>
+</html>

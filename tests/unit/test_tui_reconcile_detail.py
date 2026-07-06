@@ -3,6 +3,7 @@
 import asyncio
 
 from expense.tui.app import ExpenseApp
+from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.reconciliations import ReconciliationDetailScreen, _txn_sub
 from expense.tui.widgets.checklist import CheckList
 from tests.unit.helpers import wait_for
@@ -181,6 +182,90 @@ def test_revert_posts(fake_client, monkeypatch):
             await pilot.press("y")
             await wait_for(pilot, lambda: fake_client.posts)
             assert fake_client.posts == [("/reconciliations/r1/revert", None)]
+
+    asyncio.run(scenario())
+
+
+def test_revert_key_is_u(fake_client, monkeypatch):
+    """Real `u` keypress routes to revert (backlog 4.1 — `r` must never write)."""
+    completed = {**DRAFT, "status": 2}
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(completed))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            await pilot.press("u")
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("y")
+            await wait_for(pilot, lambda: fake_client.posts)
+            assert fake_client.posts == [("/reconciliations/r1/revert", None)]
+
+    asyncio.run(scenario())
+
+
+def test_r_refreshes_record_and_never_writes(fake_client, monkeypatch):
+    """`r` refetches the batch (header + status gate) and the checklist; no write."""
+    completed = {**DRAFT, "status": 2}
+    _patch(monkeypatch)
+    fresh = {**completed, "ending_balance_cents": 999999}
+    monkeypatch.setattr(
+        "expense.commands.reconcile_cmd.fetch_reconciliations",
+        lambda cfg, **k: {"items": [fresh]},
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(completed))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            await pilot.press("r")
+            await wait_for(pilot, lambda: screen._record is fresh)
+            await pilot.pause(0.05)
+            assert app.screen is screen  # no confirm modal opened
+            assert not fake_client.posts and not fake_client.deletes
+
+    asyncio.run(scenario())
+
+
+def test_r_refresh_dismisses_when_record_gone(fake_client, monkeypatch):
+    """Batch deleted elsewhere → refresh notifies and pops instead of lying."""
+    _patch(monkeypatch)
+    monkeypatch.setattr(
+        "expense.commands.reconcile_cmd.fetch_reconciliations", lambda cfg, **k: {"items": []}
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            await pilot.press("r")
+            await wait_for(pilot, lambda: app.screen is not screen)
+
+    asyncio.run(scenario())
+
+
+def test_confirm_modal_enter_cancels(fake_client, monkeypatch):
+    """Enter is the safe default: dismisses the confirm without applying (4.1)."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            await pilot.press("d")  # delete → confirm modal
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("enter")
+            await wait_for(pilot, lambda: app.screen is screen)  # modal gone
+            await pilot.pause(0.05)
+            assert not fake_client.deletes
 
     asyncio.run(scenario())
 
