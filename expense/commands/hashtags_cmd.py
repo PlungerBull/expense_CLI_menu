@@ -14,8 +14,11 @@ from expense.commands._resource import (
     YES_OPT,
     build_update_payload,
     cache_after_write,
-    format_field_value,
+    fetch_body,
+    format_bool,
+    items_of,
     render_pagination_hint,
+    render_record,
     render_table,
     require_yes,
     run_toggle,
@@ -29,23 +32,11 @@ app = typer.Typer(help="Hashtags.", no_args_is_help=True)
 _RESOURCE = "hashtags"
 
 
-def _render_hashtag(body: dict, *, json_mode: bool) -> None:
-    if json_mode:
-        typer.echo(json.dumps(body, indent=2))
-        return
-    for key, value in body.items():
-        typer.echo(f"  {key}: {format_field_value(key, value)}")
-
-
-def _fmt_bool(value: object) -> str:
-    return "yes" if bool(value) else "no"
-
-
 def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
-    items = body.get("items", body) if isinstance(body, dict) else body
+    items = items_of(body)
     if not items:
         typer.echo("(no hashtags)")
         return
@@ -53,8 +44,8 @@ def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
     rows = [
         {
             "name": item.get("name") or "(unnamed)",
-            "archived": _fmt_bool(item.get("is_archived")),
-            "deleted": _fmt_bool(item.get("deleted_at")),
+            "archived": format_bool(item.get("is_archived")),
+            "deleted": format_bool(item.get("deleted_at")),
         }
         for item in items
     ]
@@ -85,26 +76,29 @@ def fetch_hashtags(
 
     Shared by the flat `hashtags list` command and the TUI's Hashtags screen.
     """
-    if no_cache:
-        params: dict = {}
-        if include_archived:
-            params["include_archived"] = "true"
-        if include_deleted:
-            params["include_deleted"] = "true"
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            return client.get(f"/{_RESOURCE}", params=params or None)
-
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
-        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
-    return cache_pkg.list_hashtags(
-        include_archived=include_archived,
-        include_deleted=include_deleted,
-        limit=limit,
-        offset=offset,
+    params: dict = {}
+    if include_archived:
+        params["include_archived"] = "true"
+    if include_deleted:
+        params["include_deleted"] = "true"
+    if limit is not None:
+        params["limit"] = limit
+    if offset is not None:
+        params["offset"] = offset
+    return fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}",
+        params=params,
+        cache_read=lambda: cache_pkg.list_hashtags(
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+            limit=limit,
+            offset=offset,
+        ),
+        no_cache=no_cache,
+        verbose=verbose,
+        cold_start_notice=cold_start_notice,
+        notice_stream=notice_stream,
     )
 
 
@@ -151,18 +145,15 @@ def get(
     Example: expense hashtags get <hashtag-id>
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}/{id_}")
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.get_hashtag(id_)
-
-    _render_hashtag(body, json_mode=json_output)
+    body = fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}/{id_}",
+        params=None,
+        cache_read=lambda: cache_pkg.get_hashtag(id_),
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
+    render_record(body, json_mode=json_output)
 
 
 @app.command("create")
@@ -191,7 +182,7 @@ def create(
 
     if not json_output:
         typer.echo(f"Created: {new_id}")
-    _render_hashtag(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
 
 
 @app.command("update")
@@ -216,7 +207,7 @@ def update(
         body = client.put(f"/{_RESOURCE}/{id_}", json_body=payload)
         cache_after_write(ctx, client, cfg)
 
-    _render_hashtag(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
 
 
 @app.command("delete")
@@ -244,7 +235,7 @@ def delete(
         body = client.delete(f"/{_RESOURCE}/{id_}")
         cache_after_write(ctx, client, cfg)
 
-    _render_hashtag(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
 
 
 @app.command("restore")
@@ -264,7 +255,7 @@ def restore(
         id_=id_,
         verb="restore",
         json_output=json_output,
-        render_human=lambda body: _render_hashtag(body, json_mode=False),
+        render_human=lambda body: render_record(body, json_mode=False),
     )
 
 
@@ -287,7 +278,7 @@ def archive(
         id_=id_,
         verb="archive",
         json_output=json_output,
-        render_human=lambda body: _render_hashtag(body, json_mode=False),
+        render_human=lambda body: render_record(body, json_mode=False),
     )
 
 
@@ -308,5 +299,5 @@ def unarchive(
         id_=id_,
         verb="unarchive",
         json_output=json_output,
-        render_human=lambda body: _render_hashtag(body, json_mode=False),
+        render_human=lambda body: render_record(body, json_mode=False),
     )

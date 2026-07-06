@@ -24,26 +24,26 @@ draft-only and just detaches the transactions.
 import io
 import uuid
 
-from rich.console import Group, RenderableType
-from rich.table import Table
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal
+from textual.containers import Container
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Footer, Input, Label, Static
+from textual.widgets import Footer, Input, Static
 
 from expense.commands import accounts_cmd, reconcile_cmd, transactions_cmd
 from expense.commands._resource import (
     format_cents,
+    items_of,
     load_account_name_map,
     load_category_name_map,
+    load_hashtag_name_map,
 )
-from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.dates import to_canonical_aware
 from expense.errors import format_error
-from expense.tui.screens._base import SectionScreen
+from expense.tui.screens._base import EngineWriteMixin, SectionScreen
+from expense.tui.screens._form import FormScreen
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
 from expense.tui.theme import AMOUNT_RULE, BALANCE_RULE, Palette, resolve_palette
@@ -54,12 +54,6 @@ from expense.tui.widgets.header import Breadcrumb
 
 _STATUS = {1: "draft", 2: "completed"}
 _LIST_HEADERS = ["Account", "Name", "Period", "Begin", "End", "Source", "Status"]
-
-
-def _items(body: object) -> list:
-    if isinstance(body, dict):
-        return body.get("items", []) or []
-    return body or []
 
 
 def _period(item: dict) -> str:
@@ -155,8 +149,8 @@ class ReconciliationsScreen(SectionScreen):
             cold_start_notice=False,
             notice_stream=io.StringIO(),
         )
-        recons = _items(reconcile_cmd.fetch_reconciliations(cfg, **kw))
-        accts = _items(accounts_cmd.fetch_accounts(cfg, **kw))
+        recons = items_of(reconcile_cmd.fetch_reconciliations(cfg, **kw))
+        accts = items_of(accounts_cmd.fetch_accounts(cfg, **kw))
         accounts = [
             (
                 a["id"],
@@ -286,32 +280,14 @@ class ReconciliationsScreen(SectionScreen):
         self._resume_key = key
         self._reorder(acct[0], ids)
 
-    @work(thread=True, exclusive=True)
     def _reorder(self, account_id: str, ordered_ids: list) -> None:
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
-        from expense.http import ExpenseClient
-
-        cfg = config_module.ensure_loaded()
-        try:
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                client.put(
-                    f"/accounts/{account_id}/reconciliations/order",
-                    json_body={"ordered_ids": ordered_ids},
-                )
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=io.StringIO(),
-                )
-        except Exception as exc:
-            self.app.call_from_thread(
-                self.notify, format_error(exc), title="Couldn't reorder", severity="error"
-            )
-            return
-        self.app.call_from_thread(self._reordered)
+        self.run_write(
+            "PUT",
+            f"/accounts/{account_id}/reconciliations/order",
+            json_body={"ordered_ids": ordered_ids},
+            on_success=self._reordered,
+            on_error=lambda m: self.notify(m, title="Couldn't reorder", severity="error"),
+        )
 
     def _reordered(self) -> None:
         self.notify("Reordered.")
@@ -347,25 +323,14 @@ _AMOUNTS = {"begin", "end"}
 _DATES = {"date_start", "date_end"}
 
 
-class NewReconciliationScreen(Screen):
-    BINDINGS = [
-        ("escape", "cancel", "Cancel"),
-        ("ctrl+s", "submit", "Create"),
-        ("up", "suggest(-1)", "↑"),
-        ("down", "suggest(1)", "↓"),
-        ("ctrl+up", "field(-1)", "Prev field"),
-        ("ctrl+down", "field(1)", "Next field"),
-    ]
+class NewReconciliationScreen(FormScreen):
+    RESOURCE = "reconciliations"
 
     def __init__(self, account_id: str | None = None, account_name: str | None = None) -> None:
         super().__init__()
-        self._current = 0
-        self._values: dict = {"source": "chained"}
-        self._display: dict = {"source": "chained"}
+        self._values = {"source": "chained"}
+        self._display = {"source": "chained"}
         self._accounts: list = []
-        self._suggestions: list = []
-        self._suggest_idx = 0
-        self._submitting = False
         self._preset_account = account_id
         if account_id:  # created from within an account — don't ask for it again
             self._values["account"] = account_id
@@ -382,23 +347,26 @@ class NewReconciliationScreen(Screen):
         seq += ["date_start", "date_end", "source"]
         return seq + (["begin", "end"] if self._is_manual() else ["end"])
 
-    @property
-    def _key(self) -> str:
-        seq = self._sequence()
-        return seq[min(self._current, len(seq) - 1)]
+    def _required(self) -> tuple[str, ...]:
+        return ("name", "account") + (("begin",) if self._is_manual() else ())
 
-    def compose(self) -> ComposeResult:
-        yield Breadcrumb(self.crumb, id="crumb")
-        yield Horizontal(Label("", id="field"), Input(id="bar"), id="inputbar")
-        yield Static("", id="hint")
-        yield Static("", id="suggest")
-        yield Static("", id="summary")
-        yield Footer()
+    def _label(self, key: str) -> str:
+        return _R_LABELS[key]
 
-    def on_mount(self) -> None:
-        self._refresh_bar()
-        self._refresh_view()
-        self.query_one("#bar", Input).focus()
+    def _hint_for(self, key: str) -> str:
+        return _R_HINTS.get(key, "")
+
+    def _suggests(self, key: str) -> bool:
+        return key in ("account", "source")
+
+    def _bar_value(self, key: str) -> str:
+        if key in _AMOUNTS and key in self._values:
+            return amount_to_text(self._values[key])
+        if key in ("name", *_DATES):
+            return str(self._values.get(key, "") or "")
+        return ""  # account / source re-pick
+
+    def _after_mount(self) -> None:
         if not self._preset_account:  # only need the account picker for standalone create
             self._load_accounts()
 
@@ -418,7 +386,7 @@ class NewReconciliationScreen(Screen):
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
-        items = body.get("items", body) if isinstance(body, dict) else (body or [])
+        items = items_of(body)
         accounts = [
             (a["id"], a.get("name") or "(unnamed)", a.get("currency_code") or "?")
             for a in items
@@ -431,19 +399,7 @@ class NewReconciliationScreen(Screen):
         self._recompute(self.query_one("#bar", Input).value)
         self._refresh_view()
 
-    # ---- bar / nav -------------------------------------------------------
-    def _refresh_bar(self) -> None:
-        key = self._key
-        self.query_one("#field", Label).update(_R_LABELS[key])
-        bar = self.query_one("#bar", Input)
-        if key in _AMOUNTS and key in self._values:
-            bar.value = amount_to_text(self._values[key])
-        elif key in ("name", *_DATES):
-            bar.value = str(self._values.get(key, "") or "")
-        else:  # account / source re-pick
-            bar.value = ""
-        self._recompute(bar.value)
-
+    # ---- suggestions -----------------------------------------------------
     def _recompute(self, text: str) -> None:
         key = self._key
         needle = text.strip().lower()
@@ -456,29 +412,6 @@ class NewReconciliationScreen(Screen):
         else:
             self._suggestions = []
         self._suggest_idx = 0
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if self._key in ("account", "source"):
-            self._recompute(event.value)
-            self._refresh_view()
-
-    def action_suggest(self, delta: int) -> None:
-        if self._suggestions:
-            self._suggest_idx = max(0, min(len(self._suggestions) - 1, self._suggest_idx + delta))
-            self._refresh_view()
-
-    def action_field(self, delta: int) -> None:
-        self._current = max(0, min(len(self._sequence()) - 1, self._current + delta))
-        self._refresh_bar()
-        self._refresh_view()
-
-    def _advance(self) -> None:
-        if self._current >= len(self._sequence()) - 1:
-            self.action_submit()
-        else:
-            self._current += 1
-            self._refresh_bar()
-            self._refresh_view()
 
     # ---- commit ----------------------------------------------------------
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -543,62 +476,7 @@ class NewReconciliationScreen(Screen):
             return
         self._refresh_view()
 
-    # ---- render ----------------------------------------------------------
-    def _refresh_view(self) -> None:
-        self.query_one("#hint", Static).update(Text(_R_HINTS.get(self._key, ""), style="dim"))
-        self.query_one("#suggest", Static).update(self._suggest_renderable())
-        self.query_one("#summary", Static).update(self._summary_renderable())
-
-    def _suggest_renderable(self) -> RenderableType:
-        if self._key not in ("account", "source"):
-            return Text("")
-        if not self._suggestions:
-            return Text("  no matches", style="dim")
-        rows = []
-        for i, ent in enumerate(self._suggestions):
-            extra = f"  {ent[2]}" if self._key == "account" and len(ent) > 2 else ""
-            line = Text(f"  {ent[1]}{extra}")
-            if i == self._suggest_idx:
-                line.stylize("reverse")
-            rows.append(line)
-        return Group(*rows)
-
-    def _summary_renderable(self) -> RenderableType:
-        seq = self._sequence()
-        required = ("name", "account") + (("begin",) if self._is_manual() else ())
-        t = Table(box=None, pad_edge=False, show_header=False)
-        t.add_column("k")
-        t.add_column("v")
-        for key in seq:
-            shown = self._display.get(key)
-            if shown:
-                value = Text(str(shown))
-            else:
-                tag = "  *" if key in required else "  (optional)"
-                value = Text("—" + tag, style="dim")
-            label = Text(_R_LABELS[key].lower())
-            if key == self._key:
-                label.stylize("bold")
-            t.add_row(label, value)
-        return t
-
     # ---- submit ----------------------------------------------------------
-    def action_cancel(self) -> None:
-        self.dismiss()
-
-    def action_submit(self) -> None:
-        if self._submitting:
-            return
-        required = ("name", "account") + (("begin",) if self._is_manual() else ())
-        for key in required:
-            if key not in self._values:
-                self.notify(f"{_R_LABELS[key].title()} is required.", severity="error")
-                return
-        payload = self._payload()
-        self._submitting = True
-        self.query_one("#hint", Static).update(Text("Creating…", style="dim"))
-        self._submit(payload)
-
     def _payload(self) -> dict:
         payload = {
             "id": str(uuid.uuid4()),
@@ -617,33 +495,6 @@ class NewReconciliationScreen(Screen):
         if self._values.get("end") is not None:
             payload["ending_balance_cents"] = self._values["end"]
         return payload
-
-    @work(thread=True, exclusive=True)
-    def _submit(self, payload: dict) -> None:
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
-        from expense.http import ExpenseClient
-
-        cfg = config_module.ensure_loaded()
-        try:
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                client.post("/reconciliations", json_body=payload)
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=io.StringIO(),
-                )
-        except Exception as exc:
-            self.app.call_from_thread(self._failed, format_error(exc))
-            return
-        self.app.call_from_thread(self._done)
-
-    def _failed(self, message: str) -> None:
-        self._submitting = False
-        self.notify(message, title="Failed", severity="error")
-        self._refresh_view()
 
     def _done(self) -> None:
         self.notify("Reconciliation created.")
@@ -673,7 +524,7 @@ def _txn_sub(it: dict, cat_names: dict, tag_names: dict) -> str:
     return "  ·  ".join(parts)
 
 
-class ReconciliationDetailScreen(Screen):
+class ReconciliationDetailScreen(EngineWriteMixin, Screen):
     """One batch: header + a transaction checklist (draft) or read-only list
     (completed). `space` toggles membership; `c`/`u`/`d` complete/revert/delete;
     `r` refetches the batch + checklist (r = refresh everywhere, never a write)."""
@@ -765,7 +616,7 @@ class ReconciliationDetailScreen(Screen):
                 fresh = next(
                     (
                         it
-                        for it in _items(reconcile_cmd.fetch_reconciliations(cfg, **kw))
+                        for it in items_of(reconcile_cmd.fetch_reconciliations(cfg, **kw))
                         if it.get("id") == self._id
                     ),
                     None,
@@ -776,14 +627,14 @@ class ReconciliationDetailScreen(Screen):
                 self._record = fresh
                 self.app.call_from_thread(self._render_header)
             # assigned-to-this-batch transactions (always; any date)
-            assigned = _items(
+            assigned = items_of(
                 transactions_cmd.fetch_transactions(cfg, reconciliation=self._id, limit=500, **kw)
             )
             available = []
             if not self._completed:  # draft also offers the account's unassigned txns in range
                 available = [
                     it
-                    for it in _items(
+                    for it in items_of(
                         transactions_cmd.fetch_transactions(
                             cfg,
                             account=self._account_id,
@@ -842,25 +693,15 @@ class ReconciliationDetailScreen(Screen):
     def on_check_list_toggled(self, event: CheckList.Toggled) -> None:
         self._assign(event.key, self._id if event.checked else None)
 
-    @work(thread=True)
     def _assign(self, tx_id: object, recon_id: object) -> None:
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
-        from expense.http import ExpenseClient
-
-        cfg = config_module.ensure_loaded()
-        try:
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                client.put(f"/transactions/{tx_id}", json_body={"reconciliation_id": recon_id})
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=io.StringIO(),
-                )
-        except Exception as exc:
-            self.app.call_from_thread(self._assign_failed, format_error(exc))
+        # Success is silent — the checklist toggle already shows the new state.
+        self.run_write(
+            "PUT",
+            f"/transactions/{tx_id}",
+            json_body={"reconciliation_id": recon_id},
+            on_success=lambda: None,
+            on_error=self._assign_failed,
+        )
 
     def _assign_failed(self, message: str) -> None:
         self.notify(message, title="Couldn't update", severity="error")
@@ -922,33 +763,16 @@ class ReconciliationDetailScreen(Screen):
 
         self.app.push_screen(ConfirmModal(title, message), cb)
 
-    @work(thread=True, exclusive=True)
     def _status_action(self, method: str, path: str, new_status, verb: str) -> None:
         if self._busy:
             return
         self._busy = True
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
-        from expense.http import ExpenseClient
-
-        cfg = config_module.ensure_loaded()
-        try:
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                if method == "DELETE":
-                    client.delete(path)
-                else:
-                    client.post(path)
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=io.StringIO(),
-                )
-        except Exception as exc:
-            self.app.call_from_thread(self._action_failed, format_error(exc), verb)
-            return
-        self.app.call_from_thread(self._action_done, new_status, verb)
+        self.run_write(
+            method,
+            path,
+            on_success=lambda: self._action_done(new_status, verb),
+            on_error=lambda m: self._action_failed(m, verb),
+        )
 
     def _action_failed(self, message: str, verb: str) -> None:
         self._busy = False

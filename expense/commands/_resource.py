@@ -10,7 +10,7 @@ from typing import Any
 import typer
 
 from expense import config as config_module
-from expense.cache import refresh_after_write
+from expense.cache import ensure_synced, refresh_after_write
 from expense.config import Config
 from expense.context import get_no_cache, get_no_sync_after, get_verbose
 from expense.errors import EngineError
@@ -127,6 +127,59 @@ def format_field_value(key: object, value: object) -> str:
     return "(null)" if value is None else str(value)
 
 
+def render_record(body: dict, *, json_mode: bool, skip: tuple[str, ...] = ()) -> None:
+    """Dump one resource record: raw JSON in json_mode, else `  key: value` lines.
+
+    The canonical renderer behind every `<resource> get` command. `skip` hides
+    keys from the human dump only — `--json` stays the verbatim engine body.
+    """
+    if json_mode:
+        typer.echo(json.dumps(body, indent=2))
+        return
+    for key, value in body.items():
+        if key in skip:
+            continue
+        typer.echo(f"  {key}: {format_field_value(key, value)}")
+
+
+def format_bool(value: object) -> str:
+    """Human cell for booleans (and truthy markers like `deleted_at`)."""
+    return "yes" if bool(value) else "no"
+
+
+def format_month(month: dict | None) -> str:
+    """Render the engine's `{year, month}` object as `YYYY-MM`."""
+    if isinstance(month, dict):
+        year = month.get("year")
+        m = month.get("month")
+        if isinstance(year, int) and isinstance(m, int):
+            return f"{year:04d}-{m:02d}"
+    return "(unknown)"
+
+
+def redact_token(token: str) -> str:
+    """8-prefix + 4-suffix mask for PATs; `****` when too short to mask safely.
+
+    Callers own the empty/None policy (CLI shows None, TUI shows `(none)`).
+    """
+    if len(token) <= 8:
+        return "****"
+    return f"{token[:8]}****{token[-4:]}"
+
+
+def items_of(body: object) -> list:
+    """Rows of a paginated dict (`{"items": [...]}`) or a bare list; [] for anything else.
+
+    The engine's list endpoints return the paginated shape; a few replica/live
+    paths return flat lists. Strict list-or-empty — never hands a dict or None
+    to a row-builder.
+    """
+    if isinstance(body, dict):
+        items = body.get("items")
+        return items if isinstance(items, list) else []
+    return body if isinstance(body, list) else []
+
+
 def load_account_name_map() -> dict[str, str]:
     """Cache-backed account id → name map. Empty on any cache failure.
 
@@ -163,11 +216,35 @@ def load_category_name_map() -> dict[str, str]:
     except Exception:
         return {}
     out: dict[str, str] = {}
-    for item in (page.get("items") or []) if isinstance(page, dict) else []:
+    for item in items_of(page):
         cid = item.get("id")
         name = item.get("name")
         if isinstance(cid, str) and isinstance(name, str):
             out[cid] = name
+    return out
+
+
+def load_hashtag_name_map() -> dict[str, str]:
+    """Cache-backed hashtag id → name map. Empty on any cache failure.
+
+    The engine returns hashtag UUIDs in `hashtag_breakdown` rows and
+    `hashtag_ids` columns; renderers join against this map to display human
+    names like `Food + Club`. Empty map is safe — callers fall back to raw ids.
+    """
+    try:
+        from expense.cache import queries
+    except Exception:
+        return {}
+    try:
+        page = queries.list_hashtags(include_archived=True, include_deleted=False)
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for item in items_of(page):
+        hid = item.get("id")
+        name = item.get("name")
+        if isinstance(hid, str) and isinstance(name, str):
+            out[hid] = name
     return out
 
 
@@ -181,6 +258,18 @@ def resolve_name(uuid_value: object, name_map: dict[str, str]) -> str:
     if not isinstance(uuid_value, str):
         return str(uuid_value)
     return name_map.get(uuid_value, uuid_value[:8])
+
+
+def format_hashtag_cell(ids: object, name_map: dict[str, str], *, max_width: int) -> str:
+    """Joined hashtag names for one table cell; unresolved ids show `xxxxxxxx…`.
+
+    Empty / non-list → `—`. Shared by the CLI transactions table (width 24)
+    and the TUI Transactions screen (width 20) — widths stay per-surface.
+    """
+    if not isinstance(ids, list) or not ids:
+        return "—"
+    names = [name_map.get(hid, hid[:8] + "…") if isinstance(hid, str) else "?" for hid in ids]
+    return truncate(", ".join(names), max_width)
 
 
 def render_table(
@@ -211,6 +300,31 @@ def render_table(
     typer.echo(sep.join("-" * widths[key] for key in headers))
     for row in rows:
         typer.echo(sep.join(fmt(row.get(key, ""), key) for key in headers))
+
+
+def fetch_body(
+    cfg: Config,
+    *,
+    path: str,
+    params: dict | None,
+    cache_read: Callable[[], Any],
+    no_cache: bool,
+    verbose: bool,
+    cold_start_notice: bool = True,
+    notice_stream=None,
+) -> Any:
+    """One cache-vs-live resource read — the skeleton behind every `fetch_*`/`get`.
+
+    `no_cache` → live GET against the engine; otherwise warm the replica
+    (`ensure_synced`) and run `cache_read`, a thunk over the matching
+    `expense.cache.queries` call. Param building stays with the caller.
+    """
+    if no_cache:
+        with ExpenseClient(cfg, verbose=verbose) as client:
+            return client.get(path, params=params or None)
+    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
+        ensure_synced(client, cfg, notice_stream=notice_stream)
+    return cache_read()
 
 
 def cache_after_write(ctx: typer.Context, client: ExpenseClient, cfg: Config) -> None:

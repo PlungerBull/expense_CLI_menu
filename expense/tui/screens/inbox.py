@@ -16,6 +16,7 @@ from textual.widgets import Static
 from expense.commands import inbox_cmd
 from expense.commands._resource import (
     format_short_date,
+    items_of,
     load_account_name_map,
     load_category_name_map,
     resolve_name,
@@ -91,13 +92,13 @@ class InboxScreen(SectionScreen):
         body = inbox_cmd.fetch_inbox(
             cfg, ready=self._filter == "ready", overdue=self._filter == "overdue", **kw
         )
-        items = body.get("items", body) if isinstance(body, dict) else (body or [])
+        items = items_of(body)
         # Mark readiness with the engine's own predicate (cache ready filter),
         # not a reimplementation. Skipped in stateless mode (no cache filter).
         ready_ids: set = set()
         if not self.app._no_cache:
             rb = inbox_cmd.fetch_inbox(cfg, ready=True, **kw)
-            ritems = rb.get("items", rb) if isinstance(rb, dict) else (rb or [])
+            ritems = items_of(rb)
             ready_ids = {it.get("id") for it in ritems}
         return {
             "items": items,

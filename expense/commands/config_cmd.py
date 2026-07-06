@@ -3,7 +3,7 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import YES_OPT, require_yes
+from expense.commands._resource import YES_OPT, redact_token, require_yes
 from expense.config import Config
 from expense.errors import handle_errors
 
@@ -55,11 +55,7 @@ def set_cmd(
 
 
 def _redact_token(token: str | None) -> str | None:
-    if token is None:
-        return None
-    if len(token) <= 8:
-        return "****"
-    return f"{token[:8]}****{token[-4:]}"
+    return None if token is None else redact_token(token)
 
 
 @app.command("get")

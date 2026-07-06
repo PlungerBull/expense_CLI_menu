@@ -7,6 +7,7 @@ from expense.commands._resource import (
     JSON_OPT,
     LIMIT_OPT,
     OFFSET_OPT,
+    items_of,
     render_pagination_hint,
     render_table,
 )
@@ -166,7 +167,7 @@ def _render_list(body: object, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
-    items = body.get("items", body) if isinstance(body, dict) else body
+    items = items_of(body)
     if not items:
         typer.echo("(no activity)")
         return

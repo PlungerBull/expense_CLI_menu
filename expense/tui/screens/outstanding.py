@@ -20,6 +20,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands import dashboard_cmd
+from expense.commands._resource import format_month
 from expense.tui.screens._base import SectionScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
@@ -161,7 +162,7 @@ class OutstandingScreen(SectionScreen):
 
     def build(self, body: dict) -> list[Widget]:
         palette = resolve_palette(self.app)
-        month = dashboard_cmd._format_month(body.get("month"))
+        month = format_month(body.get("month"))
         title = Text(f"Outstanding Amounts  ·  {month}  (current month)")
         widgets: list[Widget] = [
             Static(title, classes="section-title"),

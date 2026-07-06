@@ -14,18 +14,21 @@ from expense.commands._resource import (
     YES_OPT,
     build_update_payload,
     cache_after_write,
+    fetch_body,
     format_cents,
-    format_field_value,
+    format_hashtag_cell,
     format_short_date,
+    items_of,
     load_account_name_map,
     load_category_name_map,
+    load_hashtag_name_map,
     render_pagination_hint,
+    render_record,
     render_table,
     require_yes,
     resolve_name,
     truncate,
 )
-from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -51,30 +54,11 @@ _TRANSFER_GUARD_HINT = (
 )
 
 
-def _render_transaction(body: dict, *, json_mode: bool) -> None:
-    if json_mode:
-        typer.echo(json.dumps(body, indent=2))
-        return
-    for key, value in body.items():
-        typer.echo(f"  {key}: {format_field_value(key, value)}")
-
-
-def _fmt_amount(value: object) -> str:
-    return format_cents(value)
-
-
-def _fmt_hashtag_cell(ids: object, name_map: dict[str, str]) -> str:
-    if not isinstance(ids, list) or not ids:
-        return "—"
-    names = [name_map.get(hid, hid[:8] + "…") if isinstance(hid, str) else "?" for hid in ids]
-    return truncate(", ".join(names), 24)
-
-
 def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
-    items = body.get("items", body) if isinstance(body, dict) else body
+    items = items_of(body)
     if not items:
         typer.echo("(no transactions)")
         return
@@ -86,11 +70,11 @@ def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
         {
             "title": truncate(item.get("title") or "—", 24),
             "description": truncate(item.get("description"), 24),
-            "amount": _fmt_amount(item.get("amount_cents")),
+            "amount": format_cents(item.get("amount_cents")),
             "date": format_short_date(item.get("date")),
             "account": resolve_name(item.get("account_id"), accounts),
             "category": resolve_name(item.get("category_id"), categories),
-            "hashtags": _fmt_hashtag_cell(item.get("hashtag_ids"), hashtags),
+            "hashtags": format_hashtag_cell(item.get("hashtag_ids"), hashtags, max_width=24),
         }
         for item in items
     ]
@@ -163,49 +147,54 @@ def fetch_transactions(
     round-trips the engine. `cold_start_notice`/`notice_stream` let a
     non-terminal caller (TUI) silence the stderr sync chatter.
     """
-    if no_cache:
-        params: dict = {}
-        if account is not None:
-            params["account_id"] = account
-        if category is not None:
-            params["category_id"] = category
-        if hashtag is not None:
-            params["hashtag_id"] = hashtag
-        if reconciliation is not None:
-            params["reconciliation_id"] = reconciliation
-        if date_from is not None:
-            params["date_from"] = date_from
-        if date_to is not None:
-            params["date_to"] = date_to
-        if cleared is not None:
-            params["cleared"] = "true" if cleared else "false"
-        if search is not None:
-            params["search"] = search
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-        if include_deleted:
-            params["include_deleted"] = "true"
-        # Always signed: the replica stores debit_as_negative=true, so the
-        # stateless path must match or the two modes disagree on sign.
-        params["debit_as_negative"] = "true"
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            return client.get(f"/{_RESOURCE}", params=params)
-
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
-        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
-    return cache_pkg.list_transactions(
-        account_id=account,
-        category_id=category,
-        hashtag_id=hashtag,
-        reconciliation_id=reconciliation,
-        date_from=date_from,
-        date_to=date_to,
-        cleared=cleared,
-        search=search,
-        limit=limit,
-        offset=offset,
+    params: dict = {}
+    if account is not None:
+        params["account_id"] = account
+    if category is not None:
+        params["category_id"] = category
+    if hashtag is not None:
+        params["hashtag_id"] = hashtag
+    if reconciliation is not None:
+        params["reconciliation_id"] = reconciliation
+    if date_from is not None:
+        params["date_from"] = date_from
+    if date_to is not None:
+        params["date_to"] = date_to
+    if cleared is not None:
+        params["cleared"] = "true" if cleared else "false"
+    if search is not None:
+        params["search"] = search
+    if limit is not None:
+        params["limit"] = limit
+    if offset is not None:
+        params["offset"] = offset
+    if include_deleted:
+        params["include_deleted"] = "true"
+    # Always signed: the replica stores debit_as_negative=true, so the
+    # stateless path must match or the two modes disagree on sign.
+    params["debit_as_negative"] = "true"
+    return fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}",
+        params=params,
+        # The replica query has no include_deleted param — deleted rows never
+        # land in the cache, so the cached path filters implicitly.
+        cache_read=lambda: cache_pkg.list_transactions(
+            account_id=account,
+            category_id=category,
+            hashtag_id=hashtag,
+            reconciliation_id=reconciliation,
+            date_from=date_from,
+            date_to=date_to,
+            cleared=cleared,
+            search=search,
+            limit=limit,
+            offset=offset,
+        ),
+        no_cache=no_cache,
+        verbose=verbose,
+        cold_start_notice=cold_start_notice,
+        notice_stream=notice_stream,
     )
 
 
@@ -277,19 +266,15 @@ def get(
     Example: expense transactions get <transaction-id>
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        params: dict = {"debit_as_negative": "true"}
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}/{id_}", params=params)
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.get_transaction(id_)
-
-    _render_transaction(body, json_mode=json_output)
+    body = fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}/{id_}",
+        params={"debit_as_negative": "true"},
+        cache_read=lambda: cache_pkg.get_transaction(id_),
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
+    render_record(body, json_mode=json_output)
 
 
 @app.command("update")
@@ -346,7 +331,7 @@ def update(
             raise
         cache_after_write(ctx, client, cfg)
 
-    _render_transaction(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
 
 
 @app.command("delete")
@@ -370,7 +355,7 @@ def delete(
         body = client.delete(f"/{_RESOURCE}/{id_}")
         cache_after_write(ctx, client, cfg)
 
-    _render_transaction(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
     if not json_output:
         _print_warnings(body)
 
@@ -411,7 +396,7 @@ def restore(
             raise
         cache_after_write(ctx, client, cfg)
 
-    _render_transaction(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
     if not json_output:
         _print_warnings(body)
 

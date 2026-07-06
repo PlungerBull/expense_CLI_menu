@@ -14,9 +14,12 @@ from expense.commands._resource import (
     cache_after_write,
     color_supported,
     color_swatch,
+    fetch_body,
+    format_bool,
     format_cents,
-    format_field_value,
+    items_of,
     render_pagination_hint,
+    render_record,
     render_table,
     require_yes,
     run_toggle,
@@ -30,27 +33,11 @@ app = typer.Typer(help="Bank accounts.", no_args_is_help=True)
 _RESOURCE = "accounts"
 
 
-def _render_account(body: dict, *, json_mode: bool) -> None:
-    if json_mode:
-        typer.echo(json.dumps(body, indent=2))
-        return
-    for key, value in body.items():
-        typer.echo(f"  {key}: {format_field_value(key, value)}")
-
-
-def _fmt_bool(value: object) -> str:
-    return "yes" if bool(value) else "no"
-
-
-def _fmt_balance(cents: object) -> str:
-    return format_cents(cents)
-
-
 def _render_account_list(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
-    items = body.get("items", body) if isinstance(body, dict) else body
+    items = items_of(body)
     if not items:
         typer.echo("(no accounts)")
         return
@@ -60,10 +47,10 @@ def _render_account_list(body: dict, *, json_mode: bool) -> None:
         {
             "name": item.get("name") or "(unnamed)",
             "currency": item.get("currency_code") or "?",
-            "person": _fmt_bool(item.get("is_person")),
+            "person": format_bool(item.get("is_person")),
             "color": color_swatch(item.get("color"), color=color),
-            "balance": _fmt_balance(item.get("current_balance_cents")),
-            "archived": _fmt_bool(item.get("is_archived")),
+            "balance": format_cents(item.get("current_balance_cents")),
+            "archived": format_bool(item.get("is_archived")),
         }
         for item in items
     ]
@@ -99,23 +86,26 @@ def fetch_accounts(
     Reads the local replica by default (warming it first); `no_cache` round-trips
     the engine. Cached reads return current_balance_home_cents=null.
     """
-    if no_cache:
-        params: dict = {}
-        if include_archived:
-            params["include_archived"] = "true"
-        if include_deleted:
-            params["include_deleted"] = "true"
-        if include_people:
-            params["include_people"] = "true"
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            return client.get(f"/{_RESOURCE}", params=params or None)
-
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
-        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
-    return cache_pkg.list_accounts(
-        include_archived=include_archived,
-        include_deleted=include_deleted,
-        include_people=include_people,
+    params: dict = {}
+    if include_archived:
+        params["include_archived"] = "true"
+    if include_deleted:
+        params["include_deleted"] = "true"
+    if include_people:
+        params["include_people"] = "true"
+    return fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}",
+        params=params,
+        cache_read=lambda: cache_pkg.list_accounts(
+            include_archived=include_archived,
+            include_deleted=include_deleted,
+            include_people=include_people,
+        ),
+        no_cache=no_cache,
+        verbose=verbose,
+        cold_start_notice=cold_start_notice,
+        notice_stream=notice_stream,
     )
 
 
@@ -165,18 +155,15 @@ def get(
     Example: expense accounts get <account-id>
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}/{id_}")
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.get_account(id_)
-
-    _render_account(body, json_mode=json_output)
+    body = fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}/{id_}",
+        params=None,
+        cache_read=lambda: cache_pkg.get_account(id_),
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
+    render_record(body, json_mode=json_output)
 
 
 @app.command("create")
@@ -215,7 +202,7 @@ def create(
 
     if not json_output:
         typer.echo(f"Created: {new_id}")
-    _render_account(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
 
 
 @app.command("update")
@@ -252,7 +239,7 @@ def update(
         body = client.put(f"/{_RESOURCE}/{id_}", json_body=payload)
         cache_after_write(ctx, client, cfg)
 
-    _render_account(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
 
 
 @app.command("delete")
@@ -285,7 +272,7 @@ def delete(
             raise
         cache_after_write(ctx, client, cfg)
 
-    _render_account(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)
 
 
 @app.command("restore")
@@ -305,7 +292,7 @@ def restore(
         id_=id_,
         verb="restore",
         json_output=json_output,
-        render_human=lambda body: _render_account(body, json_mode=False),
+        render_human=lambda body: render_record(body, json_mode=False),
     )
 
 
@@ -328,7 +315,7 @@ def archive(
         id_=id_,
         verb="archive",
         json_output=json_output,
-        render_human=lambda body: _render_account(body, json_mode=False),
+        render_human=lambda body: render_record(body, json_mode=False),
     )
 
 
@@ -349,5 +336,5 @@ def unarchive(
         id_=id_,
         verb="unarchive",
         json_output=json_output,
-        render_human=lambda body: _render_account(body, json_mode=False),
+        render_human=lambda body: render_record(body, json_mode=False),
     )

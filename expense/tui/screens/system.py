@@ -13,8 +13,6 @@ System reads (the last three sections before TUI parity):
   Rates    — reference FX lookup (conversion on writes is automatic engine-side).
 """
 
-import io
-
 from rich import box
 from rich.table import Table
 from rich.text import Text
@@ -22,6 +20,7 @@ from textual import work
 from textual.widget import Widget
 from textual.widgets import Static
 
+from expense.commands._resource import items_of, redact_token
 from expense.errors import format_error
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
@@ -29,11 +28,7 @@ from expense.tui.widgets.cursor_list import CursorList
 
 
 def _redact_token(token: str | None) -> str:
-    if not token:
-        return "(none)"
-    if len(token) <= 8:
-        return "****"
-    return f"{token[:8]}****{token[-4:]}"
+    return "(none)" if not token else redact_token(token)
 
 
 def _kv_table(rows: list[tuple[str, object]]) -> Table:
@@ -215,61 +210,41 @@ class AuthScreen(SectionScreen):
 
         self.app.push_screen(PromptModal("Main currency", "USD or PEN"), cb)
 
-    @work(thread=True, exclusive=True)
     def _bootstrap(self, display_name: str) -> None:
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
         from expense.commands import auth_cmd
-        from expense.http import ExpenseClient
 
-        cfg = config_module.ensure_loaded()
-        try:
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                client.post(
-                    "/auth/bootstrap",
-                    json_body={
-                        "display_name": display_name,
-                        "timezone": auth_cmd._detect_timezone(),
-                    },
-                )
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=io.StringIO(),
-                )
-        except Exception as exc:
-            self.app.call_from_thread(
-                self.notify, format_error(exc), title="Bootstrap failed", severity="error"
-            )
-            return
-        self.app.call_from_thread(self._done, "Provisioned.")
+        self.run_write(
+            "POST",
+            "/auth/bootstrap",
+            json_body={
+                "display_name": display_name,
+                "timezone": auth_cmd._detect_timezone(),
+            },
+            on_success=lambda: self._done("Provisioned."),
+            on_error=lambda m: self.notify(m, title="Bootstrap failed", severity="error"),
+        )
 
-    @work(thread=True, exclusive=True)
     def _set_currency(self, currency: str) -> None:
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
-        from expense.http import ExpenseClient
+        self.run_write(
+            "PUT",
+            "/auth/settings",
+            json_body={"main_currency": currency},
+            on_success=lambda: self._currency_saved(currency),
+            on_error=lambda m: self.notify(m, title="Couldn't update", severity="error"),
+        )
 
-        cfg = config_module.ensure_loaded()
+    def _currency_saved(self, currency: str) -> None:
+        from expense import config as config_module
+
+        # Mirror the engine-side setting into ~/.expense-config; a failed save
+        # must surface as an error and skip the success toast + reload.
         try:
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                client.put("/auth/settings", json_body={"main_currency": currency})
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=io.StringIO(),
-                )
+            cfg = config_module.ensure_loaded()
             config_module.save(cfg.model_copy(update={"main_currency": currency}))
         except Exception as exc:
-            self.app.call_from_thread(
-                self.notify, format_error(exc), title="Couldn't update", severity="error"
-            )
+            self.notify(format_error(exc), title="Couldn't update", severity="error")
             return
-        self.app.call_from_thread(self._done, f"Main currency set to {currency}.")
+        self._done(f"Main currency set to {currency}.")
 
     def _done(self, message: str) -> None:
         self.notify(message)
@@ -476,7 +451,7 @@ class ActivityScreen(SectionScreen):
 
         cfg = config_module.ensure_loaded()
         body = activity_cmd.fetch_activity(cfg, limit=_ACTIVITY_PAGE, verbose=self.app._verbose)
-        items = body.get("items", body) if isinstance(body, dict) else (body or [])
+        items = items_of(body)
         total = body.get("total") if isinstance(body, dict) else None
         return {"items": items, "total": total}
 
@@ -548,7 +523,7 @@ class RatesScreen(SectionScreen):
         body = rates_cmd.fetch_rates_history(
             cfg, date=self._date, limit=_RATES_PAGE, verbose=self.app._verbose
         )
-        items = body.get("items", body) if isinstance(body, dict) else (body or [])
+        items = items_of(body)
         total = body.get("total") if isinstance(body, dict) else None
         return {"items": items, "total": total}
 

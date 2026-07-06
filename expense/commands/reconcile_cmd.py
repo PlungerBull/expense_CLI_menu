@@ -14,8 +14,11 @@ from expense.commands._resource import (
     YES_OPT,
     build_update_payload,
     cache_after_write,
+    fetch_body,
     format_field_value,
+    items_of,
     render_pagination_hint,
+    render_record,
     require_yes,
     run_toggle,
 )
@@ -49,26 +52,29 @@ def fetch_reconciliations(
     screen. Reads the local replica by default (warming it first); `no_cache`
     round-trips the engine. Rows are ordered by `sort_order` (the chain order).
     """
-    if no_cache:
-        params: dict = {}
-        if account_id is not None:
-            params["account_id"] = account_id
-        if include_deleted:
-            params["include_deleted"] = "true"
-        if limit is not None:
-            params["limit"] = str(limit)
-        if offset is not None:
-            params["offset"] = str(offset)
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            return client.get(f"/{_RESOURCE}", params=params or None)
-
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
-        cache_pkg.ensure_synced(client, cfg, notice_stream=notice_stream)
-    return cache_pkg.list_reconciliations(
-        account_id=account_id,
-        include_deleted=include_deleted,
-        limit=limit,
-        offset=offset,
+    params: dict = {}
+    if account_id is not None:
+        params["account_id"] = account_id
+    if include_deleted:
+        params["include_deleted"] = "true"
+    if limit is not None:
+        params["limit"] = str(limit)
+    if offset is not None:
+        params["offset"] = str(offset)
+    return fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}",
+        params=params,
+        cache_read=lambda: cache_pkg.list_reconciliations(
+            account_id=account_id,
+            include_deleted=include_deleted,
+            limit=limit,
+            offset=offset,
+        ),
+        no_cache=no_cache,
+        verbose=verbose,
+        cold_start_notice=cold_start_notice,
+        notice_stream=notice_stream,
     )
 
 
@@ -109,21 +115,11 @@ def _format_source_marker(item: dict) -> str:
     return ""
 
 
-def _render_reconciliation(body: dict, *, json_mode: bool) -> None:
-    if json_mode:
-        typer.echo(json.dumps(body, indent=2))
-        return
-    for key, value in body.items():
-        if key == "transactions":
-            continue
-        typer.echo(f"  {key}: {format_field_value(key, value)}")
-
-
 def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
-    items = body.get("items", body) if isinstance(body, dict) else body
+    items = items_of(body)
     if not items:
         typer.echo("(no reconciliations)")
         return
@@ -144,7 +140,7 @@ def _render_reconciliation_detail(body: dict, *, json_mode: bool) -> None:
         typer.echo(json.dumps(body, indent=2))
         return
 
-    _render_reconciliation(body, json_mode=False)
+    render_record(body, json_mode=False, skip=("transactions",))
     marker = _format_source_marker(body)
     if marker:
         typer.echo(f"  {marker}")
@@ -261,25 +257,24 @@ def get(
     Example: expense reconcile get <id> --limit 100
     """
     cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
-
-    if no_cache:
-        params: dict = {}
-        if limit is not None:
-            params["limit"] = str(limit)
-        if offset is not None:
-            params["offset"] = str(offset)
-        # Always signed: the replica stores debit_as_negative=true, so the
-        # stateless path must match or the two modes disagree on sign.
-        params["debit_as_negative"] = "true"
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            body = client.get(f"/{_RESOURCE}/{id_}", params=params)
-    else:
-        with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
-            cache_pkg.ensure_synced(client, cfg)
-        body = cache_pkg.get_reconciliation(id_, embedded_limit=limit, embedded_offset=offset)
-
+    params: dict = {}
+    if limit is not None:
+        params["limit"] = str(limit)
+    if offset is not None:
+        params["offset"] = str(offset)
+    # Always signed: the replica stores debit_as_negative=true, so the
+    # stateless path must match or the two modes disagree on sign.
+    params["debit_as_negative"] = "true"
+    body = fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}/{id_}",
+        params=params,
+        cache_read=lambda: cache_pkg.get_reconciliation(
+            id_, embedded_limit=limit, embedded_offset=offset
+        ),
+        no_cache=get_no_cache(ctx),
+        verbose=get_verbose(ctx),
+    )
     _render_reconciliation_detail(body, json_mode=json_output)
 
 
@@ -357,7 +352,7 @@ def create(
 
     if not json_output:
         typer.echo(f"Created: {new_id}")
-    _render_reconciliation(body, json_mode=json_output)
+    render_record(body, json_mode=json_output, skip=("transactions",))
     if not json_output:
         marker = _format_source_marker(body)
         if marker:
@@ -423,7 +418,7 @@ def update(
             raise
         cache_after_write(ctx, client, cfg)
 
-    _render_reconciliation(body, json_mode=json_output)
+    render_record(body, json_mode=json_output, skip=("transactions",))
 
 
 @app.command("delete")
@@ -457,11 +452,11 @@ def delete(
             raise
         cache_after_write(ctx, client, cfg)
 
-    _render_reconciliation(body, json_mode=json_output)
+    render_record(body, json_mode=json_output, skip=("transactions",))
 
 
 def _render_after_state_change(body: dict, *, lock_verb: str) -> None:
-    _render_reconciliation(body, json_mode=False)
+    render_record(body, json_mode=False, skip=("transactions",))
     marker = _format_source_marker(body)
     if marker:
         typer.echo(f"  {marker}")
@@ -486,7 +481,7 @@ def restore(
     """
 
     def _render(body: dict) -> None:
-        _render_reconciliation(body, json_mode=False)
+        render_record(body, json_mode=False, skip=("transactions",))
         marker = _format_source_marker(body)
         if marker:
             typer.echo(f"  {marker}")
@@ -601,7 +596,7 @@ def _fetch_account_chain(client: ExpenseClient, account_id: str) -> list[dict]:
                 "offset": str(offset),
             },
         )
-        page = body.get("items", []) if isinstance(body, dict) else (body or [])
+        page = items_of(body)
         items.extend(page)
         if not isinstance(body, dict):
             break

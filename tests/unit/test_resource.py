@@ -13,9 +13,16 @@ from typer.testing import CliRunner
 
 from expense.commands._resource import (
     build_update_payload,
+    fetch_body,
+    format_bool,
     format_cents,
     format_field_value,
+    format_hashtag_cell,
+    format_month,
+    items_of,
+    redact_token,
     render_pagination_hint,
+    render_record,
     render_totals,
     require_yes,
     run_toggle,
@@ -124,6 +131,163 @@ def test_format_field_value_formats_only_cents_keys():
     assert format_field_value("version", 3) == "3"
     assert format_field_value("title", None) == "(null)"
     assert format_field_value("transaction_type", 1) == "1"
+
+
+# ---------------------------------------------------------------------------
+# render_record / format_bool / format_month
+# ---------------------------------------------------------------------------
+
+
+def test_render_record_human_formats_cents_keys(capsys):
+    render_record({"title": "Rent", "amount_cents": -150000}, json_mode=False)
+    out = capsys.readouterr().out
+    assert "  title: Rent" in out
+    assert "  amount_cents: -1,500.00" in out
+
+
+def test_render_record_skip_hides_keys_in_human_mode(capsys):
+    body = {"id": "abc", "transactions": [{"id": "t1"}]}
+    render_record(body, json_mode=False, skip=("transactions",))
+    out = capsys.readouterr().out
+    assert "id: abc" in out
+    assert "transactions" not in out
+
+
+def test_render_record_json_mode_is_verbatim_and_ignores_skip(capsys):
+    render_record({"id": "abc", "transactions": []}, json_mode=True, skip=("transactions",))
+    out = capsys.readouterr().out
+    assert '"transactions": []' in out
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (True, "yes"),
+        (False, "no"),
+        (None, "no"),
+        ("2026-07-06T00:00:00Z", "yes"),  # truthy marker fields like deleted_at
+        (0, "no"),
+    ],
+)
+def test_format_bool(value, expected):
+    assert format_bool(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ({"year": 2026, "month": 7}, "2026-07"),
+        ({"year": 2026, "month": 12}, "2026-12"),
+        ({"year": 2026}, "(unknown)"),
+        ({"year": "2026", "month": "7"}, "(unknown)"),
+        (None, "(unknown)"),
+    ],
+)
+def test_format_month(value, expected):
+    assert format_month(value) == expected
+
+
+# ---------------------------------------------------------------------------
+# fetch_body
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_fetch_body_no_cache_hits_engine_and_skips_cache_read(configured):
+    from expense import config as config_module
+
+    respx.get("https://api.example.com/v1/things", params={"limit": "5"}).mock(
+        return_value=httpx.Response(200, json={"items": [{"id": "a"}], "total": 1})
+    )
+    cache_reads = []
+    body = fetch_body(
+        config_module.ensure_loaded(),
+        path="/things",
+        params={"limit": 5},
+        cache_read=lambda: cache_reads.append(1),
+        no_cache=True,
+        verbose=False,
+    )
+    assert body == {"items": [{"id": "a"}], "total": 1}
+    assert cache_reads == []
+
+
+def test_fetch_body_cached_warms_replica_then_reads_cache(configured, monkeypatch):
+    from expense import config as config_module
+
+    synced = []
+    monkeypatch.setattr(
+        "expense.commands._resource.ensure_synced",
+        lambda client, cfg, notice_stream=None: synced.append(1),
+    )
+    body = fetch_body(
+        config_module.ensure_loaded(),
+        path="/things",
+        params={"limit": 5},
+        cache_read=lambda: {"items": [], "total": 0},
+        no_cache=False,
+        verbose=False,
+    )
+    assert body == {"items": [], "total": 0}
+    assert synced == [1]  # replica warmed exactly once, no engine GET issued
+
+
+# ---------------------------------------------------------------------------
+# redact_token / format_hashtag_cell
+# ---------------------------------------------------------------------------
+
+
+def test_redact_token_masks_middle():
+    assert redact_token("ewe_pat_abcd1234wxyz") == "ewe_pat_****wxyz"
+
+
+def test_redact_token_short_tokens_fully_masked():
+    assert redact_token("short") == "****"
+    assert redact_token("12345678") == "****"  # exactly 8 → still fully masked
+
+
+def test_format_hashtag_cell_resolves_names():
+    cell = format_hashtag_cell(["h1", "h2"], {"h1": "trabajo", "h2": "club"}, max_width=24)
+    assert cell == "trabajo, club"
+
+
+def test_format_hashtag_cell_unresolved_id_gets_short_id_with_ellipsis():
+    cell = format_hashtag_cell(["0123456789abcdef"], {}, max_width=24)
+    assert cell == "01234567…"
+
+
+def test_format_hashtag_cell_truncates_to_max_width():
+    cell = format_hashtag_cell(["h1", "h2"], {"h1": "a" * 20, "h2": "b" * 20}, max_width=10)
+    assert len(cell) == 10
+    assert cell.endswith("…")
+
+
+def test_format_hashtag_cell_empty_or_non_list_is_dash():
+    assert format_hashtag_cell([], {}, max_width=24) == "—"
+    assert format_hashtag_cell(None, {}, max_width=24) == "—"
+    assert format_hashtag_cell("h1", {}, max_width=24) == "—"
+
+
+# ---------------------------------------------------------------------------
+# items_of
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({"items": [{"id": "a"}], "total": 1}, [{"id": "a"}]),  # paginated dict
+        ({"items": []}, []),
+        ({"items": None}, []),  # items present but null
+        ({"total": 3}, []),  # dict without items — never a row source
+        ([{"id": "a"}], [{"id": "a"}]),  # flat list (e.g. accounts live path)
+        ([], []),
+        (None, []),
+        ("oops", []),  # scalar garbage
+    ],
+)
+def test_items_of(body, expected):
+    assert items_of(body) == expected
 
 
 # ---------------------------------------------------------------------------

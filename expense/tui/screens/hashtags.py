@@ -13,6 +13,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands import hashtags_cmd
+from expense.commands._resource import items_of
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import RecordModal
 from expense.tui.widgets.cursor_list import CursorList
@@ -60,7 +61,7 @@ class HashtagsScreen(SectionScreen):
             cold_start_notice=False,
             notice_stream=io.StringIO(),
         )
-        return body.get("items", body) if isinstance(body, dict) else (body or [])
+        return items_of(body)
 
     def build(self, items: list) -> list[Widget]:
         self._by_id = {it.get("id"): it for it in items}

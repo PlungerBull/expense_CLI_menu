@@ -10,6 +10,8 @@ Owns the breadcrumb header, the bounded content card, the worker-backed fetch
 `r` refreshes; `escape` pops back to the menu.
 """
 
+from collections.abc import Callable
+
 from rich.console import Group
 from rich.text import Text
 from textual import work
@@ -23,7 +25,71 @@ from expense.errors import format_error
 from expense.tui.widgets.header import Breadcrumb
 
 
-class SectionScreen(Screen):
+class EngineWriteMixin:
+    """One engine write off the UI thread: config → client → verb → replica refresh.
+
+    Shared by SectionScreen and the bar-cycle form screens (which subclass plain
+    Screen). Success/error callbacks land back on the UI thread via
+    `call_from_thread`; without callbacks, errors notify with a "Failed" toast
+    and success runs `_after_write`. Idempotency + error envelope come from the
+    client. `exclusive=True` guards against stale queued writes — an in-flight
+    request always completes (thread workers cancel cooperatively).
+    """
+
+    @work(thread=True, exclusive=True)
+    def run_write(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: dict | None = None,
+        success: str = "Done.",
+        on_success: Callable[[], None] | None = None,
+        on_error: Callable[[str], None] | None = None,
+    ) -> None:
+        # Imports stay function-local: the test fixtures patch these module
+        # attributes, and only a lazy lookup sees the patch.
+        import io
+
+        from expense import config as config_module
+        from expense.cache import refresh_after_write
+        from expense.http import ExpenseClient
+
+        cfg = config_module.ensure_loaded()
+        try:
+            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
+                if method == "POST":
+                    client.post(path, json_body=json_body)
+                elif method == "PUT":
+                    client.put(path, json_body=json_body)
+                elif method == "DELETE":
+                    client.delete(path)
+                else:
+                    raise ValueError(f"unsupported write method: {method}")
+                refresh_after_write(
+                    client,
+                    cfg,
+                    no_cache=self.app._no_cache,
+                    no_sync_after=False,
+                    notice_stream=io.StringIO(),
+                )
+        except Exception as exc:
+            message = format_error(exc)
+            if on_error is not None:
+                self.app.call_from_thread(on_error, message)
+            else:
+                self.app.call_from_thread(self.notify, message, title="Failed", severity="error")
+            return
+        if on_success is not None:
+            self.app.call_from_thread(on_success)
+        else:
+            self.app.call_from_thread(self._after_write, success)
+
+    def _after_write(self, message: str) -> None:
+        self.notify(message)
+
+
+class SectionScreen(EngineWriteMixin, Screen):
     BINDINGS = [
         ("escape", "app.pop_screen", "Back"),
         ("r", "reload", "Refresh"),
@@ -115,40 +181,6 @@ class SectionScreen(Screen):
         except Exception:
             return None
         return getattr(self, "_by_id", {}).get(cursor_list.cursor_key)
-
-    @work(thread=True)
-    def run_write(self, method: str, path: str, *, success: str = "Done.") -> None:
-        """POST/DELETE an engine endpoint off the UI thread, refresh the replica,
-        then reload the screen. Idempotency + error envelope come from the client.
-        """
-        import io
-
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
-        from expense.http import ExpenseClient
-
-        cfg = config_module.ensure_loaded()
-        try:
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                if method == "POST":
-                    client.post(path)
-                elif method == "DELETE":
-                    client.delete(path)
-                else:
-                    raise ValueError(f"unsupported write method: {method}")
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=io.StringIO(),
-                )
-        except Exception as exc:
-            self.app.call_from_thread(
-                self.notify, format_error(exc), title="Failed", severity="error"
-            )
-            return
-        self.app.call_from_thread(self._after_write, success)
 
     def _after_write(self, message: str) -> None:
         self.notify(message)

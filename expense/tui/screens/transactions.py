@@ -14,13 +14,15 @@ from textual.widgets import Static
 
 from expense.commands import transactions_cmd
 from expense.commands._resource import (
+    format_hashtag_cell,
     format_short_date,
+    items_of,
     load_account_name_map,
     load_category_name_map,
+    load_hashtag_name_map,
     resolve_name,
     truncate,
 )
-from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
@@ -29,13 +31,6 @@ from expense.tui.widgets.cursor_list import CursorList
 
 _HEADERS = ["Title", "Description", "Amount", "Date", "Account", "Cat", "Tags"]
 _PAGE = 50
-
-
-def _tags_cell(ids: object, hashtags: dict) -> str:
-    if not isinstance(ids, list) or not ids:
-        return "—"
-    names = [hashtags.get(h, h[:8]) if isinstance(h, str) else "?" for h in ids]
-    return truncate(", ".join(names), 20)
 
 
 def transaction_rows(
@@ -58,7 +53,7 @@ def transaction_rows(
                     format_short_date(it.get("date")),
                     resolve_name(it.get("account_id"), accounts),
                     resolve_name(it.get("category_id"), categories),
-                    _tags_cell(it.get("hashtag_ids"), hashtags),
+                    format_hashtag_cell(it.get("hashtag_ids"), hashtags, max_width=20),
                 ],
             )
         )
@@ -86,7 +81,7 @@ class TransactionsScreen(SectionScreen):
             cold_start_notice=False,
             notice_stream=io.StringIO(),
         )
-        items = body.get("items", body) if isinstance(body, dict) else (body or [])
+        items = items_of(body)
         total = body.get("total") if isinstance(body, dict) else None
         return {
             "items": items,

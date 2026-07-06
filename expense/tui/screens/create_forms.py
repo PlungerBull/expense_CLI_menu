@@ -8,20 +8,14 @@ New account is bank-only — the engine forbids `is_person` on POST /accounts;
 person accounts need the (unshipped) People API.
 """
 
-import io
 import uuid
 
 from rich.console import Group, RenderableType
 from rich.table import Table
 from rich.text import Text
-from textual import work
-from textual.app import ComposeResult
-from textual.containers import Horizontal
-from textual.screen import Screen
-from textual.widgets import Footer, Input, Label, Static
+from textual.widgets import Input
 
-from expense.errors import format_error
-from expense.tui.widgets.header import Breadcrumb
+from expense.tui.screens._form import FormScreen
 
 _PALETTE = [
     ("#4a90d9", "blue"),
@@ -46,51 +40,36 @@ class Field:
         self.hint = hint
 
 
-class BarFormScreen(Screen):
-    BINDINGS = [
-        ("escape", "cancel", "Cancel"),
-        ("ctrl+s", "submit", "Create"),
-        ("up", "suggest(-1)", "↑"),
-        ("down", "suggest(1)", "↓"),
-        ("ctrl+up", "field(-1)", "Prev field"),
-        ("ctrl+down", "field(1)", "Next field"),
-    ]
+class BarFormScreen(FormScreen):
     FIELDS: list = []
-    RESOURCE = ""
     NOUN = "item"
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._current = 0
-        self._values: dict = {}
-        self._suggestions: list = []
-        self._suggest_idx = 0
-        self._submitting = False
+    # ---- FormScreen hooks (Field-driven) ----------------------------------
+    def _sequence(self) -> list[str]:
+        return [f.key for f in self.FIELDS]
+
+    def _field(self, key: str) -> Field:
+        return next(f for f in self.FIELDS if f.key == key)
 
     @property
     def _f(self) -> Field:
         return self.FIELDS[self._current]
 
-    def compose(self) -> ComposeResult:
-        yield Breadcrumb(self.crumb, id="crumb")
-        yield Horizontal(Label("", id="field"), Input(id="bar"), id="inputbar")
-        yield Static("", id="hint")
-        yield Static("", id="suggest")
-        yield Static("", id="summary")
-        yield Footer()
+    def _label(self, key: str) -> str:
+        return self._field(key).label
 
-    def on_mount(self) -> None:
-        self._refresh_bar()
-        self._refresh_view()
-        self.query_one("#bar", Input).focus()
+    def _hint_for(self, key: str) -> str:
+        return self._field(key).hint
 
-    # ---- bar / nav -------------------------------------------------------
-    def _refresh_bar(self) -> None:
-        f = self._f
-        self.query_one("#field", Label).update(f.label)
-        bar = self.query_one("#bar", Input)
-        bar.value = str(self._values.get(f.key, "")) if f.kind == "text" else ""
-        self._recompute(bar.value)
+    def _required(self) -> tuple[str, ...]:
+        return tuple(f.key for f in self.FIELDS if f.required)
+
+    def _suggests(self, key: str) -> bool:
+        return self._field(key).kind in ("choice", "color")
+
+    def _bar_value(self, key: str) -> str:
+        f = self._field(key)
+        return str(self._values.get(key, "")) if f.kind == "text" else ""
 
     def _recompute(self, text: str) -> None:
         f = self._f
@@ -102,29 +81,6 @@ class BarFormScreen(Screen):
         else:
             self._suggestions = []
         self._suggest_idx = 0
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if self._f.kind in ("choice", "color"):
-            self._recompute(event.value)
-            self._refresh_view()
-
-    def action_suggest(self, delta: int) -> None:
-        if self._suggestions:
-            self._suggest_idx = max(0, min(len(self._suggestions) - 1, self._suggest_idx + delta))
-            self._refresh_view()
-
-    def action_field(self, delta: int) -> None:
-        self._current = max(0, min(len(self.FIELDS) - 1, self._current + delta))
-        self._refresh_bar()
-        self._refresh_view()
-
-    def _advance(self) -> None:
-        if self._current >= len(self.FIELDS) - 1:
-            self.action_submit()
-        else:
-            self._current += 1
-            self._refresh_bar()
-            self._refresh_view()
 
     # ---- commit ----------------------------------------------------------
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -153,11 +109,6 @@ class BarFormScreen(Screen):
         self._advance()
 
     # ---- render ----------------------------------------------------------
-    def _refresh_view(self) -> None:
-        self.query_one("#hint", Static).update(Text(self._f.hint, style="dim"))
-        self.query_one("#suggest", Static).update(self._suggest_renderable())
-        self.query_one("#summary", Static).update(self._summary_renderable())
-
     def _suggest_renderable(self) -> RenderableType:
         f = self._f
         if f.kind not in ("choice", "color"):
@@ -199,50 +150,8 @@ class BarFormScreen(Screen):
         return next((d for (v, d) in _PALETTE if v == hex_), hex_)
 
     # ---- submit ----------------------------------------------------------
-    def action_cancel(self) -> None:
-        self.dismiss()
-
-    def action_submit(self) -> None:
-        if self._submitting:
-            return
-        for f in self.FIELDS:
-            if f.required and f.key not in self._values:
-                self.notify(f"{f.label.title()} is required.", severity="error")
-                return
-        payload = self._payload()
-        self._submitting = True
-        self.query_one("#hint", Static).update(Text("Creating…", style="dim"))
-        self._submit(payload)
-
     def _payload(self) -> dict:
         raise NotImplementedError
-
-    @work(thread=True, exclusive=True)
-    def _submit(self, payload: dict) -> None:
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
-        from expense.http import ExpenseClient
-
-        cfg = config_module.ensure_loaded()
-        try:
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                client.post(f"/{self.RESOURCE}", json_body=payload)
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=io.StringIO(),
-                )
-        except Exception as exc:
-            self.app.call_from_thread(self._failed, format_error(exc))
-            return
-        self.app.call_from_thread(self._done)
-
-    def _failed(self, message: str) -> None:
-        self._submitting = False
-        self.notify(message, title="Failed", severity="error")
-        self._refresh_view()
 
     def _done(self) -> None:
         self.notify(f"{self.NOUN.title()} created.")

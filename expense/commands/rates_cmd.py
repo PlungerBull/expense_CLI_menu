@@ -3,7 +3,7 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import JSON_OPT, LIMIT_OPT, OFFSET_OPT, render_table
+from expense.commands._resource import JSON_OPT, LIMIT_OPT, OFFSET_OPT, items_of, render_table
 from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -105,7 +105,7 @@ def list_(
     if json_output:
         typer.echo(json.dumps(body, indent=2))
         return
-    items = body.get("items", []) if isinstance(body, dict) else []
+    items = items_of(body)
     if not items:
         typer.echo(f"No rates stored for {date}." if date else "No rates stored yet.")
         return

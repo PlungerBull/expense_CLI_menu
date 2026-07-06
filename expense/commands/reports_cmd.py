@@ -4,11 +4,15 @@ import typer
 
 from expense import config as config_module
 from expense.cache import ensure_synced
-from expense.commands._resource import JSON_OPT, format_cents, render_table, render_totals
-from expense.commands.dashboard_cmd import (
-    hashtag_label,
+from expense.commands._resource import (
+    JSON_OPT,
+    format_cents,
+    format_month,
     load_hashtag_name_map,
+    render_table,
+    render_totals,
 )
+from expense.commands.dashboard_cmd import hashtag_label
 from expense.context import get_no_cache, get_verbose
 from expense.dates import parse_year_month
 from expense.errors import handle_errors
@@ -20,22 +24,8 @@ app = typer.Typer(help="Historical reports.", no_args_is_help=True)
 _MAX_RANGE_MONTHS = 24
 
 
-def _format_month(month: dict | None) -> str:
-    if not isinstance(month, dict):
-        return "(unknown)"
-    year = month.get("year")
-    m = month.get("month")
-    if isinstance(year, int) and isinstance(m, int):
-        return f"{year:04d}-{m:02d}"
-    return "(unknown)"
-
-
 def _months_between(from_ym: tuple[int, int], to_ym: tuple[int, int]) -> int:
     return (to_ym[0] - from_ym[0]) * 12 + (to_ym[1] - from_ym[1]) + 1
-
-
-def _fmt_amount(cents: object) -> str:
-    return format_cents(cents)
 
 
 def _render_single_month_categories(categories: list[dict] | None, *, show_hashtags: bool) -> None:
@@ -55,8 +45,8 @@ def _render_single_month_categories(categories: list[dict] | None, *, show_hasht
         rows.append(
             {
                 "name": cat.get("name") or "(unnamed)",
-                "spent": _fmt_amount(cat.get("spent_cents")),
-                "home": _fmt_amount(cat.get("spent_home_cents")),
+                "spent": format_cents(cat.get("spent_cents")),
+                "home": format_cents(cat.get("spent_home_cents")),
             }
         )
         if not show_hashtags:
@@ -66,8 +56,8 @@ def _render_single_month_categories(categories: list[dict] | None, *, show_hasht
             rows.append(
                 {
                     "name": "  " + hashtag_label(ids, name_map),
-                    "spent": _fmt_amount(sub.get("spent_cents")),
-                    "home": _fmt_amount(sub.get("spent_home_cents")),
+                    "spent": format_cents(sub.get("spent_cents")),
+                    "home": format_cents(sub.get("spent_home_cents")),
                 }
             )
 
@@ -82,7 +72,7 @@ def _render_single_month(body: dict, *, json_mode: bool, show_hashtags: bool = T
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
-    typer.echo(f"Month: {_format_month(body.get('month'))}")
+    typer.echo(f"Month: {format_month(body.get('month'))}")
     typer.echo("")
     _render_single_month_categories(body.get("categories"), show_hashtags=show_hashtags)
     typer.echo("")
@@ -99,7 +89,7 @@ def _render_range_table(body: dict, *, json_mode: bool) -> None:
         typer.echo("(no months)")
         return
 
-    month_labels = [_format_month(m.get("month")) for m in months]
+    month_labels = [format_month(m.get("month")) for m in months]
 
     category_order: list[str] = []
     seen: set[str] = set()

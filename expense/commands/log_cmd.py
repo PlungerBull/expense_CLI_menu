@@ -1,22 +1,13 @@
-import json
 from uuid import uuid4
 
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import JSON_OPT, cache_after_write, format_field_value
+from expense.commands._resource import JSON_OPT, cache_after_write, render_record
 from expense.context import get_verbose
 from expense.dates import now_local_iso, to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
-
-
-def _render_transaction(body: dict, *, json_mode: bool) -> None:
-    if json_mode:
-        typer.echo(json.dumps(body, indent=2))
-        return
-    for key, value in body.items():
-        typer.echo(f"  {key}: {format_field_value(key, value)}")
 
 
 @handle_errors
@@ -139,4 +130,4 @@ def log(
         typer.echo(f"Created: {new_id}")
         if sibling_id is not None:
             typer.echo(f"Created (transfer leg): {sibling_id}")
-    _render_transaction(body, json_mode=json_output)
+    render_record(body, json_mode=json_output)

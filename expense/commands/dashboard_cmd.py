@@ -3,25 +3,18 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.cache import ensure_synced, queries
-from expense.commands._resource import JSON_OPT, format_cents, render_table, render_totals
+from expense.cache import ensure_synced
+from expense.commands._resource import (
+    JSON_OPT,
+    format_cents,
+    format_month,
+    load_hashtag_name_map,
+    render_table,
+    render_totals,
+)
 from expense.context import get_no_cache, get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
-
-
-def _format_month(month: dict | None) -> str:
-    if not isinstance(month, dict):
-        return "(unknown)"
-    year = month.get("year")
-    m = month.get("month")
-    if isinstance(year, int) and isinstance(m, int):
-        return f"{year:04d}-{m:02d}"
-    return "(unknown)"
-
-
-def _fmt_amount(cents: object) -> str:
-    return format_cents(cents)
 
 
 def _render_account_table(items: list[dict] | None, *, empty_message: str) -> None:
@@ -39,7 +32,7 @@ def _render_account_table(items: list[dict] | None, *, empty_message: str) -> No
         {
             "name": item.get("name") or "(unnamed)",
             "currency": item.get("currency_code") or "?",
-            "balance": _fmt_amount(item.get("current_balance_cents")),
+            "balance": format_cents(item.get("current_balance_cents")),
         }
         for item in items
     ]
@@ -48,26 +41,6 @@ def _render_account_table(items: list[dict] | None, *, empty_message: str) -> No
         rows=rows,
         align_right={"balance"},
     )
-
-
-def load_hashtag_name_map() -> dict[str, str]:
-    """Return {hashtag_id: name} from the local cache, or {} on any failure.
-
-    The engine returns hashtag UUIDs in `hashtag_breakdown` rows; the renderer
-    joins against this map to display human names like `Food + Club`. Empty
-    map is safe — callers fall back to raw ids.
-    """
-    try:
-        page = queries.list_hashtags(include_archived=True, include_deleted=False)
-    except Exception:
-        return {}
-    out: dict[str, str] = {}
-    for item in page.get("items") or []:
-        hid = item.get("id")
-        name = item.get("name")
-        if isinstance(hid, str) and isinstance(name, str):
-            out[hid] = name
-    return out
 
 
 def hashtag_label(ids: list[str], name_map: dict[str, str]) -> str:
@@ -99,7 +72,7 @@ def _render_categories_table(categories: list[dict] | None) -> None:
         rows.append(
             {
                 "name": cat.get("name") or "(unnamed)",
-                "spent": _fmt_amount(cat.get("spent_cents")),
+                "spent": format_cents(cat.get("spent_cents")),
             }
         )
         for sub in cat.get("hashtag_breakdown") or []:
@@ -107,7 +80,7 @@ def _render_categories_table(categories: list[dict] | None) -> None:
             rows.append(
                 {
                     "name": "  " + hashtag_label(ids, name_map),
-                    "spent": _fmt_amount(sub.get("spent_cents")),
+                    "spent": format_cents(sub.get("spent_cents")),
                 }
             )
     render_table(
@@ -125,7 +98,7 @@ def _render_lifetime_table(items: list[dict] | None, *, empty_message: str) -> N
     rows = [
         {
             "name": item.get("name") or "(unnamed)",
-            "lifetime": _fmt_amount(item.get("lifetime_spent_cents")),
+            "lifetime": format_cents(item.get("lifetime_spent_cents")),
         }
         for item in items
     ]
@@ -141,7 +114,7 @@ def _render_dashboard(body: dict, *, json_mode: bool) -> None:
         typer.echo(json.dumps(body, indent=2))
         return
 
-    typer.echo(f"Month: {_format_month(body.get('month'))}")
+    typer.echo(f"Month: {format_month(body.get('month'))}")
     typer.echo("")
 
     typer.echo("Bank accounts:")
