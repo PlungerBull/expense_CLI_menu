@@ -15,6 +15,20 @@ from expense.cache import state as cache_state
 from tests.unit import helpers
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_paths(tmp_path, monkeypatch):
+    """Point config + cache env at nonexistent tmp files for EVERY test.
+
+    Every ExpenseApp launch mounts HomeScreen, whose status line (backlog 4.3)
+    reads real config/cache state — without this, tests would read the
+    developer's actual ~/.expense-config and could ping a real engine.
+    `configured` and friends re-set these env vars afterward and still win.
+    """
+    monkeypatch.setenv("EXPENSE_CONFIG", str(tmp_path / "hermetic-config"))
+    monkeypatch.setenv("EXPENSE_CACHE", str(tmp_path / "hermetic-cache.sqlite3"))
+    yield
+
+
 @pytest.fixture
 def configured(tmp_path, monkeypatch):
     """Config saved under tmp_path; cache redirected to tmp (never the real one).
