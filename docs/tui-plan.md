@@ -2,8 +2,8 @@
 
 > Status: **in progress (Step 10)** — Phases 0 & 1 shipped, Phase 2 (write flows)
 > under way; Phase 3 partially delivered early via [polish-backlog.md](polish-backlog.md) §4
-> (2026-07-05/06: keymap contract, theme-resolved semantic colors, form-label width,
-> q scoped to Home, unarchive prompt-free — only §4.8 remains, low priority).
+> (2026-07-05/06, all eight items closed: keymap contract, theme-resolved semantic colors,
+> form-label width, q scoped to Home, unarchive prompt-free, Rates as a history table).
 > Entry command is **`expense world`**. This TUI
 > **replaced the questionary `expense menu`**, which was **deleted at roadmap Step 10.X
 > (2026-07-02)** — `expense/menu/`, its tests, the Typer command, and the `questionary`
