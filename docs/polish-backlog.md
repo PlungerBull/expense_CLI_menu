@@ -163,8 +163,17 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   content too. Guard test bans literal green/red/yellow styles under
   expense/tui/ (create_forms swatch-name data exempt).
 
-- [ ] **4.3 [UI] Remove or wire the fake "● connected" home-screen status.**
+- [x] **4.3 [UI] Remove or wire the fake "● connected" home-screen status.**
   Hardcoded string that reflects nothing (`home.py:56`).
+  *(done 2026-07-06, per gate mockup `expense-world-home-status-4.3.html`)*
+  Pick: **A — removed** (over B local-only status and C live /health ping;
+  both remain fully designed on the mockup if ever wanted). Deleted the
+  Static + the `#status` tcss rule (its bottom gap moved onto `#brand`).
+  This supersedes tui-plan.md Phase 0's "live status line" — decided
+  against, not forgotten. Kept regardless: the autouse test-hermeticity
+  fixture (every unit test gets tmp `EXPENSE_CONFIG`/`EXPENSE_CACHE`),
+  landed as its own commit since any future home-screen state read would
+  otherwise touch the developer's real config in 49 test launches.
 
 - [ ] **4.4 [UI] `#field` label column (width: 11) clips longer form labels**
   like "TRANSFER TO?" / "BEGIN BALANCE" (`app.tcss:59-65`).

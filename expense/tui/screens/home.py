@@ -53,7 +53,6 @@ _MENU: list[tuple[str | None, str]] = [
 class HomeScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static(f"{_BANNER}\nyour money, in the terminal", id="brand")
-        yield Static("● connected — engine via ~/.expense-config", id="status")
         options: list = []
         for opt_id, label in _MENU:
             if opt_id is None:

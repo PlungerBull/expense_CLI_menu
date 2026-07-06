@@ -7,13 +7,9 @@ Screen {
 
 /* ---- home ---- */
 #brand {
-    padding: 1 2 0 2;
+    padding: 1 2 1 2;
     color: $foreground;
     text-style: bold;
-}
-#status {
-    padding: 0 2 1 2;
-    color: $text-muted;
 }
 #menu {
     height: 1fr;
