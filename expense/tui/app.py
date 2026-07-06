@@ -4,7 +4,6 @@ import sys
 
 import typer
 from textual.app import App
-from textual.binding import Binding
 
 from expense.context import get_no_cache, get_verbose
 from expense.tui.screens.home import HomeScreen
@@ -20,7 +19,8 @@ class ExpenseApp(App):
     """
 
     CSS_PATH = "app.tcss"
-    BINDINGS = [Binding("q", "quit", "Quit")]
+    # no app-level `q` — it would fire from inside ConfirmModal and every list
+    # (letters bubble to the App). HomeScreen binds q; ctrl+q quits everywhere.
 
     def __init__(self, *, verbose: bool = False, no_cache: bool = False) -> None:
         super().__init__()

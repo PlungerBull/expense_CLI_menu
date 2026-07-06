@@ -51,6 +51,10 @@ _MENU: list[tuple[str | None, str]] = [
 
 
 class HomeScreen(Screen):
+    # q lives here, not on the App — a stray q mid-flow (modal, list) must
+    # never kill the app (backlog 4.6). ctrl+q stays the everywhere-quit.
+    BINDINGS = [("q", "app.quit", "Quit")]
+
     def compose(self) -> ComposeResult:
         yield Static(f"{_BANNER}\nyour money, in the terminal", id="brand")
         options: list = []

@@ -167,18 +167,25 @@ class SectionScreen(Screen):
         self.app.push_screen(ConfirmModal(title, message), _cb)
 
     def archive_selected(self, resource: str, label: str) -> None:
-        """Archive (or unarchive) the cursor record — POST /{resource}/{id}/{verb}."""
+        """Archive (confirmed) or unarchive (direct) the cursor record.
+
+        Only the hiding direction confirms — restoring visibility is harmless
+        and self-reversing, and the flat CLI is already prompt-free there
+        (backlog 1.2; aligned by 4.7).
+        """
         item = self.selected_record()
         if not item:
             return
-        verb = "unarchive" if item.get("is_archived") else "archive"
+        if item.get("is_archived"):
+            self.run_write("POST", f"/{resource}/{item['id']}/unarchive", success="Unarchived.")
+            return
         name = item.get("name") or item.get("title") or "—"
         self.confirm_write(
-            f"{verb.capitalize()} {label}?",
-            f"{verb.capitalize()} “{name}”.",
+            f"Archive {label}?",
+            f"Archive “{name}”.",
             "POST",
-            f"/{resource}/{item['id']}/{verb}",
-            success=f"{verb.capitalize()}d.",
+            f"/{resource}/{item['id']}/archive",
+            success="Archived.",
         )
 
     # ---- subclass hooks --------------------------------------------------

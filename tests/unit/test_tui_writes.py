@@ -57,3 +57,32 @@ def test_accounts_archive_calls_engine(fake_client, monkeypatch):
 
     asyncio.run(_drive(ExpenseApp(no_cache=True), AccountsScreen(), "a", fake_client))
     assert ("POST", "/accounts/a1/archive") in fake_client.requests
+
+
+ARCHIVED = [{"id": "a1", "name": "BCP", "is_person": False, "is_archived": True, "color": None}]
+
+
+def test_accounts_unarchive_is_direct(fake_client, monkeypatch):
+    """Unarchive skips the ConfirmModal (backlog 4.7 — mirrors the flat CLI, 1.2)."""
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ARCHIVED)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = AccountsScreen()
+            await app.push_screen(screen)
+            from expense.tui.widgets.cursor_list import CursorList
+
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            await pilot.press("a")  # unarchive: no modal, straight to the write
+            await wait_for(pilot, lambda: fake_client.calls)
+            assert not isinstance(app.screen, ConfirmModal)
+
+    asyncio.run(scenario())
+    assert ("POST", "/accounts/a1/unarchive") in fake_client.requests

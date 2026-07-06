@@ -91,3 +91,36 @@ def test_cases_cover_every_wired_menu_entry():
     """Armor: a new _MENU entry must get a dispatch case here (and vice versa)."""
     wired = {kind for kind, _ in home._MENU if kind not in (None, "soon")}
     assert wired == {kind for kind, _ in _CASES}
+
+
+def test_q_quits_from_home(monkeypatch):
+    """q is scoped to HomeScreen (backlog 4.6 B) — from home it quits."""
+    _stub_loaders(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, HomeScreen)
+            await pilot.press("q")
+            await wait_for(pilot, lambda: not app.is_running)
+
+    asyncio.run(scenario())
+
+
+def test_q_inert_off_home(monkeypatch):
+    """On a section screen q must do nothing — no App-level quit binding left."""
+    _stub_loaders(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await _select(app, pilot, "accounts")
+            await wait_for(pilot, lambda: isinstance(app.screen, home.AccountsScreen))
+            await pilot.press("q")
+            await pilot.pause(0.05)
+            assert app.is_running
+            assert isinstance(app.screen, home.AccountsScreen)
+
+    asyncio.run(scenario())

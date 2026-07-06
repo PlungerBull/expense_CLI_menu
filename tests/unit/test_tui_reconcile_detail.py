@@ -294,6 +294,29 @@ def test_confirm_modal_enter_cancels(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
+def test_q_inert_inside_confirm_modal(fake_client, monkeypatch):
+    """The 4.6 bug: q inside a ConfirmModal must not kill the app anymore."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            await pilot.press("d")  # delete → confirm modal
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("q")
+            await pilot.pause(0.05)
+            assert app.is_running
+            assert isinstance(app.screen, ConfirmModal)  # modal still up, undecided
+            await pilot.press("escape")
+            await pilot.pause(0.05)
+            assert not fake_client.deletes
+
+    asyncio.run(scenario())
+
+
 def test_detail_fetch_error_notifies_not_crash(fake_client, monkeypatch):
     """An engine/config error in _load_txns must not exit the app (backlog 1.3)."""
     _patch(monkeypatch)

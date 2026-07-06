@@ -196,16 +196,23 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   Verified against installed Textual 8.2.7: bindings merge per-key up the
   MRO, so the merged map (footer order/labels included) is bit-identical.
 
-- [ ] **4.6 [UI] `q` quits the app instantly from inside ConfirmModal and
+- [x] **4.6 [UI] `q` quits the app instantly from inside ConfirmModal and
   every list screen** (letters bubble to App's `q`=Quit, `app.py:23`; modals
   contain nothing focusable). Pre-existing, found by the 4.1 key audit.
-  Decide: scope `q` to Home, add a quit confirm, or drop `q` for `ctrl+q`
-  (the built-in priority quit, which works everywhere including forms —
-  plain `q` is already dead wherever an Input has focus).
+  *(done 2026-07-06, per gate mockup `expense-world-quit-unarchive-4.6-4.7.html`)*
+  Pick: **B — `q` scoped to HomeScreen** (App-level binding removed; quit
+  from home stays one key, `q` is inert on sections and inside modals;
+  `ctrl+q` remains the built-in everywhere-quit). Pilot tests pin all three
+  behaviors: quits from home, inert on a section screen, inert inside an
+  open ConfirmModal.
 
-- [ ] **4.7 Align unarchive-confirm philosophy across clients.** The TUI
+- [x] **4.7 Align unarchive-confirm philosophy across clients.** The TUI
   confirms both archive and unarchive (`_base.py:166-179`) while backlog 1.2
   deliberately made CLI `unarchive` prompt-free. Pick one rule.
+  *(done 2026-07-06, per the same gate mockup)* Rule: **confirm the hiding
+  direction only** — `archive_selected` now runs unarchive directly (toast
+  "Unarchived."), archive keeps its ConfirmModal. One philosophy on both
+  clients; covers Accounts/Categories/Hashtags via the shared helper.
 
 - [ ] **4.8 Convert Rates to the bar-cycle form idiom** (like quick-log /
   create forms) instead of `t`/`b`/`d` letter-jumps — it's the only screen
