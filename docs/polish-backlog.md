@@ -387,15 +387,25 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
 
 ## 7. Remaining low-severity nits (batch opportunistically)
 
-- [ ] `reconcile list` is the only list command without a table
+- [x] `reconcile list` is the only list command without a table
   (`reconcile_cmd.py:117-134`). **[UI-adjacent: propose columns first per
-  table-approval rule.]**
-- [ ] Deleted rows indistinguishable in accounts/categories lists despite
+  table-approval rule.]** *(done 2026-07-06, per gate mockup
+  `cli-section7-tables.html` — pick B: Account · Name · Period · Begin · End ·
+  Source · Status · Deleted · Id, full-UUID Id last; status/period formatters
+  moved to `reconcile_cmd` and imported by the TUI, one copy per §5.)*
+- [x] Deleted rows indistinguishable in accounts/categories lists despite
   `--include-deleted`, while hashtags shows a Deleted column
-  (`hashtags_cmd.py:47-62` vs siblings).
-- [ ] Client-side re-validation / silent correction of engine rules in three
-  spots (`reports_cmd.py:20,321-331`) — thin-wrapper rule says surface the
-  engine's 422 instead.
+  (`hashtags_cmd.py:47-62` vs siblings). *(done 2026-07-06, per the same gate
+  mockup — pick C: Deleted column always visible, exact hashtags parity.)*
+- [x] Client-side re-validation / silent correction of engine rules in three
+  spots (month 01..12 in `dates.parse_year_month`, inverted-range and
+  24-month-cap in `reports_cmd.monthly` — the original `reports_cmd.py:321-331`
+  refs were stale) — thin-wrapper rule says surface the engine's 422 instead.
+  *(done 2026-07-06 — engine-owned rules now round-trip and the 422 envelope
+  surfaces; the YYYY-MM shape parse and flag-combination checks stay local by
+  decision, the former mechanically required, the latter explicitly permitted.)*
+
+**Section 7 closed 2026-07-06 — the quality review is fully worked off.**
 
 ## Suggested sequencing
 
