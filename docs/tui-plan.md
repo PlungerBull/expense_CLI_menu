@@ -1,7 +1,9 @@
 # Interactive TUI — Implementation Plan
 
 > Status: **in progress (Step 10)** — Phases 0 & 1 shipped, Phase 2 (write flows)
-> under way; Phase 3 not started. Entry command is **`expense world`**. This TUI
+> under way; Phase 3 partially delivered early via [polish-backlog.md](polish-backlog.md) §4
+> (2026-07-05/06: keymap contract, theme-resolved semantic colors, form-label width —
+> §4.6–4.8 follow-ups open). Entry command is **`expense world`**. This TUI
 > **replaced the questionary `expense menu`**, which was **deleted at roadmap Step 10.X
 > (2026-07-02)** — `expense/menu/`, its tests, the Typer command, and the `questionary`
 > dep are gone (see §10). Builds a menu-driven, retained-mode terminal
@@ -97,7 +99,10 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 ### Phase 0 — Walking skeleton · **3–5 days** · ✅ shipped
 - `expense world` launches the Textual app; neutral theme loads.
 - Header banner + **home menu** (real section list + live status line), arrow-key nav,
-  footer keybar, quit.
+  footer keybar, quit. *(The status line was later **removed by decision** at
+  polish-backlog §4.3, 2026-07-06 — the hardcoded placeholder reflected nothing; the
+  designed local/live variants live on in `mockups/expense-world-home-status-4.3.html`
+  if ever wanted.)*
 - **One real read view wired to live data: Outstanding Amounts** (start flat, then add
   the tree) via the worker helper, reusing `ensure_synced`.
 - **Exit criteria:** launch → navigate the menu → see real current-month data in your
@@ -134,12 +139,16 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - **Config / Auth & profile** forms. Post-write refresh reuses `refresh_after_write`.
 - **Exit criteria:** create/edit/act parity with the flat command surface.
 
-### Phase 3 — Polish & hardening · **~1 week** · ⬜ not started
+### Phase 3 — Polish & hardening · **~1 week** · ◐ first slice shipped (backlog §4, 2026-07-05/06)
 - Designer's theme tokens dropped in; light/dark; `NO_COLOR` paths.
-- Keybinding consistency, `?` help overlay, Textual command palette.
+  *(Semantic colors now theme-resolve via `resolve_palette`/`amount_cell` — §4.2;
+  light theme + NO_COLOR still open.)*
+- Keybinding consistency ✅ (§4.1/§4.5 keymap contract: r always refreshes, y alone
+  confirms, enter never mutates), `?` help overlay ⬜, Textual command palette ⬜.
 - Async edge cases (slow net, offline, cold-start notice shown in-app), spinners.
 - Skeleton/empty/error states everywhere.
-- **Textual pilot tests** for navigation + key flows; existing CLI suite stays green.
+- **Textual pilot tests** for navigation + key flows ◐ (binding-level pilot tests for
+  keymap/confirm/status flows landed with §4); existing CLI suite stays green.
 - Update `docs/roadmap.md`, `CLAUDE.md`; user-facing TUI notes.
 - **Exit criteria:** shippable; feature-complete vs the flat command surface.
 
