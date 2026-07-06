@@ -146,13 +146,22 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   Future: rename on Manage screens must ship as `e`, never `r` (two older
   mockups show `r rename` — superseded).
 
-- [ ] **4.2 [UI] Theme-resolve hardcoded colors; settle amount-coloring rule.**
-  `"green"/"red"` by sign and `"green"/"dim"` in
-  `widgets/checklist.py:91-97`, `"green"/"yellow"` status in
-  `reconciliations.py:711` bypass `theme.py`'s documented palette. The
-  reconciliation checklist is also the only place amounts are sign-colored —
-  pick one rule (everywhere or nowhere) across Transactions/Inbox/Accounts/
-  Outstanding.
+- [x] **4.2 [UI] Theme-resolve hardcoded colors; settle amount-coloring rule.**
+  *(done 2026-07-06, per approved mockup `expense-world-amount-colors-4.2.html`)*
+  Rule picked: **A — sign-color everywhere** (transaction amounts, account
+  balances, dashboard totals via theme $success/$error) with reconciliation
+  begin/end **checkpoints plain** (positions, not judgments — per the approved
+  remaining mockup) and the default cursor-row reverse (colored background)
+  accepted. `theme.py` retuned to the approved mockup hexes (error `#cf8d8d`,
+  warning `#d6b878`). Plumbing: `Palette`/`resolve_palette` in theme.py —
+  reads `app.current_theme`, NOT `theme_variables` (its shade generation
+  HSL-roundtrips and drifts a channel by one bit) — `amount_cell` in
+  widgets/cells.py, palette threaded through the pure row builders (trailing
+  optional param; `None` = today's plain strings, tests stay pure); checked
+  marks → $success, recon status → $success/$warning; screens rebuild on
+  `theme_changed_signal`, so ctrl+p live theme switching recolors Rich
+  content too. Guard test bans literal green/red/yellow styles under
+  expense/tui/ (create_forms swatch-name data exempt).
 
 - [ ] **4.3 [UI] Remove or wire the fake "● connected" home-screen status.**
   Hardcoded string that reflects nothing (`home.py:56`).

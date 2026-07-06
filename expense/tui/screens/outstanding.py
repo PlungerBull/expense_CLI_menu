@@ -20,11 +20,12 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands import dashboard_cmd
-from expense.commands._resource import format_cents
 from expense.tui.screens._base import SectionScreen
+from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.widgets.cells import amount_cell
 
 
-def _accounts_table(items: list[dict]) -> RenderableType:
+def _accounts_table(items: list[dict], palette: Palette | None = None) -> RenderableType:
     if not items:
         return Text("  (none)", style="dim")
     t = Table(box=box.SIMPLE, pad_edge=False, expand=True)
@@ -35,12 +36,12 @@ def _accounts_table(items: list[dict]) -> RenderableType:
         t.add_row(
             item.get("name") or "(unnamed)",
             item.get("currency_code") or "?",
-            format_cents(item.get("current_balance_cents")),
+            amount_cell(item.get("current_balance_cents"), palette, AMOUNT_RULE),
         )
     return t
 
 
-def _totals_table(totals: dict | None) -> RenderableType:
+def _totals_table(totals: dict | None, palette: Palette | None = None) -> RenderableType:
     if not isinstance(totals, dict):
         return Text("  (no totals)", style="dim")
     t = Table(box=box.SIMPLE, pad_edge=False, expand=True)
@@ -50,8 +51,8 @@ def _totals_table(totals: dict | None) -> RenderableType:
     for key in ("inflow", "outflow", "net"):
         t.add_row(
             key,
-            format_cents(totals.get(f"{key}_cents")),
-            format_cents(totals.get(f"{key}_home_cents")),
+            amount_cell(totals.get(f"{key}_cents"), palette, AMOUNT_RULE),
+            amount_cell(totals.get(f"{key}_home_cents"), palette, AMOUNT_RULE),
         )
     return t
 
@@ -72,10 +73,16 @@ class CategoriesView(Static):
         Binding("enter,space", "toggle", show=False),
     ]
 
-    def __init__(self, categories: list[dict], name_map: dict[str, str]) -> None:
+    def __init__(
+        self,
+        categories: list[dict],
+        name_map: dict[str, str],
+        palette: Palette | None = None,
+    ) -> None:
         super().__init__()
         self._cats = categories
         self._name_map = name_map
+        self._palette = palette
         self._collapsed: set[int] = set()
         self._cursor = 0
 
@@ -102,7 +109,7 @@ class CategoriesView(Static):
             row_style = "reverse" if i == self._cursor else ""
             t.add_row(
                 caret + (cat.get("name") or "(unnamed)"),
-                format_cents(cat.get("spent_cents")),
+                amount_cell(cat.get("spent_cents"), self._palette, AMOUNT_RULE),
                 style=row_style,
             )
             if kids and i not in self._collapsed:
@@ -110,7 +117,7 @@ class CategoriesView(Static):
                     ids = sub.get("hashtag_ids") or []
                     t.add_row(
                         "    " + dashboard_cmd.hashtag_label(ids, self._name_map),
-                        format_cents(sub.get("spent_cents")),
+                        amount_cell(sub.get("spent_cents"), self._palette, AMOUNT_RULE),
                         style="dim",
                     )
         return t
@@ -153,21 +160,26 @@ class OutstandingScreen(SectionScreen):
         )
 
     def build(self, body: dict) -> list[Widget]:
+        palette = resolve_palette(self.app)
         month = dashboard_cmd._format_month(body.get("month"))
         title = Text(f"Outstanding Amounts  ·  {month}  (current month)")
         widgets: list[Widget] = [
             Static(title, classes="section-title"),
             Static(Text("Bank accounts"), classes="sect"),
-            Static(_accounts_table(body.get("bank_accounts") or [])),
+            Static(_accounts_table(body.get("bank_accounts") or [], palette)),
         ]
         people = body.get("people") or []
         if people:
             widgets.append(Static(Text("People"), classes="sect"))
-            widgets.append(Static(_accounts_table(people)))
+            widgets.append(Static(_accounts_table(people, palette)))
         widgets.append(Static(Text("Categories — spent this month"), classes="sect"))
         widgets.append(
-            CategoriesView(body.get("categories") or [], dashboard_cmd.load_hashtag_name_map())
+            CategoriesView(
+                body.get("categories") or [],
+                dashboard_cmd.load_hashtag_name_map(),
+                palette=palette,
+            )
         )
         widgets.append(Static(Text("Totals"), classes="sect"))
-        widgets.append(Static(_totals_table(body.get("totals"))))
+        widgets.append(Static(_totals_table(body.get("totals"), palette)))
         return widgets

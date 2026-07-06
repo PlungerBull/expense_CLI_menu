@@ -15,7 +15,6 @@ from textual.widgets import Static
 
 from expense.commands import inbox_cmd
 from expense.commands._resource import (
-    format_cents,
     format_short_date,
     load_account_name_map,
     load_category_name_map,
@@ -24,6 +23,8 @@ from expense.commands._resource import (
 )
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
+from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.cursor_list import CursorList
 
 _HEADERS = ["", "Title", "Description", "Amount", "Date", "Account", "Category", "St"]
@@ -39,7 +40,13 @@ def _glyph(item: dict, ready_ids: set) -> str:
     return "·"  # incomplete
 
 
-def inbox_rows(items: list[dict], accounts: dict, categories: dict, ready_ids: set) -> list:
+def inbox_rows(
+    items: list[dict],
+    accounts: dict,
+    categories: dict,
+    ready_ids: set,
+    palette: Palette | None = None,
+) -> list:
     """Pure (id, cells) rows for a CursorList. Unit-testable without a screen."""
     rows = []
     for it in items:
@@ -47,7 +54,7 @@ def inbox_rows(items: list[dict], accounts: dict, categories: dict, ready_ids: s
             _glyph(it, ready_ids),
             truncate(it.get("title") or "—", 18),
             truncate(it.get("description"), 16),
-            format_cents(it.get("amount_cents")),
+            amount_cell(it.get("amount_cents"), palette, AMOUNT_RULE),
             format_short_date(it.get("date")),
             resolve_name(it.get("account_id"), accounts),
             resolve_name(it.get("category_id"), categories),
@@ -102,7 +109,13 @@ class InboxScreen(SectionScreen):
     def build(self, data: dict) -> list[Widget]:
         items = data["items"]
         self._by_id = {it.get("id"): it for it in items}
-        rows = inbox_rows(items, data["accounts"], data["categories"], data["ready_ids"])
+        rows = inbox_rows(
+            items,
+            data["accounts"],
+            data["categories"],
+            data["ready_ids"],
+            palette=resolve_palette(self.app),
+        )
         return [
             Static(Text("Inbox — capture now, complete later"), classes="section-title"),
             CursorList(_HEADERS, rows, align_right={3}, empty="(no inbox items)"),

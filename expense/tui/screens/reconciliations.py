@@ -46,6 +46,8 @@ from expense.errors import format_error
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
+from expense.tui.theme import AMOUNT_RULE, BALANCE_RULE, Palette, resolve_palette
+from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.checklist import CheckList
 from expense.tui.widgets.cursor_list import CursorList
 from expense.tui.widgets.header import Breadcrumb
@@ -72,7 +74,9 @@ def _period(item: dict) -> str:
     return "—"
 
 
-def reconciliation_rows(items: list[dict], account_names: dict) -> list:
+def reconciliation_rows(
+    items: list[dict], account_names: dict, palette: Palette | None = None
+) -> list:
     """Pure (id, cells, base_style) rows for a CursorList. Unit-testable."""
     rows = []
     for it in items:
@@ -81,8 +85,8 @@ def reconciliation_rows(items: list[dict], account_names: dict) -> list:
             account_names.get(it.get("account_id"), (it.get("account_id") or "?")[:8]),
             it.get("name") or "(unnamed)",
             _period(it),
-            format_cents(it.get("beginning_balance_cents")),
-            format_cents(it.get("ending_balance_cents")),
+            amount_cell(it.get("beginning_balance_cents"), palette, BALANCE_RULE),
+            amount_cell(it.get("ending_balance_cents"), palette, BALANCE_RULE),
             it.get("beginning_balance_source") or "—",
             _STATUS.get(status, str(status) if status is not None else "—"),
         ]
@@ -98,7 +102,7 @@ def _sort_key(r: dict):
     return (so if so is not None else 10**9, r.get("id") or "")
 
 
-def batch_rows(items: list[dict]) -> list:
+def batch_rows(items: list[dict], palette: Palette | None = None) -> list:
     """Per-account batch rows (no Account column) for the browse's lower pane."""
     rows = []
     for it in items:
@@ -106,8 +110,8 @@ def batch_rows(items: list[dict]) -> list:
         cells = [
             it.get("name") or "(unnamed)",
             _period(it),
-            format_cents(it.get("beginning_balance_cents")),
-            format_cents(it.get("ending_balance_cents")),
+            amount_cell(it.get("beginning_balance_cents"), palette, BALANCE_RULE),
+            amount_cell(it.get("ending_balance_cents"), palette, BALANCE_RULE),
             it.get("beginning_balance_source") or "—",
             _STATUS.get(status, str(status) if status is not None else "—"),
         ]
@@ -186,8 +190,10 @@ class ReconciliationsScreen(SectionScreen):
         self._accounts = data["accounts"]
         self._acct_idx = min(self._acct_idx, max(0, len(self._accounts) - 1))
         self._rebuild_batches()
+        palette = resolve_palette(self.app)
         acct_rows = [
-            (aid, [name, cur, format_cents(bal)]) for (aid, name, cur, bal) in self._accounts
+            (aid, [name, cur, amount_cell(bal, palette, AMOUNT_RULE)])
+            for (aid, name, cur, bal) in self._accounts
         ]
         self._accts_list = CursorList(
             ["Account", "Cur", "Balance"], acct_rows, align_right={2}, empty="(no bank accounts)"
@@ -195,7 +201,7 @@ class ReconciliationsScreen(SectionScreen):
         self._accts_list.id = "accts"
         self._batch_list = CursorList(
             _BATCH_HEADERS,
-            batch_rows(self._batches),
+            batch_rows(self._batches, palette=palette),
             align_right={2, 3},
             empty="(no batches — press n to create one)",
         )
@@ -229,7 +235,7 @@ class ReconciliationsScreen(SectionScreen):
             return
         self._acct_idx = event.index
         self._rebuild_batches()
-        self._batch_list.set_rows(batch_rows(self._batches))
+        self._batch_list.set_rows(batch_rows(self._batches, palette=resolve_palette(self.app)))
         self.query_one("#batchcap", Static).update(Text(self._batch_caption(), style="dim"))
 
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
@@ -647,6 +653,11 @@ class NewReconciliationScreen(Screen):
 # --------------------------------------------------------------------------- #
 # Working / detail screen — assign transactions, complete / revert / delete
 # --------------------------------------------------------------------------- #
+def _status_span(status: str, palette: Palette) -> tuple[str, str]:
+    """(text, style) for the header's status word — completed→success, draft→warning."""
+    return status, palette.success if status == "completed" else palette.warning
+
+
 def _txn_sub(it: dict, cat_names: dict, tag_names: dict) -> str:
     """The dim category · #tags · note sub-line for a transaction row."""
     parts = []
@@ -695,13 +706,21 @@ class ReconciliationDetailScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.app.theme_changed_signal.subscribe(self, self._on_theme_change)
+        self._render_header()
+        self._load_txns()
+
+    def _on_theme_change(self, _theme: object) -> None:
         self._render_header()
         self._load_txns()
 
     def _render_header(self) -> None:
         r = self._record
+        palette = resolve_palette(self.app)
         acct = load_account_name_map().get(self._account_id, (self._account_id or "?")[:8])
         status = _STATUS.get(r.get("status"), "—")
+        begin = amount_cell(r.get("beginning_balance_cents"), palette, BALANCE_RULE)
+        end = amount_cell(r.get("ending_balance_cents"), palette, BALANCE_RULE)
         text = Text.assemble(
             (r.get("name") or "—", "bold"),
             ("  ·  ", "dim"),
@@ -710,12 +729,12 @@ class ReconciliationDetailScreen(Screen):
             (_period(r), "dim"),
             ("\n", ""),
             ("begin ", "dim"),
-            (format_cents(r.get("beginning_balance_cents")), ""),
+            begin if isinstance(begin, Text) else (begin, ""),
             (f"  ({r.get('beginning_balance_source') or '—'})", "dim"),
             ("    end ", "dim"),
-            (format_cents(r.get("ending_balance_cents")), ""),
+            end if isinstance(end, Text) else (end, ""),
             ("    status ", "dim"),
-            (status, "green" if status == "completed" else "yellow"),
+            _status_span(status, palette),
         )
         self.query_one("#rhead", Static).update(text)
         hint = (
@@ -808,7 +827,13 @@ class ReconciliationDetailScreen(Screen):
             if self._completed
             else "(no transactions for this account in range)"
         )
-        self._list = CheckList(rows, checked, read_only=self._completed, empty=empty)
+        self._list = CheckList(
+            rows,
+            checked,
+            read_only=self._completed,
+            empty=empty,
+            palette=resolve_palette(self.app),
+        )
         await container.mount(self._list)
         if not self._completed:
             self._list.focus()

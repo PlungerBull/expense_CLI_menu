@@ -37,6 +37,9 @@ class SectionScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        # re-render on theme swap: Rich content bakes resolved hexes at build
+        # time, so a live theme change must rebuild (exclusive worker → cheap)
+        self.app.theme_changed_signal.subscribe(self, lambda _theme: self._load())
         self._load()
 
     async def action_reload(self) -> None:

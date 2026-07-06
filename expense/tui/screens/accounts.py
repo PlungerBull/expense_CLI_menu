@@ -14,16 +14,16 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands import accounts_cmd
-from expense.commands._resource import format_cents
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import RecordModal
-from expense.tui.widgets.cells import swatch
+from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.widgets.cells import amount_cell, swatch
 from expense.tui.widgets.cursor_list import CursorList
 
 _HEADERS = ["Name", "Type", "Cur", "Color", "Balance", "Status"]
 
 
-def account_rows(items: list[dict]) -> list:
+def account_rows(items: list[dict], palette: Palette | None = None) -> list:
     """Pure (id, cells, base_style) rows for a CursorList. Unit-testable."""
     rows = []
     for it in items:
@@ -33,7 +33,7 @@ def account_rows(items: list[dict]) -> list:
             "person" if it.get("is_person") else "bank",
             it.get("currency_code") or "?",
             swatch(it.get("color")),
-            format_cents(it.get("current_balance_cents")),
+            amount_cell(it.get("current_balance_cents"), palette, AMOUNT_RULE),
             "archived" if archived else "active",
         ]
         rows.append((it.get("id"), cells, "dim" if archived else ""))
@@ -76,7 +76,12 @@ class AccountsScreen(SectionScreen):
         self._by_id = {it.get("id"): it for it in items}
         return [
             Static(Text("Accounts — banks & people"), classes="section-title"),
-            CursorList(_HEADERS, account_rows(items), align_right={4}, empty="(no accounts)"),
+            CursorList(
+                _HEADERS,
+                account_rows(items, palette=resolve_palette(self.app)),
+                align_right={4},
+                empty="(no accounts)",
+            ),
             Static(
                 Text("balances are native currency · home equivalents in Outstanding Amounts"),
                 classes="legend",

@@ -44,6 +44,16 @@ def test_transaction_rows_format_and_resolve():
     assert by_id["t2"][2] == "-432.50" and by_id["t2"][6] == "—"
 
 
+def test_transaction_rows_palette_sign_colors_amounts():
+    """With a palette the amount cell is a Text sign-colored per backlog 4.2 (rule A)."""
+    from expense.tui.theme import Palette
+
+    palette = Palette("#0f0", "#f00", "#ff0")
+    by_id = dict(transaction_rows(ITEMS, ACCOUNTS, CATEGORIES, HASHTAGS, palette=palette))
+    assert by_id["t1"][2].style == palette.success and str(by_id["t1"][2]) == "6,519.00"
+    assert by_id["t2"][2].style == palette.error and str(by_id["t2"][2]) == "-432.50"
+
+
 def test_transactions_screen_lists_and_opens_detail(monkeypatch):
     import expense.commands.transactions_cmd as tc
     import expense.tui.screens.transactions as tx_mod

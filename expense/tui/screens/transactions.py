@@ -14,7 +14,6 @@ from textual.widgets import Static
 
 from expense.commands import transactions_cmd
 from expense.commands._resource import (
-    format_cents,
     format_short_date,
     load_account_name_map,
     load_category_name_map,
@@ -24,6 +23,8 @@ from expense.commands._resource import (
 from expense.commands.dashboard_cmd import load_hashtag_name_map
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
+from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.cursor_list import CursorList
 
 _HEADERS = ["Title", "Description", "Amount", "Date", "Account", "Cat", "Tags"]
@@ -37,7 +38,13 @@ def _tags_cell(ids: object, hashtags: dict) -> str:
     return truncate(", ".join(names), 20)
 
 
-def transaction_rows(items: list[dict], accounts: dict, categories: dict, hashtags: dict) -> list:
+def transaction_rows(
+    items: list[dict],
+    accounts: dict,
+    categories: dict,
+    hashtags: dict,
+    palette: Palette | None = None,
+) -> list:
     """Pure (id, cells) rows for a CursorList. Unit-testable without a screen."""
     rows = []
     for it in items:
@@ -47,7 +54,7 @@ def transaction_rows(items: list[dict], accounts: dict, categories: dict, hashta
                 [
                     truncate(it.get("title") or "—", 20),
                     truncate(it.get("description"), 18),
-                    format_cents(it.get("amount_cents")),
+                    amount_cell(it.get("amount_cents"), palette, AMOUNT_RULE),
                     format_short_date(it.get("date")),
                     resolve_name(it.get("account_id"), accounts),
                     resolve_name(it.get("category_id"), categories),
@@ -92,7 +99,13 @@ class TransactionsScreen(SectionScreen):
     def build(self, data: dict) -> list[Widget]:
         items = data["items"]
         self._by_id = {it.get("id"): it for it in items}
-        rows = transaction_rows(items, data["accounts"], data["categories"], data["hashtags"])
+        rows = transaction_rows(
+            items,
+            data["accounts"],
+            data["categories"],
+            data["hashtags"],
+            palette=resolve_palette(self.app),
+        )
         shown = len(rows)
         total = data["total"]
         count = f"showing {shown} of {total}" if isinstance(total, int) else f"showing {shown}"
