@@ -175,8 +175,17 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   landed as its own commit since any future home-screen state read would
   otherwise touch the developer's real config in 49 test launches.
 
-- [ ] **4.4 [UI] `#field` label column (width: 11) clips longer form labels**
+- [x] **4.4 [UI] `#field` label column (width: 11) clips longer form labels**
   like "TRANSFER TO?" / "BEGIN BALANCE" (`app.tcss:59-65`).
+  *(done 2026-07-06, per approved mockup `expense-world-field-width-4.4.html`)*
+  Width 11 minus the 1-cell right padding left 10 content cells — so
+  `END BALANCE` (11) clipped too, not just the two named. Fix: `width: 14`
+  (longest label `BEGIN BALANCE` 13 + padding 1); `width: auto` rejected —
+  the label swaps in-place while cycling fields, auto would jitter the
+  input's left edge. Guard `tests/unit/test_tui_field_width.py` computes
+  the longest label from the forms' own definitions (quick_log `_LABELS`,
+  reconciliations `_R_LABELS`, create-form `FIELDS`) and pins the tcss
+  width — a future longer label fails CI by name.
 
 - [x] **4.5 Drop redundant re-declared escape/r bindings on System screens**
   (`system.py:50-55,135-140,305-310`) — inherited already; pure cleanup.

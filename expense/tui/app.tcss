@@ -53,7 +53,7 @@ Screen {
     padding: 0 1;
 }
 #field {
-    width: 11;
+    width: 14;  /* longest label (BEGIN BALANCE, 13) + 1 right padding — guarded by test_tui_field_width.py */
     color: $accent;
     text-style: bold;
     content-align: left middle;
