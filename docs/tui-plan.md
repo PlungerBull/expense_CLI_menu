@@ -3,7 +3,10 @@
 > Status: **in progress (Step 10)** — Phases 0 & 1 shipped, Phase 2 (write flows)
 > under way; Phase 3 partially delivered early via [polish-backlog.md](polish-backlog.md) §4
 > (2026-07-05/06, all eight items closed: keymap contract, theme-resolved semantic colors,
-> form-label width, q scoped to Home, unarchive prompt-free, Rates as a history table).
+> form-label width, q scoped to Home, unarchive prompt-free, Rates as a history table)
+> and §5 (2026-07-06, all six dedup refactors closed: `EngineWriteMixin.run_write` behind
+> every TUI write worker, one `FormScreen` base under all three bar-cycle forms, shared
+> `fetch_body`/`render_record`/`items_of` and friends in `_resource.py`).
 > Entry command is **`expense world`**. This TUI
 > **replaced the questionary `expense menu`**, which was **deleted at roadmap Step 10.X
 > (2026-07-02)** — `expense/menu/`, its tests, the Typer command, and the `questionary`
@@ -140,7 +143,7 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - **Config / Auth & profile** forms. Post-write refresh reuses `refresh_after_write`.
 - **Exit criteria:** create/edit/act parity with the flat command surface.
 
-### Phase 3 — Polish & hardening · **~1 week** · ◐ first slice shipped (backlog §4, 2026-07-05/06)
+### Phase 3 — Polish & hardening · **~1 week** · ◐ slices shipped (backlog §4 2026-07-05/06, §5 2026-07-06)
 - Designer's theme tokens dropped in; light/dark; `NO_COLOR` paths.
   *(Semantic colors now theme-resolve via `resolve_palette`/`amount_cell` — §4.2;
   light theme + NO_COLOR still open.)*

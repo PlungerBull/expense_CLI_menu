@@ -231,7 +231,7 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
 
 ## 5. Deduplication refactors (pure, no behavior change)
 
-- [ ] **5.1 Extend `run_write` and collapse the 9 copied write workers.**
+- [x] **5.1 Extend `run_write` and collapse the 9 copied write workers.**
   `_base.py:115-145` only supports body-less POST/DELETE, so the identical
   `ensure_loaded → ExpenseClient → write → refresh_after_write → except →
   notify` block is copy-pasted in `system.py:221-250,252-275`,
@@ -240,42 +240,100 @@ coverage, ruff clean, no orphans from the deleted `expense/menu`.
   already drifted — `_assign` and `quick_log.py:222` miss `exclusive=True`).
   Fix: accept `json_body`, PUT, and on_success/on_error callbacks; delegate
   all sites. At minimum align the `exclusive=True` drift immediately.
+  *(done 2026-07-06)* `EngineWriteMixin` in `_base.py` hosts the generalized
+  `run_write` (PUT + `json_body` + `on_success`/`on_error`, `exclusive=True`,
+  lazy imports kept — the `fake_client` fixture patches those attributes);
+  `SectionScreen` and the plain-`Screen` forms both inherit it. **Count
+  corrections at implementation time:** 8 copied workers, not 9, and
+  `quick_log.py:222` already had `exclusive=True` — the real drift was
+  `_assign` plus base `run_write` itself. `_set_currency`'s config save moved
+  to a UI-thread `_currency_saved` (save failure still notifies "Couldn't
+  update" and skips the reload); `_status_action`'s busy-guard moved to the
+  UI thread (strictly tighter); `_assign` passes an explicit no-op
+  `on_success` to keep its silent-success contract.
 
-- [ ] **5.2 Unify the three bar-cycle form implementations.**
+- [x] **5.2 Unify the three bar-cycle form implementations.**
   `BarFormScreen` (`create_forms.py:48-248`) is the extracted abstraction, but
   `NewReconciliationScreen` (`reconciliations.py:343-639`) and
   `QuickAddLogScreen` (`quick_log.py:102-624`) re-implement it — `compose()`,
   `action_suggest`, `_failed`, summary rendering are verbatim/near-verbatim
   triplicates. Fix: subclass or extract one nav/suggest/summary/submit core;
   quick-log's dynamic field sequence stays a subclass hook.
+  *(done 2026-07-06)* New `expense/tui/screens/_form.py`:
+  `FormScreen(EngineWriteMixin, Screen)` + `form_bindings(submit_desc)` own
+  compose, locked-aware navigation (`_first_editable`/`_step`/`_advance`),
+  suggestion cycling, the summary table, and the submit pipeline
+  (`_required()` loop → `_submit_request()` → `run_write`). Subclass hooks:
+  `_sequence` / `_label` / `_hint_for` / `_required` / `_suggests` /
+  `_bar_value` / `_recompute` / `_after_mount` / `_submit_request` / `_done`.
+  All three screens are now `FormScreen` subclasses (~310 duplicate lines
+  deleted); quick-log keeps its dynamic sequence, entity loading, transfer
+  locking, and edit PUT via hooks. Pinned names survive: `_LABELS`,
+  `_R_LABELS`, `FIELDS`, and a `_recompute_suggestions` shim for the
+  quick-log test driver.
 
-- [ ] **5.3 `fetch_list` / `fetch_one` helpers for the cache-vs-live branch.**
+- [x] **5.3 `fetch_list` / `fetch_one` helpers for the cache-vs-live branch.**
   Six `fetch_*` functions and six `get` commands repeat the same
   `no_cache → ExpenseClient.get` / else `ensure_synced` + cache-query skeleton
   (`accounts_cmd.py:81-115,161-173`, `categories_cmd.py:72-108,153-165`,
   `hashtags_cmd.py:66-102,147-159`, `inbox_cmd.py:95-137`,
   `transactions_cmd.py:135-204`, `reconcile_cmd.py:29-67`). Hoist into
   `_resource.py`; each command keeps only its params/cache-query mapping.
+  *(done 2026-07-06)* One helper covers both shapes:
+  `fetch_body(cfg, *, path, params, cache_read, no_cache, verbose,
+  cold_start_notice=True, notice_stream=None)` — list-vs-one only differ in
+  path and the `cache_read` thunk. All 12 sites delegated; every `fetch_*`
+  keeps its exact signature + docstring (public TUI API). Quirks preserved
+  verbatim: `debit_as_negative="true"` on inbox/transactions/reconcile-get
+  live paths only, the transactions cache read still omits
+  `include_deleted` (the replica never stores deleted rows), reconcile keeps
+  its `str(limit)`/`str(offset)` casts and `embedded_limit`/`embedded_offset`.
+  Two direct `fetch_body` tests added alongside the per-resource branch pins.
 
-- [ ] **5.4 One `render_record(body, *, json_mode, skip=())` in `_resource.py`.**
+- [x] **5.4 One `render_record(body, *, json_mode, skip=())` in `_resource.py`.**
   The 6-line key/value renderer is copied 7× (`accounts_cmd.py:29-34`,
   `categories_cmd.py:29-34`, `hashtags_cmd.py:26-31`, `inbox_cmd.py:35-40`,
   `transactions_cmd.py:49-54`, `log_cmd.py:14-19`,
   `reconcile_cmd.py:107-114` with a skip). Also hoist `_fmt_bool` (×3),
   `_format_month` (×2); delete the five `_fmt_amount = format_cents` aliases.
+  *(done 2026-07-06)* As specified: `render_record` (json mode ignores `skip`,
+  matching the old reconcile copy), `format_bool`, `format_month` (the
+  `outstanding.py` caller of `dashboard_cmd._format_month` switched too), all
+  five aliases replaced with direct `format_cents` calls. Unit tests added in
+  `test_resource.py` for all three helpers.
 
-- [ ] **5.5 One `items_of(body)` helper.**
+- [x] **5.5 One `items_of(body)` helper.**
   The `body.get("items", body) if isinstance(body, dict) else body` idiom is
   inline 14× across commands and TUI, plus two identical private `_items()`
   helpers (`quick_log.py:627-630`, `reconciliations.py:55-58`) — and the two
   spellings differ on falsy bodies (None vs []). Promote one into
   `_resource.py`; pick the falsy behavior deliberately.
+  *(done 2026-07-06)* Falsy pick: **strict list-or-empty** — paginated dict →
+  its `items` if a list, bare list → itself, anything else (None, dict
+  without `items`, `items: null`, scalar) → `[]`; never hands a dict or None
+  to a row-builder. Verified against every site: only dead branches change
+  (the old dict-fallback could only ever crash or iterate keys). ~20 sites
+  delegated (7 canonical CLI renderers + reconcile/rates/name-map variants +
+  9 TUI inlines + both `_items()` helpers); parametrized tests pin the
+  semantics.
 
-- [ ] **5.6 Small consolidations:** token redaction ×3 with two masking formats
+- [x] **5.6 Small consolidations:** token redaction ×3 with two masking formats
   (`system.py:30-35`, `config_cmd.py:57-62`, auth); move
   `load_hashtag_name_map` from `dashboard_cmd.py:53-70` next to its siblings
   in `_resource.py`; unify the hashtag-cell formatter drift between CLI and
   TUI (`tui/screens/transactions.py:33-37`).
+  *(done 2026-07-06)* Redaction: shared `redact_token` core (8+4 mask) in
+  `_resource.py`; both `_redact_token`s are one-line wrappers keeping their
+  pinned empty-value policies (CLI `None`, TUI `"(none)"`). **Correction:**
+  the "third copy" is `_short_token` — a genuinely different single-site
+  format (`6…4`, ≤12 passthrough), left in place deliberately.
+  `load_hashtag_name_map` moved next to its siblings; `dashboard_cmd`
+  re-imports it so `outstanding.py` and the `test_tui_smoke` monkeypatch of
+  the `dashboard_cmd` attribute keep working. Hashtag cell: one
+  `format_hashtag_cell(ids, name_map, *, max_width)` — widths stay
+  per-surface (CLI 24, TUI 20, no layout change), and the TUI's
+  unresolved-id fallback gains the CLI's `…` suffix (the sanctioned drift
+  fix; not pinned by any test).
 
 ## 6. Test infrastructure & coverage of existing behavior
 
