@@ -37,6 +37,10 @@ class ConfigInvalidError(Exception):
     pass
 
 
+class CacheUnavailableError(Exception):
+    """The local replica can't be opened right now (locked/unopenable, not corrupt)."""
+
+
 def format_error(err: Exception) -> str:
     """Human-readable error text, without the leading 'Error: ' prefix.
 
@@ -109,6 +113,18 @@ def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
             return json.dumps(envelope, indent=2), 3, False
         return "Error: " + format_error(err), 3, True
 
+    if isinstance(err, CacheUnavailableError):
+        if json_mode:
+            envelope = {
+                "error": {
+                    "code": "CACHE_UNAVAILABLE",
+                    "message": str(err),
+                    "fields": None,
+                }
+            }
+            return json.dumps(envelope, indent=2), 4, False
+        return "Error: " + format_error(err), 4, True
+
     raise err
 
 
@@ -120,7 +136,13 @@ def handle_errors(fn):
         json_mode = bool(kwargs.get("json_output", False))
         try:
             return fn(*args, **kwargs)
-        except (EngineError, EngineConnectionError, ConfigMissingError, ConfigInvalidError) as err:
+        except (
+            EngineError,
+            EngineConnectionError,
+            ConfigMissingError,
+            ConfigInvalidError,
+            CacheUnavailableError,
+        ) as err:
             output, exit_code, use_stderr = render(err, json_mode=json_mode)
             typer.echo(output, err=use_stderr)
             raise typer.Exit(code=exit_code) from err

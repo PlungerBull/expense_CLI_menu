@@ -193,7 +193,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   validates it) all escape as raw tracebacks. Catch `httpx.TransportError`;
   validate the URL scheme at `config set` time.
 
-- [ ] **3.5 Refine the corruption-wipe guard (old §1.5) to not wipe on
+- [x] **3.5 Refine the corruption-wipe guard (old §1.5) to not wipe on
   transient lock.** `db.py:36-39` treats every `sqlite3.DatabaseError` as
   corruption, but `OperationalError` ("database is locked" past the 5s busy
   timeout — concurrent TUI + CLI) is a subclass; a lock destroys a healthy

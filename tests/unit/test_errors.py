@@ -4,6 +4,7 @@ import pytest
 import typer
 
 from expense.errors import (
+    CacheUnavailableError,
     ConfigMissingError,
     EngineConnectionError,
     EngineError,
@@ -122,6 +123,24 @@ def test_render_config_missing_human():
     assert use_stderr is True
     assert "Error:" in output
     assert "config set" in output
+
+
+def test_render_cache_unavailable_human():
+    err = CacheUnavailableError("Local cache at /x is unavailable (database is locked).")
+    output, exit_code, use_stderr = render(err, json_mode=False)
+    assert exit_code == 4
+    assert use_stderr is True
+    assert output.startswith("Error:")
+    assert "database is locked" in output
+
+
+def test_render_cache_unavailable_json_envelope():
+    err = CacheUnavailableError("Local cache at /x is unavailable (database is locked).")
+    output, exit_code, _ = render(err, json_mode=True)
+    assert exit_code == 4
+    envelope = json.loads(output)
+    assert envelope["error"]["code"] == "CACHE_UNAVAILABLE"
+    assert envelope["error"]["fields"] is None
 
 
 def test_format_error_engine_error_with_fields():

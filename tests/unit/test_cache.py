@@ -1,5 +1,6 @@
 import io
 import json
+import sqlite3
 from uuid import uuid4
 
 import httpx
@@ -11,7 +12,7 @@ from expense.cache import db as cache_db
 from expense.cache import state as cache_state
 from expense.cache import sync as cache_sync
 from expense.config import Config
-from expense.errors import EngineError
+from expense.errors import CacheUnavailableError, EngineError
 from expense.http import ExpenseClient
 
 SYNC_FULL_RESPONSE = {
@@ -550,6 +551,30 @@ def test_connect_wipes_and_rebuilds_corrupt_cache(cache_path):
         assert meta["sync_token"] is None
     finally:
         conn.close()
+
+
+def test_connect_locked_cache_errors_cleanly_and_survives(cache_path, monkeypatch):
+    """A transient lock must not trigger the corruption wipe (backlog 3.5)."""
+    conn = cache.connect()  # healthy replica on disk
+    conn.close()
+
+    def locked() -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(cache_db, "_open", locked)
+    with pytest.raises(CacheUnavailableError) as exc:
+        cache.connect()
+
+    assert "database is locked" in str(exc.value)
+    assert cache_db.cache_path().exists()  # the replica was not destroyed
+
+
+def test_connect_unopenable_path_errors_cleanly(cache_path):
+    """A directory at the cache path is unopenable, not corrupt — no wipe attempt."""
+    cache_path.mkdir()
+    with pytest.raises(CacheUnavailableError):
+        cache.connect()
+    assert cache_path.is_dir()
 
 
 def _seed_accounts(conn, rows: list[dict]) -> None:

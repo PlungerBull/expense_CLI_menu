@@ -10,6 +10,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+from expense.errors import CacheUnavailableError
+
 SCHEMA_VERSION = 3
 
 
@@ -31,12 +33,25 @@ def connect() -> sqlite3.Connection:
     The cache is a disposable replica: if the file is corrupt (sqlite3
     errors on first use), wipe it and rebuild fresh — the next read
     cold-starts from the engine. A second failure propagates.
+
+    OperationalError is excluded from the wipe: it means locked (another
+    expense process holds the file past the 5s busy timeout) or unopenable
+    (path/permission trouble), never corruption — wiping would destroy a
+    healthy replica under the other process's feet. Surface it cleanly.
     """
     try:
-        return _open()
-    except sqlite3.DatabaseError:
-        wipe()
-        return _open()
+        try:
+            return _open()
+        except sqlite3.OperationalError:
+            raise
+        except sqlite3.DatabaseError:
+            wipe()
+            return _open()
+    except sqlite3.OperationalError as exc:
+        raise CacheUnavailableError(
+            f"Local cache at {cache_path()} is unavailable ({exc}). Another expense "
+            "process may hold it — retry in a moment, or run with --no-cache."
+        ) from exc
 
 
 def _open() -> sqlite3.Connection:
