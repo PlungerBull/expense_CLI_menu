@@ -5,6 +5,7 @@ engine endpoint would be called via the ConfirmModal → run_write path.
 """
 
 import asyncio
+import time
 
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen
@@ -56,6 +57,48 @@ def test_accounts_archive_calls_engine(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
 
     asyncio.run(_drive(ExpenseApp(no_cache=True), AccountsScreen(), "a", fake_client))
+    assert ("POST", "/accounts/a1/archive") in fake_client.requests
+
+
+def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
+    """`r` mid-write must not cancel the engine-write worker (backlog 3.2).
+
+    run_write and _load used to share the default exclusive group, so a
+    refresh or theme change cancelled an in-flight write worker.
+    """
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
+    real_post = fake_client.post
+
+    def slow_post(path, json_body=None):
+        time.sleep(0.15)  # keep the write worker observable in flight
+        return real_post(path, json_body=json_body)
+
+    fake_client.post = slow_post
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = AccountsScreen()
+            await app.push_screen(screen)
+            from expense.tui.widgets.cursor_list import CursorList
+
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            await pilot.press("a")  # archive → ConfirmModal
+            await pilot.pause(0.05)
+            await pilot.press("y")  # confirm → slow run_write
+            write_workers = [w for w in app.workers if w.group == "engine-write"]
+            assert write_workers, "write worker not running in its own group"
+            await pilot.press("r")  # refresh while the write is in flight
+            await wait_for(pilot, lambda: fake_client.calls)
+            assert not write_workers[0].is_cancelled
+
+    asyncio.run(scenario())
     assert ("POST", "/accounts/a1/archive") in fake_client.requests
 
 

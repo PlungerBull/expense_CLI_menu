@@ -155,6 +155,78 @@ def test_toggle_puts_reconciliation_id(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
+def test_rapid_toggles_serialize_puts_in_order(fake_client, monkeypatch):
+    """Rapid `space` toggles queue their PUTs one at a time, in order (backlog 3.2)."""
+    import threading
+    import time
+
+    _patch(monkeypatch)
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+    real_put = fake_client.put
+
+    def slow_put(path, json_body=None):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.08)  # wide enough that overlapping PUTs would be caught
+        with lock:
+            active -= 1
+        return real_put(path, json_body=json_body)
+
+    fake_client.put = slow_put
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            screen._list._cursor = 0
+            screen._list.action_toggle()  # t1 → out of the batch
+            screen._list._cursor = 1
+            screen._list.action_toggle()  # t2 → into the batch
+            await wait_for(pilot, lambda: len(fake_client.puts) == 2)
+
+    asyncio.run(scenario())
+    assert max_active == 1  # serialized: never two PUTs in flight
+    assert fake_client.puts == [
+        ("/transactions/t1", {"reconciliation_id": None}),
+        ("/transactions/t2", {"reconciliation_id": "r1"}),
+    ]
+
+
+def test_toggle_error_drops_queued_intents_and_resyncs(fake_client, monkeypatch):
+    """A failed toggle clears the queue and resyncs instead of applying stale intents (3.2)."""
+    from expense.errors import EngineError as _EngineError
+
+    _patch(monkeypatch)
+    fake_client.errors["PUT"] = _EngineError("CONFLICT", "Transaction is locked.", None, 409, {})
+    notices: list = []
+    monkeypatch.setattr(
+        ReconciliationDetailScreen, "notify", lambda self, message, **kw: notices.append(message)
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            screen._list._cursor = 0
+            screen._list.action_toggle()
+            screen._list._cursor = 1
+            screen._list.action_toggle()  # queued behind the failing PUT
+            await wait_for(pilot, lambda: notices)
+            await pilot.pause(0.05)
+            assert not screen._toggle_queue  # stale intent dropped, not sent
+            assert len(fake_client.puts) == 1
+
+    asyncio.run(scenario())
+
+
 def test_complete_confirms_then_posts(fake_client, monkeypatch):
     _patch(monkeypatch)
 

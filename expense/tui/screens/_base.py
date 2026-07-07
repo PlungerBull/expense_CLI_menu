@@ -32,11 +32,13 @@ class EngineWriteMixin:
     Screen). Success/error callbacks land back on the UI thread via
     `call_from_thread`; without callbacks, errors notify with a "Failed" toast
     and success runs `_after_write`. Idempotency + error envelope come from the
-    client. `exclusive=True` guards against stale queued writes — an in-flight
-    request always completes (thread workers cancel cooperatively).
+    client. Writes run in their own `engine-write` group so a load/refresh or
+    theme change can never cancel an in-flight write worker (or vice versa);
+    `exclusive=True` within the group still guards against stale queued writes —
+    an in-flight request always completes (thread workers cancel cooperatively).
     """
 
-    @work(thread=True, exclusive=True)
+    @work(thread=True, exclusive=True, group="engine-write")
     def run_write(
         self,
         method: str,
@@ -114,7 +116,8 @@ class SectionScreen(EngineWriteMixin, Screen):
         await content.mount(LoadingIndicator())
         self._load()
 
-    @work(thread=True, exclusive=True)
+    # Own group: loads may cancel stale loads, but never a run_write worker.
+    @work(thread=True, exclusive=True, group="section-load")
     def _load(self) -> None:
         if self._will_cold_start():
             self.app.call_from_thread(

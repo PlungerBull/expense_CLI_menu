@@ -167,7 +167,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   support. Implementation-or-docs, but the current letter-vs-spirit gap
   should close.
 
-- [ ] **3.2 TUI worker-group collisions.**
+- [x] **3.2 TUI worker-group collisions.**
   `run_write` and `_load` are both `exclusive=True` in the *default* group
   on the same node (`_base.py:39`, `_base.py:117`), so a refresh or theme
   change mid-write cancels the write worker and vice versa —

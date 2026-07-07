@@ -534,6 +534,9 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
         self._account_id = record.get("account_id")
         self._busy = False
         self._list: CheckList | None = None
+        # toggle serialization (backlog 3.2): pending (tx_id, recon_id) intents
+        self._toggle_queue: list[tuple[object, object]] = []
+        self._toggle_inflight = False
 
     @property
     def _completed(self) -> bool:
@@ -586,8 +589,8 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
         )
         self.query_one("#rhint", Static).update(Text(hint, style="dim"))
 
-    # own group: sharing the default exclusive group with _status_action would let
-    # a refresh mid-POST cancel the write's worker while its thread still lands
+    # own load group (mirrors SectionScreen._load's "section-load"): a refresh
+    # cancels stale refreshes only, never a run_write ("engine-write") worker
     @work(thread=True, exclusive=True, group="recon-detail-load")
     def _load_txns(self, refresh_record: bool = False) -> None:
         from expense import config as config_module
@@ -681,19 +684,35 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
 
     # ---- assign / unassign ----------------------------------------------
     def on_check_list_toggled(self, event: CheckList.Toggled) -> None:
-        self._assign(event.key, self._id if event.checked else None)
+        # Queued, one PUT in flight at a time: rapid `space` presses would
+        # otherwise race overlapping writes with no ordering guarantee (thread
+        # cancellation is cooperative, so exclusive workers don't serialize).
+        self._toggle_queue.append((event.key, self._id if event.checked else None))
+        self._pump_toggles()
 
-    def _assign(self, tx_id: object, recon_id: object) -> None:
+    def _pump_toggles(self) -> None:
+        if self._toggle_inflight or not self._toggle_queue:
+            return
+        tx_id, recon_id = self._toggle_queue.pop(0)
+        self._toggle_inflight = True
         # Success is silent — the checklist toggle already shows the new state.
         self.run_write(
             "PUT",
             f"/transactions/{tx_id}",
             json_body={"reconciliation_id": recon_id},
-            on_success=lambda: None,
+            on_success=self._toggle_done,
             on_error=self._assign_failed,
         )
 
+    def _toggle_done(self) -> None:
+        self._toggle_inflight = False
+        self._pump_toggles()
+
     def _assign_failed(self, message: str) -> None:
+        # Queued intents were made against a checklist state the engine just
+        # contradicted — drop them and resync to the engine's truth.
+        self._toggle_inflight = False
+        self._toggle_queue.clear()
         self.notify(message, title="Couldn't update", severity="error")
         self._load_txns()  # resync the checklist to the engine's truth
 
