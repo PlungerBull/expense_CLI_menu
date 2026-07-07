@@ -47,7 +47,7 @@ if you need the old detail.
   test that edits hashtags on a record that already has one and asserts
   `hashtag_ids` is in the PUT body.
 
-- [ ] **1.3 Import re-run silently drops appended rows.**
+- [x] **1.3 Import re-run silently drops appended rows.**
   The engine batch endpoint is atomic and 409s if *any* client-supplied id
   pre-exists; `apply_plan` counts a 409'd chunk entirely as
   `tx_skipped_existing` (`expense/import_/apply.py:166-167`). The natural

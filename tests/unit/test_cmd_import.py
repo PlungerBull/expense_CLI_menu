@@ -104,6 +104,12 @@ def test_apply_reuses_existing_and_creates_rest(configured):
     assert result.tx_created == 2
 
 
+def _conflict() -> httpx.Response:
+    return httpx.Response(
+        409, json={"error": {"code": "CONFLICT", "message": "id exists", "fields": None}}
+    )
+
+
 @respx.mock
 def test_batch_409_is_non_fatal(configured):
     plan = _plan([_prow(2)])
@@ -114,10 +120,8 @@ def test_batch_409_is_non_fatal(configured):
     )
     respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
     respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
-    respx.post(f"{BASE}/v1/transactions/batch").mock(
-        return_value=httpx.Response(
-            409, json={"error": {"code": "CONFLICT", "message": "id exists", "fields": None}}
-        )
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=lambda request: _conflict()
     )
 
     cfg = config_module.ensure_loaded()
@@ -128,6 +132,99 @@ def test_batch_409_is_non_fatal(configured):
     assert result.tx_created == 0
     assert result.tx_skipped_existing == 1
     assert result.tx_failed == 0
+    assert batch_route.call_count == 2  # batch 409 → singleton retry 409
+
+
+@respx.mock
+def test_chunk_409_falls_back_to_per_row_and_imports_new_rows(configured):
+    """Appending rows to an already-imported sheet must import the new rows (backlog 1.3)."""
+    plan = _plan([_prow(2), _prow(3, amount_cents=-5500)])
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=[_conflict(), _conflict(), httpx.Response(201, json={"created": []})]
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res)
+
+    assert result.tx_skipped_existing == 1
+    assert result.tx_created == 1
+    assert result.tx_failed == 0
+    assert batch_route.call_count == 3  # one batch + two singletons
+    singleton_sizes = [
+        len(json.loads(c.request.content)["transactions"]) for c in batch_route.calls
+    ][1:]
+    assert singleton_sizes == [1, 1]
+
+
+@respx.mock
+def test_per_row_fallback_reports_non_409_failure(configured):
+    plan = _plan([_prow(2), _prow(3, amount_cents=-5500)])
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=[
+            _conflict(),
+            _conflict(),
+            httpx.Response(
+                422, json={"error": {"code": "VALIDATION_ERROR", "message": "bad", "fields": {}}}
+            ),
+        ]
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res)
+
+    assert result.tx_skipped_existing == 1
+    assert result.tx_failed == 1
+    failed_id = plan.tx_ids[3]
+    assert result.failures == [(0, f"VALIDATION_ERROR: bad (id {failed_id})")]
+
+
+@respx.mock
+def test_per_row_fallback_connection_error_stops_run(configured):
+    plan = _plan([_prow(line, amount_cents=-100 * line) for line in (2, 3, 4, 5)])
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=[
+            _conflict(),
+            httpx.Response(201, json={"created": []}),
+            httpx.ConnectError("down"),
+        ]
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res, chunk_size=2)
+
+    assert result.tx_created == 1  # first singleton landed
+    assert result.tx_failed == 3  # unsent tail of chunk 0 + the never-sent chunk 1
+    assert result.tx_skipped_existing == 0
+    assert batch_route.call_count == 3  # batch, singleton 201, singleton ConnectError
+    assert len(result.failures) == 1
+    assert "CONNECTION_ERROR: could not reach engine" in result.failures[0][1]
 
 
 @respx.mock

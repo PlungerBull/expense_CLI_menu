@@ -1,8 +1,10 @@
 """Write path: resolve-or-create resources, then POST transactions in batches.
 
 Accounts/categories/hashtags are created FIRST (so they have ids); transactions
-then reference those ids. A chunk-level 409 is treated as "already imported" and
-skipped so a re-run after a partial run converges instead of aborting.
+then reference those ids. The batch endpoint is atomic: a chunk-level 409 only
+means "at least one id pre-exists", so the chunk is retried row-by-row (singleton
+batches) — pre-existing rows are skipped, new rows still land. Re-runs after a
+partial run or with appended sheet rows converge instead of silently dropping.
 """
 
 from collections.abc import Iterator
@@ -34,7 +36,7 @@ class ResolveResult:
 class ApplyResult:
     resolve: ResolveResult
     tx_created: int = 0
-    tx_skipped_existing: int = 0  # rows in 409 chunks
+    tx_skipped_existing: int = 0  # rows whose singleton retry 409'd (id already imported)
     tx_failed: int = 0
     failures: list[tuple[int, str]] = field(default_factory=list)  # (chunk_index, message)
 
@@ -149,6 +151,40 @@ def chunked(items: list, size: int) -> Iterator[list]:
         yield items[i : i + size]
 
 
+def _apply_singletons(
+    client: ExpenseClient, chunk: list[dict], chunk_index: int, result: ApplyResult
+) -> bool:
+    """Retry a 409'd chunk row-by-row via singleton batches.
+
+    A batch 409 only says "≥1 id pre-exists"; posting one row per batch keeps
+    the endpoint's semantics ("this row exists") while letting new rows land.
+    Returns False when a connection error stopped the run (this chunk's unsent
+    tail is already counted failed).
+    """
+    for pos, item in enumerate(chunk):
+        try:
+            client.post("/transactions/batch", json_body={"transactions": [item]})
+            result.tx_created += 1
+        except EngineError as err:
+            if err.status == 409:
+                result.tx_skipped_existing += 1
+            else:
+                result.tx_failed += 1
+                result.failures.append(
+                    (chunk_index, f"{err.code}: {err.message} (id {item['id']})")
+                )
+        except EngineConnectionError as err:
+            result.tx_failed += len(chunk) - pos
+            result.failures.append(
+                (
+                    chunk_index,
+                    f"CONNECTION_ERROR: {format_error(err)} — this and later rows were not sent",
+                )
+            )
+            return False
+    return True
+
+
 def apply_plan(
     client: ExpenseClient,
     plan: ImportPlan,
@@ -164,7 +200,11 @@ def apply_plan(
             result.tx_created += len(chunk)
         except EngineError as err:
             if err.status == 409:
-                result.tx_skipped_existing += len(chunk)
+                if not _apply_singletons(client, chunk, chunk_index, result):
+                    # Fallback hit a connection error: its chunk tail is counted;
+                    # add the never-sent later chunks, mirroring the branch below.
+                    result.tx_failed += len(items) - (chunk_index * chunk_size + len(chunk))
+                    break
             else:
                 result.tx_failed += len(chunk)
                 result.failures.append((chunk_index, f"{err.code}: {err.message}"))

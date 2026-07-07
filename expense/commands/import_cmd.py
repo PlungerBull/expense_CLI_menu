@@ -114,9 +114,15 @@ def run_import(
 
     Parses the sheet, then resolves-or-creates accounts/categories/hashtags by
     name and writes transactions in atomic batches. Without --apply it only
-    prints what it would do and writes nothing. Re-running --apply is safe:
-    transaction ids are derived from row content, so already-imported rows are
-    skipped rather than duplicated.
+    prints what it would do and writes nothing.
+
+    Re-running --apply is safe for unchanged and appended sheets: transaction
+    ids derive from each row's content plus its line number, so already-imported
+    rows are skipped and new rows still land (a chunk mixing both falls back to
+    row-by-row posts). Inserting or deleting rows mid-sheet shifts every later
+    line number — shifted rows get new ids and re-import as duplicates; append
+    new rows at the bottom instead. Full re-runs of large already-imported
+    sheets are slower (one request per row).
 
     Example: expense import ~/Downloads/Presupuesto.xlsx
     """
