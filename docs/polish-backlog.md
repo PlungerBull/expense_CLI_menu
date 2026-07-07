@@ -226,30 +226,45 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
 
 ## 4. CI, packaging, tooling
 
-- [ ] **4.1 Test the supported Python range.** CI runs only 3.12
+- [x] **4.1 Test the supported Python range.** CI runs only 3.12
   (`ci.yml:16`) while packaging promises `>=3.11` (`pyproject.toml:10`);
-  matrix 3.11/3.12/3.13.
-- [ ] **4.2 Add type checking** (mypy or pyright) to CI + pre-commit —
+  matrix 3.11/3.12/3.13. Done: matrix with `fail-fast: false`; 3.14 is a
+  later add.
+- [x] **4.2 Add type checking** (mypy or pyright) to CI + pre-commit —
   ruff `E/F/W/I/B/UP` alone can't catch payload-shape mistakes in a codebase
   that passes engine JSON dicts everywhere. Start permissive on
   `expense/http.py`/`config.py`/`errors.py`/`cache/` and ratchet. While at
   it: `get() -> dict` in `http.py:44` is wrong for list-shaped endpoints
   (returns `list` at runtime; runtime-safe via the isinstance guard, but the
-  hint misdocuments the contract).
-- [ ] **4.3 Make coverage visible and reproducible.** CI runs plain
+  hint misdocuments the contract). Resolved: scoped permissive `[tool.mypy]`
+  on exactly those modules, run in CI and as a local pre-commit hook (dev
+  venv's mypy, so it sees real deps); `get()`/`_request` now return `Any`
+  (verbatim engine JSON, contract in the docstring) and `apply_response`'s
+  `kind` carries the `SyncSummary` Literal — mypy clean; ratchet from here.
+- [x] **4.3 Make coverage visible and reproducible.** CI runs plain
   `pytest tests/unit` with no coverage; `pytest-cov` isn't in the `dev`
   extra even though it's used locally (a `.coverage` file exists). Add
-  `pytest-cov` to dev, report coverage in CI (gate optional).
-- [ ] **4.4 Pin dependencies.** All deps are unpinned lower bounds with no
+  `pytest-cov` to dev, report coverage in CI (gate optional). Done:
+  `pytest-cov` in dev, `[tool.coverage.run] source` so bare `--cov` matches
+  everywhere, CI reports `term-missing` — report only, no gate (92% at
+  landing).
+- [x] **4.4 Pin dependencies.** All deps are unpinned lower bounds with no
   lockfile/constraints; CI floats on latest — 1.6 is the concrete bite
   (click 8.2 removed `mix_stderr` unnoticed). Add a constraints file or
-  upper bounds for the direct deps CI installs.
-- [ ] **4.5 Local secret scanning.** CLAUDE.md's public-repo doctrine relies
+  upper bounds for the direct deps CI installs. Resolved: `constraints.txt`
+  (not upper bounds) pins every direct dep at dev-venv-proven versions; CI
+  installs with `-c constraints.txt`; pyproject ranges stay open. Refresh =
+  bump a pin, merge on green CI.
+- [x] **4.5 Local secret scanning.** CLAUDE.md's public-repo doctrine relies
   on discipline + GitHub push protection (post-commit). Add
-  gitleaks/detect-secrets to `.pre-commit-config.yaml`.
-- [ ] **4.6 Add a LICENSE** (and `license` field in pyproject) — the repo is
+  gitleaks/detect-secrets to `.pre-commit-config.yaml`. Done: gitleaks hook
+  (v8.30.1); full-tree scan at install time came back clean.
+- [x] **4.6 Add a LICENSE** (and `license` field in pyproject) — the repo is
   deliberately public but legally "all rights reserved" by default; if
-  that's intended, state it.
+  that's intended, state it. Resolved (user decision): it's intended —
+  explicit all-rights-reserved LICENSE (source visible for reading, no
+  rights granted); `license = "LicenseRef-Proprietary"` + `license-files`
+  in pyproject (PEP 639, setuptools>=77).
 
 ## 5. Low-severity nits (batch opportunistically)
 

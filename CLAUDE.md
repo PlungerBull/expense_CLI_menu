@@ -38,9 +38,9 @@ Engine docs are **referenced, not copied**. Single source of truth lives in the 
 
 ## Dev loop
 
-- **Install:** `pip install -e ".[dev]"` — entry point is `expense` (TUI via `expense world`).
+- **Install:** `pip install -e ".[dev]" -c constraints.txt` — entry point is `expense` (TUI via `expense world`). `constraints.txt` pins the direct deps CI installs; refresh = bump a pin, merge on green CI.
 - **Test:** `pytest tests/unit` (fast, respx-mocked, hermetic — an autouse fixture in [tests/unit/conftest.py](tests/unit/conftest.py) redirects `EXPENSE_CONFIG`/`EXPENSE_CACHE`; never bypass it). `tests/contract/` hits the **live production engine**, gated on `PYTEST_LIVE=1` (+ `EXPENSE_PAT`) — never set casually.
-- **Lint/format:** `ruff check . && ruff format .` — CI enforces both (`ruff format --check`) plus `pytest tests/unit`; pre-commit runs ruff `--fix` + ruff-format. Line length 100, target py311.
+- **Lint/format/types:** `ruff check . && ruff format .` plus scoped `mypy` (permissive, `[tool.mypy]` covers `http.py`/`config.py`/`errors.py`/`cache/` — widen as modules get annotated). CI (matrix 3.11/3.12/3.13, deps pinned via `constraints.txt`) enforces ruff check + format, mypy, and `pytest tests/unit --cov` (coverage reported, not gated); pre-commit runs gitleaks + ruff `--fix` + ruff-format + mypy. Line length 100, target py311.
 - **Careful running live:** plain `expense …` commands use the developer's real `~/.expense-config` and hit the production engine. Don't run writes ad hoc.
 - **Env vars:** `EXPENSE_CONFIG`, `EXPENSE_CACHE` (path overrides), `EXPENSE_STATELESS=1` (bypass cache), `EXPENSE_NO_SYNC_AFTER=1` (skip post-write refresh), `PYTEST_LIVE=1` (contract tests).
 
