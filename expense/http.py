@@ -4,6 +4,7 @@ import threading
 import time
 import uuid
 from json import JSONDecodeError
+from typing import Any
 
 import httpx
 
@@ -51,7 +52,9 @@ class ExpenseClient:
     def close(self) -> None:
         self._client.close()
 
-    def get(self, path: str, *, auth: bool = True, params: dict | None = None) -> dict:
+    def get(self, path: str, *, auth: bool = True, params: dict | None = None) -> Any:
+        """Return the engine's JSON verbatim — a dict envelope for most
+        endpoints, a bare list for list-shaped ones."""
         return self._request("GET", path, auth=auth, params=params)
 
     def post(self, path: str, json_body: dict | None = None) -> dict:
@@ -83,7 +86,7 @@ class ExpenseClient:
         auth: bool = True,
         params: dict | None = None,
         json_body: dict | None = None,
-    ) -> dict:
+    ) -> Any:
         resolved = self._resolve_path(path)
         headers: dict[str, str] = {}
         if auth and self._config.token:

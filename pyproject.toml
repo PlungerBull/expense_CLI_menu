@@ -24,6 +24,7 @@ dev = [
     "ruff>=0.6",
     "pre-commit>=3.7",
     "openpyxl>=3.1",
+    "mypy>=1.14",
 ]
 import = [
     "openpyxl>=3.1",
@@ -43,6 +44,15 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
+
+# Permissive start, scoped to the plumbing that passes engine JSON around
+# (backlog 4.2); widen the file list / tighten flags as modules get annotated.
+[tool.mypy]
+python_version = "3.11"
+files = ["expense/http.py", "expense/config.py", "expense/errors.py", "expense/cache"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_unused_configs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

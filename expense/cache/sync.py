@@ -155,7 +155,9 @@ def _apply_settings(conn: Connection, settings: dict | None) -> bool:
     return True
 
 
-def apply_response(conn: Connection, response: dict, *, kind: str) -> SyncSummary:
+def apply_response(
+    conn: Connection, response: dict, *, kind: Literal["cold_start", "delta"]
+) -> SyncSummary:
     """Apply a /sync response in one transaction. Returns summary counts."""
     summary = SyncSummary(kind=kind)
     counts: dict[str, dict[str, int]] = {"inserts": {}, "updates": {}, "tombstones": {}}

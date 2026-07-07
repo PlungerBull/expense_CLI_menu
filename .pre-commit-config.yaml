@@ -5,3 +5,14 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  # Runs the dev venv's mypy (language: system) so it sees the real installed
+  # deps; scope comes from [tool.mypy] files in pyproject.toml.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        types: [python]
+        pass_filenames: false
