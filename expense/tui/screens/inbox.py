@@ -126,10 +126,10 @@ class InboxScreen(SectionScreen):
             ),
         ]
 
-    def action_cycle_filter(self) -> None:
+    async def action_cycle_filter(self) -> None:
         i = _FILTERS.index(self._filter)
         self._filter = _FILTERS[(i + 1) % len(_FILTERS)]
-        self.action_reload()
+        await self.action_reload()
 
     def action_promote(self) -> None:
         item = self.selected_record()

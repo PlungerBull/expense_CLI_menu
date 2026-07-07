@@ -74,7 +74,7 @@ if you need the old detail.
   Whatever the pick, cache and live must stop returning different data for
   the same command.
 
-- [ ] **1.5 TUI inbox filter is dead code.**
+- [x] **1.5 TUI inbox filter is dead code.**
   `action_cycle_filter` calls the *async* `action_reload()` without awaiting
   it (`inbox.py:132`; `action_reload` is `async def` at `_base.py:111`), so
   the coroutine is created and discarded — pressing `f` mutates the filter

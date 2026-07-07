@@ -55,6 +55,46 @@ def test_inbox_rows_glyphs_and_format():
     assert by_id["c"][0] == "·" and by_id["c"][3] == "(null)" and by_id["c"][5] == "—"
 
 
+def test_pressing_f_cycles_filter_and_reloads(monkeypatch):
+    """`f` must actually re-fetch with the new filter, not just mutate state (backlog 1.5)."""
+    import expense.commands.inbox_cmd as ic
+    import expense.tui.screens.inbox as inbox_mod
+
+    monkeypatch.setattr(
+        ic,
+        "fetch_inbox",
+        lambda *a, **k: {"items": [ITEMS[0]]} if k.get("ready") else {"items": ITEMS},
+    )
+    monkeypatch.setattr(inbox_mod, "load_account_name_map", lambda: ACCOUNTS)
+    monkeypatch.setattr(inbox_mod, "load_category_name_map", lambda: CATEGORIES)
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)  # skips the ready-set second fetch
+        async with app.run_test() as pilot:
+            await app.push_screen(InboxScreen())
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            assert len(app.screen.query_one(CursorList)._rows) == 3
+            await pilot.press("f")  # all → ready
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and len(app.screen.query_one(CursorList)._rows) == 1
+                ),
+            )
+            legend = app.screen.query(".legend").last().render()
+            assert "filter: ready" in str(legend)
+
+    asyncio.run(scenario())
+
+
 def test_inbox_screen_lists_and_opens_detail(monkeypatch):
     import expense.commands.inbox_cmd as ic
     import expense.tui.screens.inbox as inbox_mod
