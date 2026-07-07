@@ -182,6 +182,24 @@ def test_connection_error_on_timeout(config):
         client.get("/auth/me")
 
 
+@pytest.mark.parametrize(
+    "exc",
+    [
+        httpx.ReadError("server closed mid-response"),
+        httpx.WriteError("broken pipe"),
+        httpx.RemoteProtocolError("premature close"),
+        httpx.ProxyError("proxy refused"),
+        httpx.UnsupportedProtocol("scheme-less engine_url"),
+    ],
+)
+@respx.mock
+def test_connection_error_on_full_transport_family(config, exc):
+    """Every httpx transport failure renders cleanly, not as a traceback (backlog 3.4)."""
+    respx.get("https://api.example.com/v1/auth/me").mock(side_effect=exc)
+    with ExpenseClient(config) as client, pytest.raises(EngineConnectionError):
+        client.get("/auth/me")
+
+
 @respx.mock
 def test_connection_error_on_non_json_response(config):
     respx.get("https://api.example.com/v1/auth/me").mock(

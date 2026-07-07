@@ -1,4 +1,5 @@
 import json
+from urllib.parse import urlsplit
 
 import typer
 
@@ -8,6 +9,18 @@ from expense.config import Config
 from expense.errors import handle_errors
 
 app = typer.Typer(help="Manage ~/.expense-config", no_args_is_help=True)
+
+
+def _validate_engine_url(url: str) -> None:
+    # httpx raises UnsupportedProtocol only at request time; reject a bad URL
+    # here so the mistake surfaces at `config set`, not on the next command.
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise typer.BadParameter(
+            "must be a full URL with scheme and host, "
+            "e.g. https://expense-world-engine.onrender.com",
+            param_hint="--engine-url",
+        )
 
 
 @app.command("set")
@@ -24,6 +37,9 @@ def set_cmd(
 
     Example: expense config set --token ewe_pat_xxx --engine-url https://expense-world-engine.onrender.com
     """
+    if engine_url is not None:
+        _validate_engine_url(engine_url)
+
     existing = config_module.load()
 
     if existing is None:

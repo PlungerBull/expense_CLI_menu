@@ -181,7 +181,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   the checklist. Paginate (loop with the 200 cap) or use the cache-side
   query without a live-path limit violation.
 
-- [ ] **3.4 Catch the full httpx transport family.**
+- [x] **3.4 Catch the full httpx transport family.**
   `http.py:98` catches only `(ConnectError, TimeoutException)`;
   `ReadError`, `WriteError`, `RemoteProtocolError` (server closes
   mid-response — plausible on a cold-starting Render dyno), `ProxyError`,

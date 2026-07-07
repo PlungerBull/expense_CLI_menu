@@ -58,6 +58,23 @@ def test_set_preserves_client_id_on_update(tmp_config):
     assert second.engine_url == "https://api.example.com"
 
 
+@pytest.mark.parametrize("bad_url", ["example.com", "ftp://example.com", "https://"])
+def test_set_rejects_engine_url_without_http_scheme(tmp_config, bad_url):
+    """A scheme-less/non-HTTP URL must fail at set time, not on the next command (backlog 3.4)."""
+    result = runner.invoke(app, ["set", "--engine-url", bad_url, "--token", "ewe_pat_abc"])
+    assert result.exit_code != 0
+    assert "scheme" in result.output
+    assert config_module.load() is None  # nothing was saved
+
+
+def test_set_rejects_bad_engine_url_on_update_too(tmp_config):
+    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_abc"])
+
+    result = runner.invoke(app, ["set", "--engine-url", "not-a-url"])
+    assert result.exit_code != 0
+    assert config_module.load().engine_url == "https://x.com"
+
+
 def test_set_warns_on_non_pat_token(tmp_config):
     result = runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "not_a_pat"])
     assert result.exit_code == 0

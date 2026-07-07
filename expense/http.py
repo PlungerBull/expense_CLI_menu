@@ -95,7 +95,10 @@ class ExpenseClient:
                 self._dump_request(request)
             try:
                 response = self._client.send(request)
-            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            except httpx.TransportError as exc:
+                # Base of connect/timeout plus read/write aborts, protocol and
+                # proxy failures, and UnsupportedProtocol (scheme-less URL) —
+                # none of these may escape as a raw traceback.
                 raise EngineConnectionError(url=str(request.url), original=exc) from exc
         finally:
             if timer is not None:
