@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# >=77 for PEP 639 SPDX license expressions.
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +8,8 @@ name = "expense-cli-menu"
 version = "0.0.1"
 description = "The Hands — expense_world_engine CLI."
 readme = "README.md"
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.12",
