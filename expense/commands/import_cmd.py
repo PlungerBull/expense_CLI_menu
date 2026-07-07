@@ -21,6 +21,9 @@ from expense.import_.parse import ImportFormatError, parse_sheet
 from expense.import_.reader import ImportDependencyError, ImportFileError, read_workbook
 
 
+# sanctioned exception — see cli-spec.md "Sanctioned exceptions": import's
+# --json (plan and result below) is client-composed; the pipeline aggregates
+# many engine calls, so there is no single engine response to pass through.
 def _render_plan(plan: plan_mod.ImportPlan, *, json_output: bool) -> None:
     if json_output:
         typer.echo(

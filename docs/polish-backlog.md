@@ -143,7 +143,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   different account.") is enforced but undocumented in engine-spec.md — to
   be added in the engine repo.
 
-- [ ] **2.6 Document the two sanctioned exceptions** so future reviews stop
+- [x] **2.6 Document the two sanctioned exceptions** so future reviews stop
   re-flagging them: `accounts update --currency-code` exists solely to be
   rejected client-side with honest help text (deliberate UX,
   `accounts_cmd.py:216-233`); `import --json` emits a client-composed

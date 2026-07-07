@@ -19,9 +19,17 @@ Flat CLI is **complete** (Step 9 gate closed 2026-05-10, plus the `expense impor
 - Output is human-readable by default. Every read command supports `--json` for machine-readable output.
 - The `debit_as_negative` convention is used end-to-end (negative = expense, positive = income). Enforced at input parsing and output rendering.
 - A fresh idempotency-key UUID is generated per write and sent as `X-Idempotency-Key`.
-- Engine errors surface intact: human mode may prettify, `--json` passes through verbatim — never swallow, never reformat lossily.
+- Engine errors surface intact: human mode may prettify, `--json` passes through verbatim — never swallow, never reformat lossily. (Deviations: see Sanctioned exceptions below.)
 - Destructive operations (delete, archive, revert) prompt for confirmation unless `--yes` / `-y` is passed.
 - Archive vs delete distinction is honored (see [../../expense_world_engine/docs/engine-spec.md](../../expense_world_engine/docs/engine-spec.md) — archive = retired-but-real, delete = mistake/scrubbed).
+
+### Sanctioned exceptions
+
+Deliberate, reviewed deviations from the principles above — do not re-flag in future reviews (backlog 2.6):
+
+- **`accounts update --currency-code`** — exists solely to be rejected client-side with honest help text; currency is immutable after creation (the engine would 422 anyway). Fail-fast UX, not business logic. [`expense/commands/accounts_cmd.py`]
+- **`import --json`** — emits a client-composed plan/result summary. The import pipeline is a composite of many engine calls (resolve, create, batch) with no single engine response to pass through — the only non-verbatim `--json` in the layer. [`expense/commands/import_cmd.py`]
+- **TUI transfer "To amount" auto-sign** — the Log form takes a magnitude and applies the sign opposite to Amount, mirroring the engine's zero-sum transfer rule (both legs same sign → 422); the computed signed value is always visible before submit. Kept by explicit user decision (backlog 2.1, mockup `expense-world-transfer-to-amount-2.1.html`). [`expense/tui/screens/quick_log.py` `_commit_to_amount`]
 
 ---
 

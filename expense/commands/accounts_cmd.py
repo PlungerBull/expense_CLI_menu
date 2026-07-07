@@ -226,6 +226,8 @@ def update(
 
     Example: expense accounts update <account-id> --name "BCP Soles (joint)"
     """
+    # sanctioned exception — see cli-spec.md "Sanctioned exceptions": the flag
+    # exists solely to fail fast with honest help text (engine would 422).
     if currency_code is not None:
         raise typer.BadParameter(
             "Currency cannot be changed after creation. Create a new account.",
