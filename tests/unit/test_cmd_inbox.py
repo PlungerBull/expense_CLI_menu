@@ -358,6 +358,25 @@ def test_promote_422_prints_fix_hint(configured):
     assert "account_id" in result.output
 
 
+@respx.mock
+def test_list_include_deleted_reads_live_without_no_cache(cache_populated):
+    """--include-deleted rows exist only engine-side — cache mode must route live (backlog 1.4)."""
+    deleted = {
+        **INBOX_RESPONSE,
+        "id": "99999999-9999-9999-9999-999999999999",
+        "title": "deleted draft",
+        "deleted_at": "2026-06-01T09:00:00Z",
+    }
+    body = {"items": [INBOX_RESPONSE, deleted], "total": 2, "limit": 50, "offset": 0}
+    route = respx.get("https://api.example.com/v1/inbox").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    result = runner.invoke(cli_app, ["inbox", "list", "--include-deleted", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == body
+    assert route.calls.last.request.url.params.get("include_deleted") == "true"
+
+
 def test_list_replica_path(cache_populated):
     with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:
         inbox_route = router.get("/v1/inbox")

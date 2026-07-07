@@ -91,11 +91,11 @@ def fetch_hashtags(
         params=params,
         cache_read=lambda: cache_pkg.list_hashtags(
             include_archived=include_archived,
-            include_deleted=include_deleted,
             limit=limit,
             offset=offset,
         ),
         no_cache=no_cache,
+        force_live=include_deleted,
         verbose=verbose,
         cold_start_notice=cold_start_notice,
         notice_stream=notice_stream,

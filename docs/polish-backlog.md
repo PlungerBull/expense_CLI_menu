@@ -61,7 +61,7 @@ if you need the old detail.
   per-row (or bisected) posts so pre-existing and new rows are separated;
   document the line-number dedup contract in `import --help`.
 
-- [ ] **1.4 Cached `--include-deleted` is wrong for every resource; silently
+- [x] **1.4 Cached `--include-deleted` is wrong for every resource; silently
   no-ops for transactions.**
   Sync purges tombstoned rows from the replica (`sync.py:132-135`), so cached
   `--include-deleted` returns fewer rows than `--no-cache` everywhere and the

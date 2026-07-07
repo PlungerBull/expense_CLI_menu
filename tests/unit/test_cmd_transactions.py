@@ -559,6 +559,25 @@ def test_batch_empty_array_errors(configured):
 # ---------------------------------------------------------------------------
 
 
+@respx.mock
+def test_list_include_deleted_reads_live_without_no_cache(cache_populated):
+    """--include-deleted rows exist only engine-side — cache mode must route live (backlog 1.4)."""
+    deleted = {
+        **TRANSACTION_RESPONSE,
+        "id": "99999999-9999-9999-9999-999999999999",
+        "title": "refunded dinner",
+        "deleted_at": "2026-06-01T09:00:00Z",
+    }
+    body = {"items": [TRANSACTION_RESPONSE, deleted], "total": 2, "limit": 50, "offset": 0}
+    route = respx.get("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    result = runner.invoke(cli_app, ["transactions", "list", "--include-deleted"])
+    assert result.exit_code == 0, result.output
+    assert "refunded dinner" in result.output
+    assert route.calls.last.request.url.params.get("include_deleted") == "true"
+
+
 def test_list_replica_path(cache_populated):
     with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:
         tx_route = router.get("/v1/transactions")

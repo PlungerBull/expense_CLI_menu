@@ -94,11 +94,11 @@ def fetch_reconciliations(
         params=params,
         cache_read=lambda: cache_pkg.list_reconciliations(
             account_id=account_id,
-            include_deleted=include_deleted,
             limit=limit,
             offset=offset,
         ),
         no_cache=no_cache,
+        force_live=include_deleted,
         verbose=verbose,
         cold_start_notice=cold_start_notice,
         notice_stream=notice_stream,

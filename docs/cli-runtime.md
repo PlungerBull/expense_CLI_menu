@@ -82,7 +82,7 @@ In stateless mode (Step 7b's `--no-cache`), the engine response with `sync_token
 
 **Delta sync.** Bare `expense sync` against a healthy cache. Reads stored token, fetches `GET /v1/sync?sync_token=<stored>&debit_as_negative=true`, applies inserts/updates/tombstones inside one SQLite transaction, persists new token. On unknown-token 422 → falls through to cold start automatically.
 
-**Tombstones.** A row arriving with `deleted_at != null` deletes the row from the cache (physical delete — once a row is pruned, it's gone; no need to keep tombstones around once applied). Wildcard fetches never include tombstones; only deltas do.
+**Tombstones.** A row arriving with `deleted_at != null` deletes the row from the cache (physical delete — once a row is pruned, it's gone; no need to keep tombstones around once applied). Wildcard fetches never include tombstones; only deltas do. `--include-deleted` therefore always reads live — deleted rows exist only engine-side; the flag implies an engine round-trip without needing `--no-cache`.
 
 **Cache disposal.** `expense config set --token`/`--engine-url` (when the effective value changes) and `expense config clear` wipe the replica automatically — a different credential or engine may mean a different user, and the old rows must not survive the switch. Users wanting a clean slate can also `rm ~/.expense-cache.sqlite3` and re-run `expense sync --full`. The cache also auto-wipes when the engine returns an unknown-token 422 (see "Cold start" above), and the token-fingerprint health check catches hand-edited configs the commands never saw.
 

@@ -33,15 +33,13 @@ def _row_to_dict(body_text: str) -> dict:
     return json.loads(body_text)
 
 
-def list_accounts(
-    *, include_archived: bool = False, include_deleted: bool = False, include_people: bool = False
-) -> list[dict]:
+def list_accounts(*, include_archived: bool = False, include_people: bool = False) -> list[dict]:
     """GET /v1/accounts equivalent. Engine returns a flat list (no pagination)."""
     where: list[str] = []
     if not include_archived:
         where.append("is_archived = 0")
-    if not include_deleted:
-        where.append("deleted_at IS NULL")
+    # tombstones are purged at sync — guard, not filter
+    where.append("deleted_at IS NULL")
     if not include_people:
         where.append("(is_person = 0 OR is_person IS NULL)")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
@@ -96,15 +94,14 @@ def _list_paginated(
 def list_categories(
     *,
     include_archived: bool = False,
-    include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
 ) -> dict:
     where: list[str] = []
     if not include_archived:
         where.append("is_archived = 0")
-    if not include_deleted:
-        where.append("deleted_at IS NULL")
+    # tombstones are purged at sync — guard, not filter
+    where.append("deleted_at IS NULL")
     return _list_paginated(
         "categories",
         where_clauses=where,
@@ -129,15 +126,14 @@ def get_category(category_id: str) -> dict:
 def list_hashtags(
     *,
     include_archived: bool = False,
-    include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
 ) -> dict:
     where: list[str] = []
     if not include_archived:
         where.append("is_archived = 0")
-    if not include_deleted:
-        where.append("deleted_at IS NULL")
+    # tombstones are purged at sync — guard, not filter
+    where.append("deleted_at IS NULL")
     return _list_paginated(
         "hashtags",
         where_clauses=where,
@@ -178,7 +174,6 @@ def list_inbox(
     *,
     ready: bool = False,
     overdue: bool = False,
-    include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
 ) -> dict:
@@ -194,8 +189,8 @@ def list_inbox(
     if ready:
         where_parts.append(_READY_PREDICATE)
     else:
-        if not include_deleted:
-            where_parts.append("i.deleted_at IS NULL")
+        # tombstones are purged at sync — guard, not filter
+        where_parts.append("i.deleted_at IS NULL")
         if overdue:
             where_parts.append("i.date IS NOT NULL AND date(i.date) < date('now')")
 
@@ -242,7 +237,6 @@ def get_inbox(inbox_id: str) -> dict:
 def list_reconciliations(
     *,
     account_id: str | None = None,
-    include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
 ) -> dict:
@@ -251,8 +245,8 @@ def list_reconciliations(
     if account_id is not None:
         where.append("account_id = ?")
         params = (account_id,)
-    if not include_deleted:
-        where.append("deleted_at IS NULL")
+    # tombstones are purged at sync — guard, not filter
+    where.append("deleted_at IS NULL")
     return _list_paginated(
         "reconciliations",
         where_clauses=where,

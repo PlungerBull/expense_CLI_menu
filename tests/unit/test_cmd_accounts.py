@@ -196,6 +196,24 @@ def test_get_404_engine_path(configured):
     assert "NOT_FOUND" in result.output
 
 
+@respx.mock
+def test_list_include_deleted_reads_live_without_no_cache(cache_populated):
+    """--include-deleted rows exist only engine-side — cache mode must route live (backlog 1.4)."""
+    deleted = {
+        **ACCOUNT_RESPONSE,
+        "id": "66666666-6666-6666-6666-666666666666",
+        "name": "Closed USD",
+        "deleted_at": "2026-06-01T09:00:00Z",
+    }
+    route = respx.get("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(200, json=[ACCOUNT_RESPONSE, deleted])
+    )
+    result = runner.invoke(cli_app, ["accounts", "list", "--include-deleted"])
+    assert result.exit_code == 0, result.output
+    assert "Closed USD" in result.output
+    assert route.calls.last.request.url.params.get("include_deleted") == "true"
+
+
 def test_list_replica_path(cache_populated):
     """Default `expense accounts list` reads from the local cache."""
     with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:

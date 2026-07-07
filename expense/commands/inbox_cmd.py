@@ -128,11 +128,11 @@ def fetch_inbox(
         cache_read=lambda: cache_pkg.list_inbox(
             ready=ready,
             overdue=overdue,
-            include_deleted=include_deleted,
             limit=limit,
             offset=offset,
         ),
         no_cache=no_cache,
+        force_live=include_deleted,
         verbose=verbose,
         cold_start_notice=cold_start_notice,
         notice_stream=notice_stream,

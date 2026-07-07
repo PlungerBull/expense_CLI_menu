@@ -141,6 +141,24 @@ def test_get_404_engine_path(configured):
     assert "NOT_FOUND" in result.output
 
 
+@respx.mock
+def test_list_include_deleted_reads_live_without_no_cache(cache_populated):
+    """--include-deleted rows exist only engine-side — cache mode must route live (backlog 1.4)."""
+    deleted = {
+        **HASHTAG_RESPONSE,
+        "id": "99999999-9999-9999-9999-999999999999",
+        "name": "retired-tag",
+        "deleted_at": "2026-06-01T09:00:00Z",
+    }
+    route = respx.get("https://api.example.com/v1/hashtags").mock(
+        return_value=httpx.Response(200, json=[HASHTAG_RESPONSE, deleted])
+    )
+    result = runner.invoke(cli_app, ["hashtags", "list", "--include-deleted"])
+    assert result.exit_code == 0, result.output
+    assert "retired-tag" in result.output
+    assert route.calls.last.request.url.params.get("include_deleted") == "true"
+
+
 def test_list_replica_path(cache_populated):
     with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:
         ht_route = router.get("/v1/hashtags")

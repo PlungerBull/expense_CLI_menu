@@ -101,10 +101,10 @@ def fetch_accounts(
         params=params,
         cache_read=lambda: cache_pkg.list_accounts(
             include_archived=include_archived,
-            include_deleted=include_deleted,
             include_people=include_people,
         ),
         no_cache=no_cache,
+        force_live=include_deleted,
         verbose=verbose,
         cold_start_notice=cold_start_notice,
         notice_stream=notice_stream,

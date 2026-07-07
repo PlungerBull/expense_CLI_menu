@@ -22,7 +22,9 @@ from expense.http import ExpenseClient
 JSON_OPT = typer.Option(False, "--json", help="Output the raw engine response as JSON.")
 LIMIT_OPT = typer.Option(None, "--limit", help="Max rows to return (engine default applies).")
 OFFSET_OPT = typer.Option(None, "--offset", help="Rows to skip (pagination).")
-INCLUDE_DELETED_OPT = typer.Option(False, "--include-deleted", help="Include soft-deleted rows.")
+INCLUDE_DELETED_OPT = typer.Option(
+    False, "--include-deleted", help="Include soft-deleted rows (always reads from the engine)."
+)
 INCLUDE_ARCHIVED_OPT = typer.Option(False, "--include-archived", help="Include archived rows.")
 YES_OPT = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt.")
 
@@ -191,9 +193,7 @@ def load_account_name_map() -> dict[str, str]:
     except Exception:
         return {}
     try:
-        items = queries.list_accounts(
-            include_archived=True, include_deleted=False, include_people=True
-        )
+        items = queries.list_accounts(include_archived=True, include_people=True)
     except Exception:
         return {}
     out: dict[str, str] = {}
@@ -212,7 +212,7 @@ def load_category_name_map() -> dict[str, str]:
     except Exception:
         return {}
     try:
-        page = queries.list_categories(include_archived=True, include_deleted=False)
+        page = queries.list_categories(include_archived=True)
     except Exception:
         return {}
     out: dict[str, str] = {}
@@ -236,7 +236,7 @@ def load_hashtag_name_map() -> dict[str, str]:
     except Exception:
         return {}
     try:
-        page = queries.list_hashtags(include_archived=True, include_deleted=False)
+        page = queries.list_hashtags(include_archived=True)
     except Exception:
         return {}
     out: dict[str, str] = {}
@@ -310,6 +310,7 @@ def fetch_body(
     cache_read: Callable[[], Any],
     no_cache: bool,
     verbose: bool,
+    force_live: bool = False,
     cold_start_notice: bool = True,
     notice_stream=None,
 ) -> Any:
@@ -318,8 +319,11 @@ def fetch_body(
     `no_cache` → live GET against the engine; otherwise warm the replica
     (`ensure_synced`) and run `cache_read`, a thunk over the matching
     `expense.cache.queries` call. Param building stays with the caller.
+    `force_live` routes a single read to the engine even in cache mode —
+    used by `--include-deleted`, whose rows can never be in the replica
+    (tombstones are purged at sync).
     """
-    if no_cache:
+    if no_cache or force_live:
         with ExpenseClient(cfg, verbose=verbose) as client:
             return client.get(path, params=params or None)
     with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:

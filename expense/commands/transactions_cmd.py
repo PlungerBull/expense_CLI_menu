@@ -177,8 +177,6 @@ def fetch_transactions(
         cfg,
         path=f"/{_RESOURCE}",
         params=params,
-        # The replica query has no include_deleted param — deleted rows never
-        # land in the cache, so the cached path filters implicitly.
         cache_read=lambda: cache_pkg.list_transactions(
             account_id=account,
             category_id=category,
@@ -192,6 +190,7 @@ def fetch_transactions(
             offset=offset,
         ),
         no_cache=no_cache,
+        force_live=include_deleted,
         verbose=verbose,
         cold_start_notice=cold_start_notice,
         notice_stream=notice_stream,

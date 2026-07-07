@@ -212,6 +212,28 @@ def test_fetch_body_no_cache_hits_engine_and_skips_cache_read(configured):
     assert cache_reads == []
 
 
+@respx.mock
+def test_fetch_body_force_live_hits_engine_and_skips_cache_read(configured):
+    """--include-deleted routes live even in cache mode (backlog 1.4)."""
+    from expense import config as config_module
+
+    respx.get("https://api.example.com/v1/things", params={"include_deleted": "true"}).mock(
+        return_value=httpx.Response(200, json={"items": [{"id": "a"}], "total": 1})
+    )
+    cache_reads = []
+    body = fetch_body(
+        config_module.ensure_loaded(),
+        path="/things",
+        params={"include_deleted": "true"},
+        cache_read=lambda: cache_reads.append(1),
+        no_cache=False,
+        force_live=True,
+        verbose=False,
+    )
+    assert body == {"items": [{"id": "a"}], "total": 1}
+    assert cache_reads == []
+
+
 def test_fetch_body_cached_warms_replica_then_reads_cache(configured, monkeypatch):
     from expense import config as config_module
 
