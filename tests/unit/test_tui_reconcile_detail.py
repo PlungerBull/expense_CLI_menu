@@ -227,6 +227,23 @@ def test_toggle_error_drops_queued_intents_and_resyncs(fake_client, monkeypatch)
     asyncio.run(scenario())
 
 
+def test_fetch_all_txns_pages_at_engine_cap(monkeypatch):
+    """The detail fetch never exceeds the engine's 200-row limit cap (backlog 3.3)."""
+    from expense.tui.screens.reconciliations import _fetch_all_txns
+
+    calls: list[tuple[int, int]] = []
+
+    def fake_fetch(cfg, *, limit, offset, **kw):
+        calls.append((limit, offset))
+        n = 200 if offset == 0 else 40  # one full page, then a short one
+        return {"items": [{"id": f"t{offset + i}"} for i in range(n)]}
+
+    monkeypatch.setattr("expense.commands.transactions_cmd.fetch_transactions", fake_fetch)
+    rows = _fetch_all_txns(object(), reconciliation="r1")
+    assert calls == [(200, 0), (200, 200)]
+    assert len(rows) == 240
+
+
 def test_complete_confirms_then_posts(fake_client, monkeypatch):
     _patch(monkeypatch)
 

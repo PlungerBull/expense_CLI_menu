@@ -494,6 +494,27 @@ class NewReconciliationScreen(FormScreen):
 # --------------------------------------------------------------------------- #
 # Working / detail screen — assign transactions, complete / revert / delete
 # --------------------------------------------------------------------------- #
+_TXN_PAGE = 200  # engine hard cap on `limit` — page instead of one oversized request
+
+
+def _fetch_all_txns(cfg, **kw) -> list[dict]:
+    """Every matching transaction, paged at the engine cap.
+
+    A single limit=500 request 422s live (cap is 200) and silently truncates
+    the checklist even cached; loop until a short page instead.
+    """
+    out: list[dict] = []
+    offset = 0
+    while True:
+        page = items_of(
+            transactions_cmd.fetch_transactions(cfg, limit=_TXN_PAGE, offset=offset, **kw)
+        )
+        out.extend(page)
+        if len(page) < _TXN_PAGE:
+            return out
+        offset += _TXN_PAGE
+
+
 def _status_span(status: str, palette: Palette) -> tuple[str, str]:
     """(text, style) for the header's status word — completed→success, draft→warning."""
     return status, palette.success if status == "completed" else palette.warning
@@ -620,22 +641,17 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
                 self._record = fresh
                 self.app.call_from_thread(self._render_header)
             # assigned-to-this-batch transactions (always; any date)
-            assigned = items_of(
-                transactions_cmd.fetch_transactions(cfg, reconciliation=self._id, limit=500, **kw)
-            )
+            assigned = _fetch_all_txns(cfg, reconciliation=self._id, **kw)
             available = []
             if not self._completed:  # draft also offers the account's unassigned txns in range
                 available = [
                     it
-                    for it in items_of(
-                        transactions_cmd.fetch_transactions(
-                            cfg,
-                            account=self._account_id,
-                            date_from=self._record.get("date_start") or None,
-                            date_to=self._record.get("date_end") or None,
-                            limit=500,
-                            **kw,
-                        )
+                    for it in _fetch_all_txns(
+                        cfg,
+                        account=self._account_id,
+                        date_from=self._record.get("date_start") or None,
+                        date_to=self._record.get("date_end") or None,
+                        **kw,
                     )
                     if it.get("reconciliation_id") is None
                 ]

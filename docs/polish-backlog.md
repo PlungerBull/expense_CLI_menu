@@ -179,7 +179,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   ordering guarantee and only *errors* resync. Serialize per-row toggles or
   disable the row while a toggle is in flight.
 
-- [ ] **3.3 Reconciliation detail fetches with `limit=500`** — above the
+- [x] **3.3 Reconciliation detail fetches with `limit=500`** — above the
   engine's hard cap of 200 (`reconciliations.py:621,634`): 422s outright in
   `--no-cache` mode, and even cached it's a silent truncation ceiling for
   the checklist. Paginate (loop with the 200 cap) or use the cache-side
