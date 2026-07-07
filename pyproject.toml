@@ -25,6 +25,7 @@ dev = [
     "pre-commit>=3.7",
     "openpyxl>=3.1",
     "mypy>=1.14",
+    "pytest-cov>=5",
 ]
 import = [
     "openpyxl>=3.1",
@@ -56,3 +57,6 @@ warn_unused_configs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["expense"]

@@ -33,5 +33,5 @@ jobs:
       - name: Mypy
         run: mypy
 
-      - name: Pytest (unit)
-        run: pytest tests/unit
+      - name: Pytest (unit, with coverage)
+        run: pytest tests/unit --cov --cov-report=term-missing
