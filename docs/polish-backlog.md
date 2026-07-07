@@ -97,14 +97,14 @@ if you need the old detail.
 The same pattern §7 deliberately retired from `reports monthly` survives in
 five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
 
-- [ ] **2.1 [UI-adjacent] Transfer form silently flips the sign the user
-  typed.** `_commit_to_amount` computes `magnitude if amount < 0 else
-  -magnitude` (`quick_log.py:386`), discarding the typed sign — this both
-  re-implements the engine's opposite-sign transfer rule client-side and
-  violates the project's "sign is always literal, no magic" rule. Decide the
-  desired form behavior first (confirm with user), then: respect the typed
-  sign and let the engine 422 surface, or make the auto-fill an explicit
-  suggested value the user can see before submit.
+- [x] **2.1 [UI-adjacent] Transfer form silently flips the sign the user
+  typed.** Resolved (user decision, mockup
+  `expense-world-transfer-to-amount-2.1.html`, variant A): the flip **stays**
+  — the To-amount field takes a magnitude and the sign is always the
+  opposite of Amount — but the field hint now states the rule explicitly
+  and the summary keeps showing the computed signed value before submit.
+  Recorded as a sanctioned exception in cli-spec.md (2.6) and pinned with a
+  comment + tests in both directions.
 
 - [x] **2.2 `transactions batch` re-validates "no transfers in batch"**
   (`transactions_cmd.py:444-451`) — engine-spec.md:476 already rejects the

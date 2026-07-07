@@ -130,6 +130,54 @@ def test_quick_log_transfer_flow_submits_pair(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
+def test_to_amount_flip_pins_engine_opposite_sign_rule(fake_client, monkeypatch):
+    """The to-amount auto-sign is a sanctioned client-side mirror of the
+    engine's zero-sum transfer rule (backlog 2.1, cli-spec.md "Sanctioned
+    exceptions"): a typed magnitude — even an explicitly signed one — always
+    commits opposite to Amount, and the summary shows the signed value."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen()
+            await app.push_screen(screen)
+            await _wait_loaded(screen, pilot)
+            _enter(screen, "")  # date
+            _enter(screen, "Move to savings")  # title
+            _enter(screen, "-500")  # amount (from) — expense
+            _enter(screen, "BCP P")  # account → BCP PEN
+            _enter(screen, "Ahorr")  # transfer to → Ahorros
+            _enter(screen, "-300")  # typed sign is overridden: opposite of −500 is +
+            assert screen._values["to_amount"] == 30000
+            assert screen._display["to_amount"] == "300.00"
+
+    asyncio.run(scenario())
+
+
+def test_to_amount_flip_negative_when_amount_positive(fake_client, monkeypatch):
+    """Reverse direction of the 2.1 rule: a positive Amount makes the
+    destination leg the expense side."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen()
+            await app.push_screen(screen)
+            await _wait_loaded(screen, pilot)
+            _enter(screen, "")  # date
+            _enter(screen, "Pull from savings")  # title
+            _enter(screen, "500")  # amount (from) — income into the source
+            _enter(screen, "BCP P")  # account → BCP PEN
+            _enter(screen, "Ahorr")  # transfer to → Ahorros
+            _enter(screen, "300")  # unsigned magnitude → destination leg is negative
+            assert screen._values["to_amount"] == -30000
+            assert screen._display["to_amount"] == "-300.00"
+
+    asyncio.run(scenario())
+
+
 def test_quick_log_guards_double_submit(fake_client, monkeypatch):
     _patch(monkeypatch)
 

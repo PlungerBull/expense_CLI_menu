@@ -62,7 +62,10 @@ _HINTS = {
     "amount": "signed decimal · − expense / + income · in the account's currency",
     "account": "pick an existing account · ↑↓ highlight · enter select",
     "transfer_to": "optional · pick a destination account → transfer · empty enter = skip",
-    "to_amount": "opposite sign of Amount · same currency is auto-filled · overwrite if needed",
+    "to_amount": (
+        "magnitude only — sign is auto-set opposite of Amount (engine transfer rule) "
+        "· same currency is auto-filled"
+    ),
     "category": "pick an existing category · ↑↓ highlight · enter select",
     "cleared": "type yes / no / unset · has it posted at the bank?",
     "hashtags": "type a tag · ↑↓ highlight · enter adds & stays · empty enter = done (optional)",
@@ -388,11 +391,18 @@ class QuickAddLogScreen(FormScreen):
         if raw is None:
             self.notify("Enter the destination amount, e.g. 500 or 270.50", severity="error")
             return
+        # Mirrors the engine's 422 transfer.amount_cents "Must not be zero."
         if raw == 0:
             self.notify("Amount must be non-zero.", severity="error")
             return
         amount = self._values.get("amount", 0)
         magnitude = abs(raw)
+        # SANCTIONED EXCEPTION (cli-spec.md "Sanctioned exceptions", backlog
+        # 2.1): deliberate client-side mirror of the engine's zero-sum
+        # transfer rule — both legs same sign → 422 (engine
+        # app/helpers/transfers.py; engine-spec.md Transfers §6). The field
+        # takes a magnitude, the sign is always the opposite of Amount, and
+        # the computed signed value is shown in the summary before submit.
         self._values["to_amount"] = magnitude if amount < 0 else -magnitude
         self._display["to_amount"] = format_cents(self._values["to_amount"])
         self._advance()
