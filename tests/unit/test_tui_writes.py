@@ -102,6 +102,35 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
     assert ("POST", "/accounts/a1/archive") in fake_client.requests
 
 
+def test_concurrent_content_swaps_mount_one_card(fake_client, monkeypatch):
+    """Two loads landing together must swap #content atomically.
+
+    _show suspends between remove_children and mount; unserialized, the
+    interleave mounts a second '#card' (DuplicateIds) and kills the load
+    worker — seen on slow CI runners as a refresh raced a post-write reload.
+    """
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = AccountsScreen()
+            await app.push_screen(screen)
+            from expense.tui.widgets.cursor_list import CursorList
+
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            await asyncio.gather(screen._show(ACCOUNTS), screen._show(ACCOUNTS))
+            assert len(screen.query("#card")) == 1
+
+    asyncio.run(scenario())
+
+
 ARCHIVED = [{"id": "a1", "name": "BCP", "is_person": False, "is_archived": True, "color": None}]
 
 

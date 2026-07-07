@@ -10,6 +10,7 @@ Owns the breadcrumb header, the bounded content card, the worker-backed fetch
 `r` refreshes; `escape` pops back to the menu.
 """
 
+import asyncio
 from collections.abc import Callable
 
 from rich.console import Group
@@ -20,6 +21,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Footer, LoadingIndicator, Static
+from textual.worker import get_current_worker
 
 from expense.errors import format_error
 from expense.tui.widgets.header import Breadcrumb
@@ -99,6 +101,17 @@ class SectionScreen(EngineWriteMixin, Screen):
     crumb: tuple[str, ...] = ()
     CARD_WIDTH: int | None = 64  # cap the content card; None = fill width
 
+    # Serializes every remove/mount pair on #content. Two loads can land
+    # near-simultaneously (e.g. a manual refresh while a write's post-refresh
+    # reload is in flight); each swap suspends between remove and mount, and
+    # interleaved swaps would mount a second '#card' (DuplicateIds).
+    _swap_lock: asyncio.Lock | None = None
+
+    def _content_lock(self) -> asyncio.Lock:
+        if self._swap_lock is None:  # lazily created; only ever touched on the UI thread
+            self._swap_lock = asyncio.Lock()
+        return self._swap_lock
+
     def compose(self) -> ComposeResult:
         yield Breadcrumb(self.crumb, id="crumb")
         yield VerticalScroll(LoadingIndicator(), id="content")
@@ -111,14 +124,19 @@ class SectionScreen(EngineWriteMixin, Screen):
         self._load()
 
     async def action_reload(self) -> None:
-        content = self.query_one("#content", VerticalScroll)
-        await content.remove_children()
-        await content.mount(LoadingIndicator())
+        async with self._content_lock():
+            content = self.query_one("#content", VerticalScroll)
+            await content.remove_children()
+            await content.mount(LoadingIndicator())
         self._load()
 
     # Own group: loads may cancel stale loads, but never a run_write worker.
     @work(thread=True, exclusive=True, group="section-load")
     def _load(self) -> None:
+        # Cancellation is cooperative: a newer exclusive load only flags this
+        # worker, so check before painting or a superseded load can clobber
+        # (or race) the fresh one's content swap.
+        worker = get_current_worker()
         if self._will_cold_start():
             self.app.call_from_thread(
                 self._set_loading,
@@ -127,7 +145,10 @@ class SectionScreen(EngineWriteMixin, Screen):
         try:
             data = self.fetch()
         except Exception as exc:  # surface engine/config errors in-app, don't crash
-            self.app.call_from_thread(self._error, format_error(exc))
+            if not worker.is_cancelled:
+                self.app.call_from_thread(self._error, format_error(exc))
+            return
+        if worker.is_cancelled:
             return
         self.app.call_from_thread(self._show, data)
 
@@ -155,24 +176,27 @@ class SectionScreen(EngineWriteMixin, Screen):
 
     async def _set_loading(self, message: str) -> None:
         content = self.query_one("#content", VerticalScroll)
-        await content.remove_children()
-        await content.mount(
-            Vertical(Static(message, classes="sync-note"), LoadingIndicator(), id="loadbox")
-        )
+        async with self._content_lock():
+            await content.remove_children()
+            await content.mount(
+                Vertical(Static(message, classes="sync-note"), LoadingIndicator(), id="loadbox")
+            )
 
     async def _show(self, data: object) -> None:
         content = self.query_one("#content", VerticalScroll)
-        await content.remove_children()
-        card = Vertical(*self.build(data), id="card")
-        if self.CARD_WIDTH is not None:
-            card.styles.max_width = self.CARD_WIDTH
-        await content.mount(card)
+        async with self._content_lock():
+            await content.remove_children()
+            card = Vertical(*self.build(data), id="card")
+            if self.CARD_WIDTH is not None:
+                card.styles.max_width = self.CARD_WIDTH
+            await content.mount(card)
 
     async def _error(self, message: str) -> None:
         content = self.query_one("#content", VerticalScroll)
-        await content.remove_children()
-        banner = Group(Text("Could not load.", style="bold"), Text(message))
-        await content.mount(Static(banner, classes="error"))
+        async with self._content_lock():
+            await content.remove_children()
+            banner = Group(Text("Could not load.", style="bold"), Text(message))
+            await content.mount(Static(banner, classes="error"))
 
     # ---- shared write helpers (Phase 2) ----------------------------------
     def selected_record(self) -> dict | None:
@@ -187,7 +211,7 @@ class SectionScreen(EngineWriteMixin, Screen):
 
     def _after_write(self, message: str) -> None:
         self.notify(message)
-        self._load()  # re-fetch; _show awaits the swap so there's no card clash
+        self._load()  # re-fetch; content swaps are lock-serialized, no card clash
 
     def confirm_write(
         self, title: str, message: str, method: str, path: str, *, success: str = "Done."
