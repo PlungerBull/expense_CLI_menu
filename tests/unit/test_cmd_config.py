@@ -140,6 +140,15 @@ def test_get_errors_cleanly_when_no_config(tmp_config):
     assert "config set" in result.output
 
 
+def test_set_with_corrupt_config_renders_clean_error(tmp_config):
+    """A corrupted config file must render on set like it does on get (backlog 3.6)."""
+    tmp_config.write_text("{not json")
+    result = runner.invoke(app, ["set", "--token", "ewe_pat_abc"])
+    assert result.exit_code == 3
+    assert "not valid JSON" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_clear_with_yes_flag(tmp_config):
     runner.invoke(app, ["set", "--engine-url", "https://x.com"])
     assert tmp_config.exists()

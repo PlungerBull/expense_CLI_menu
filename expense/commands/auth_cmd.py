@@ -15,7 +15,7 @@ from expense.http import ExpenseClient
 app = typer.Typer(help="Authentication, identity, and settings.", no_args_is_help=True)
 
 
-def _detect_timezone() -> str:
+def _detect_timezone(localtime: Path = Path("/etc/localtime")) -> str:
     tz_env = os.environ.get("TZ")
     if tz_env:
         try:
@@ -24,7 +24,6 @@ def _detect_timezone() -> str:
         except zoneinfo.ZoneInfoNotFoundError:
             pass
 
-    localtime = Path("/etc/localtime")
     if localtime.is_symlink():
         target = str(localtime.resolve())
         marker = "/zoneinfo/"
@@ -36,7 +35,12 @@ def _detect_timezone() -> str:
             except zoneinfo.ZoneInfoNotFoundError:
                 pass
 
-    raise RuntimeError("Could not detect system timezone. Pass --timezone explicitly.")
+    # BadParameter (a click UsageError) so the CLI renders "Error: ..." and
+    # exits 2 instead of a raw traceback — the remedy is a flag the user holds.
+    raise typer.BadParameter(
+        "Could not detect system timezone. Pass --timezone explicitly.",
+        param_hint="--timezone",
+    )
 
 
 def _render_user_and_settings(body: dict, *, json_mode: bool) -> None:

@@ -201,7 +201,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   process risks split-brain. Exclude `OperationalError` from the wipe path
   (retry/fail cleanly instead).
 
-- [ ] **3.6 Two uncaught-traceback paths in commands.**
+- [x] **3.6 Two uncaught-traceback paths in commands.**
   `_detect_timezone()` raises bare `RuntimeError` (`auth_cmd.py:39`, reached
   from `bootstrap:126`) which `handle_errors` doesn't catch; `config set`
   lacks `@handle_errors` entirely yet calls `config_module.load()`

@@ -24,6 +24,7 @@ def _validate_engine_url(url: str) -> None:
 
 
 @app.command("set")
+@handle_errors
 def set_cmd(
     engine_url: str | None = typer.Option(None, "--engine-url", help="Base URL of the engine."),
     token: str | None = typer.Option(None, "--token", help="PAT (prefix ewe_pat_) or JWT."),
