@@ -8,6 +8,7 @@ does for engine 404s.
 """
 
 import json
+from datetime import UTC, datetime
 
 from expense.cache import db
 from expense.errors import EngineError
@@ -155,14 +156,18 @@ def get_hashtag(hashtag_id: str) -> dict:
     return _row_to_dict(row["body"])
 
 
+# Mirrors the engine's ?ready=true conditions (engine app/routers/inbox.py):
+# title set + non-UNTITLED, amount set + non-zero, date <= now(), account &
+# category present, active and non-archived. The date comparison is a full
+# UTC *timestamp* (`i.date <= now()`), NOT a calendar-date truncation — the
+# engine does not use the profile timezone here.
 _READY_PREDICATE = """\
-i.deleted_at IS NULL
-AND json_extract(i.body, '$.title') IS NOT NULL
+json_extract(i.body, '$.title') IS NOT NULL
 AND json_extract(i.body, '$.title') != 'UNTITLED'
 AND json_extract(i.body, '$.amount_cents') IS NOT NULL
 AND json_extract(i.body, '$.amount_cents') != 0
 AND i.date IS NOT NULL
-AND date(i.date) <= date('now')
+AND datetime(i.date) <= datetime(?)
 AND i.account_id IS NOT NULL
 AND i.category_id IS NOT NULL
 AND a.id IS NOT NULL AND a.deleted_at IS NULL AND a.is_archived = 0
@@ -176,27 +181,34 @@ def list_inbox(
     overdue: bool = False,
     limit: int | None = None,
     offset: int | None = None,
+    now: str | None = None,
 ) -> dict:
     """GET /v1/inbox equivalent. Paginated wrapper.
 
-    `ready` replicates the engine's full predicate (title set + non-UNTITLED,
-    amount set + non-zero, date <= today, account & category present and active).
+    `ready` and `overdue` replicate the engine's conditions and, like the
+    engine's, combine independently (ready: `i.date <= now()`, overdue:
+    `i.date < now()`). `now` is an RFC 3339 UTC timestamp, parameterized so
+    tests can freeze it; SQLite's datetime() normalizes both 'Z' and
+    '±HH:MM' offsets, matching the engine's UTC now() regardless of how the
+    synced date was serialized. No `i.status = 1` filter is needed:
+    promotion tombstones the row engine-side and sync purges tombstones
+    (expense/cache/sync.py), so replica rows are always drafts.
     """
     eff_limit = limit if isinstance(limit, int) and limit > 0 else 100
     eff_offset = offset if isinstance(offset, int) and offset >= 0 else 0
+    now_utc = now or datetime.now(UTC).isoformat()
 
-    where_parts: list[str] = []
+    # tombstones are purged at sync — guard, not filter
+    where_parts: list[str] = ["i.deleted_at IS NULL"]
+    params: list = []
     if ready:
         where_parts.append(_READY_PREDICATE)
-    else:
-        # tombstones are purged at sync — guard, not filter
-        where_parts.append("i.deleted_at IS NULL")
-        if overdue:
-            where_parts.append("i.date IS NOT NULL AND date(i.date) < date('now')")
+        params.append(now_utc)
+    if overdue:
+        where_parts.append("i.date IS NOT NULL AND datetime(i.date) < datetime(?)")
+        params.append(now_utc)
 
-    where_sql = ""
-    if where_parts:
-        where_sql = "WHERE " + " AND ".join(f"({c})" for c in where_parts)
+    where_sql = "WHERE " + " AND ".join(f"({c})" for c in where_parts)
 
     conn = db.connect()
     try:
@@ -207,10 +219,11 @@ def list_inbox(
         )
         total = conn.execute(
             f"SELECT count(*) {join_sql}{where_sql}",
+            params,
         ).fetchone()[0]
         rows = conn.execute(
             f"SELECT i.body {join_sql}{where_sql} ORDER BY i.date DESC, i.id ASC LIMIT ? OFFSET ?",
-            (eff_limit, eff_offset),
+            (*params, eff_limit, eff_offset),
         ).fetchall()
     finally:
         conn.close()

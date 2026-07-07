@@ -111,15 +111,18 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   whole batch. Convert to an except-hint on the engine's 422 like every
   other command (same treatment §7 gave reports).
 
-- [ ] **2.3 Cache inbox `_READY_PREDICATE` re-implements the engine's
-  readiness rule with a timezone divergence.** `queries.py:162-174` hard-codes
-  the `'UNTITLED'` sentinel / non-zero amount / active-refs rule, and
-  `date('now')` (also line 200 for overdue) evaluates "today" in **UTC**
-  while the engine uses the profile timezone — an item dated today can flip
-  ready/not-ready between cache and engine for hours around midnight. At
-  minimum compute "today" from the local/profile timezone and pass it in as
-  a parameter; longer term, consider the engine exposing readiness in the
-  sync payload so the client stops owning the rule.
+- [x] **2.3 Cache inbox `_READY_PREDICATE` re-implements the engine's
+  readiness rule with a date/timestamp divergence.** (Correction on
+  verification: the engine does **not** use the profile timezone — its rule
+  is a plain UTC timestamp comparison, `i.date <= now()` for ready and
+  `< now()` for overdue, per engine `app/routers/inbox.py`. The real
+  divergence was the cache's `date('now')` **calendar-date truncation**,
+  which marked an item dated later today as ready/not-overdue when the
+  engine disagreed, plus the cache ignoring `overdue` whenever `ready` was
+  set — the engine combines them.) Fixed: `list_inbox` mirrors the engine's
+  conditions with `now` parameterized (frozen in tests); longer term,
+  consider the engine exposing readiness in the sync payload so the client
+  stops owning the rule.
 
 - [x] **2.4 USD/PEN whitelist is hard-coded in three client spots**
   (`create_forms.py:30`, `system.py:194-195`, `import_/mapping.py:32`).

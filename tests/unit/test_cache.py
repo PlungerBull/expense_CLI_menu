@@ -901,7 +901,7 @@ def test_list_inbox_overdue_filter(cache_path):
         )
     finally:
         conn.close()
-    body = cache.list_inbox(overdue=True)
+    body = cache.list_inbox(overdue=True, now="2026-07-07T12:00:00+00:00")
     ids = [r["id"] for r in body["items"]]
     assert "past" in ids
     assert "future" not in ids
@@ -1007,7 +1007,7 @@ def test_list_inbox_ready_filter_full_predicate(cache_path):
         )
     finally:
         conn.close()
-    body = cache.list_inbox(ready=True)
+    body = cache.list_inbox(ready=True, now="2026-07-07T12:00:00+00:00")
     ids = [r["id"] for r in body["items"]]
     assert "ok" in ids
     assert "untitled" not in ids
@@ -1016,6 +1016,107 @@ def test_list_inbox_ready_filter_full_predicate(cache_path):
     assert "no-acct" not in ids
     assert "archived-acct-ref" not in ids
     assert "missing-cat" not in ids
+
+
+def _seed_ready_refs(conn) -> None:
+    _seed_accounts(
+        conn,
+        [{"id": "a1", "user_id": "u1", "name": "A", "sort_order": 1, "version": 1}],
+    )
+    _seed_categories(
+        conn,
+        [{"id": "c1", "user_id": "u1", "name": "C", "sort_order": 1, "version": 1}],
+    )
+
+
+def _ready_row(id_: str, date: str) -> dict:
+    return {
+        "id": id_,
+        "user_id": "u1",
+        "title": "x",
+        "amount_cents": 100,
+        "date": date,
+        "account_id": "a1",
+        "category_id": "c1",
+        "version": 1,
+    }
+
+
+def test_list_inbox_ready_is_timestamp_not_date(cache_path):
+    """Readiness mirrors the engine's `i.date <= now()` — a full timestamp
+    comparison, not a calendar-date truncation (backlog 2.3)."""
+    conn = cache.connect()
+    try:
+        _seed_ready_refs(conn)
+        _seed_inbox(
+            conn,
+            [
+                _ready_row("earlier-today", "2026-07-07T10:00:00Z"),
+                _ready_row("exact-now", "2026-07-07T12:00:00Z"),
+                _ready_row("later-today", "2026-07-07T18:00:00Z"),
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_inbox(ready=True, now="2026-07-07T12:00:00+00:00")
+    ids = {r["id"] for r in body["items"]}
+    # later-today is the case date('now') got wrong: same UTC day, future timestamp
+    assert ids == {"earlier-today", "exact-now"}
+
+
+def test_list_inbox_overdue_is_timestamp_not_date(cache_path):
+    """Overdue mirrors the engine's strict `i.date < now()` — an item earlier
+    today IS overdue; exact-now is not."""
+    conn = cache.connect()
+    try:
+        _seed_inbox(
+            conn,
+            [
+                _ready_row("earlier-today", "2026-07-07T10:00:00Z"),
+                _ready_row("exact-now", "2026-07-07T12:00:00Z"),
+                _ready_row("later-today", "2026-07-07T18:00:00Z"),
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_inbox(overdue=True, now="2026-07-07T12:00:00+00:00")
+    ids = {r["id"] for r in body["items"]}
+    assert ids == {"earlier-today"}
+
+
+def test_list_inbox_ready_and_overdue_combine(cache_path):
+    """Both flags combine like the engine's independent conditions: exact-now
+    is ready (<=) but not overdue (<)."""
+    conn = cache.connect()
+    try:
+        _seed_ready_refs(conn)
+        _seed_inbox(
+            conn,
+            [
+                _ready_row("earlier-today", "2026-07-07T10:00:00Z"),
+                _ready_row("exact-now", "2026-07-07T12:00:00Z"),
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_inbox(ready=True, overdue=True, now="2026-07-07T12:00:00+00:00")
+    ids = {r["id"] for r in body["items"]}
+    assert ids == {"earlier-today"}
+
+
+def test_list_inbox_offset_aware_dates_compare_correctly(cache_path):
+    """'2026-07-07T08:00:00-05:00' is 13:00Z — SQLite datetime() must
+    normalize the offset so the comparison matches the engine's UTC now()."""
+    conn = cache.connect()
+    try:
+        _seed_ready_refs(conn)
+        _seed_inbox(conn, [_ready_row("lima", "2026-07-07T08:00:00-05:00")])
+    finally:
+        conn.close()
+    at_noon = cache.list_inbox(ready=True, now="2026-07-07T12:00:00+00:00")
+    assert at_noon["items"] == []
+    at_one = cache.list_inbox(ready=True, now="2026-07-07T13:00:00+00:00")
+    assert [r["id"] for r in at_one["items"]] == ["lima"]
 
 
 def test_get_inbox_hit_and_miss(cache_path):

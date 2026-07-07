@@ -15,7 +15,7 @@ The replica is being built in three phases:
 - **7a (shipped)** — stateless `expense sync --full` only. No cache.
 - **7b.1 (shipped)** — SQLite layer, delta sync, cold start, tombstones, `sync_token` persistence. Cache exists; `expense sync` fills/refreshes it.
 - **7b.2.1 (shipped)** — replica-backed `list`/`get` for accounts, categories, hashtags. Auto cold-start when a read hits an empty cache. `--no-cache` is now meaningful on these commands.
-- **7b.2.2 (shipped)** — replica-backed reads for inbox + reconciliations. Inbox `--ready` filter fully replicated as SQL JOIN against cached accounts/categories. `reconciliations get` embeds paginated transactions from the cached transactions table.
+- **7b.2.2 (shipped)** — replica-backed reads for inbox + reconciliations. Inbox `--ready` filter fully replicated as SQL JOIN against cached accounts/categories; `--ready`/`--overdue` mirror the engine's UTC timestamp comparisons (`i.date <= now()` / `< now()`) with `now` passed as a parameter (backlog 2.3). `reconciliations get` embeds paginated transactions from the cached transactions table.
 - **7b.2.3 (shipped)** — replica-backed reads for transactions. 8 filters incl. `--hashtag-id` (SQLite `json_each` containment) and `--search` (`LIKE … COLLATE NOCASE`, ASCII-equivalent to engine `ILIKE`). `hashtag_ids` is stripped from cached `list`/`get` output to match engine response shape.
 - **7b.3 (shipped)** — write-path refresh. Every successful write fires a follow-up `GET /sync` to keep the replica current. Errors during the post-write sync are non-fatal (the write already landed). `--no-sync-after` (root flag, env `EXPENSE_NO_SYNC_AFTER`) skips the refresh for batch scripts.
 
