@@ -263,6 +263,10 @@ Shipped in two sub-steps so each lands as a reviewable unit; they share no code.
 
 **Commit:** `feat(rates): expense rates get — exchange-rate lookup (Step 8.2)`
 
+**Follow-on (shipped 2026-07-06, polish-backlog §4.8):** `expense rates list [--date] [--limit] [--offset]` → `GET /v1/exchange-rates/history` — stored daily rates as a table (newest first, one row per pair per day, exact-day filter). Landed as the flat contract validator for the TUI's Rates history screen.
+
+**Commit:** `feat(rates): history table — CLI rates list + TUI Rates screen (backlog §4.8)`
+
 ---
 
 ## Step 9 — CLI Complete (Done)
@@ -275,7 +279,7 @@ All command groups from [cli-spec.md](cli-spec.md) work end-to-end against the l
 - **A fresh user walks `expense config set` → `auth bootstrap` → `dashboard` with no surprises.** Wired as a live contract test at [tests/contract/test_freshman_flow.py](../tests/contract/test_freshman_flow.py), gated on `PYTEST_LIVE=1` + `EXPENSE_PAT`. Uses `CliRunner` with isolated `EXPENSE_CONFIG` / `EXPENSE_CACHE` paths so it never clobbers the dev install.
 - **Archive/delete distinction respected.** `accounts/categories/hashtags list` accept `--include-archived` + `--include-deleted`; `inbox/transactions list` accept `--include-deleted` only (those resources have no archive state, per engine spec).
 
-Next: Step 9.5 (interactive shell) immediately after this gate, then Post-Step-9 ergonomics (quick-add parser, CSV import, shell completions, color conventions).
+Next after this gate was Step 9.5 (interactive shell — shipped, then deleted at Step 10.X), then the `expense import` bulk importer and Step 10 (Textual TUI, current work). Post-Step-9 ergonomics (quick-add parser, shell completions, color conventions) follow Step 10.
 
 ---
 
@@ -377,7 +381,7 @@ Wires `Show current config`, `Set engine URL`, `Set token (PAT)`, `Set main curr
 
 Wires `Show my profile (whoami)`, `Bootstrap (first-time login)`, `Update display name`, `Update settings…` (inner picker for theme, start_of_week, transaction_sort_preference, display_timezone, and the three sidebar toggles), `Update main currency` (its own menu entry with warning + double-confirm via `confirm_destructive` because the engine synchronously recalculates home-currency amounts).
 
-**Verify:** bootstrap, profile update, settings update, main-currency change with double-confirm all round-trip against the engine and via [tests/unit/test_menu_auth.py](../tests/unit/test_menu_auth.py); decline path on the main-currency confirm makes no PUT. Main-currency change surfaces the engine's inline `recalculation` summary (`Rewrote N transaction(s) in home currency.` from `total`, plus a yellow warning if `orphan_transfer_legs > 0`) — engine ships this on `PUT /v1/auth/settings` per the null-over-omission rule; the renderer skips the field cleanly when null.
+**Verify:** bootstrap, profile update, settings update, main-currency change with double-confirm all round-trip against the engine and via `tests/unit/test_menu_auth.py` (deleted at 10.X); decline path on the main-currency confirm makes no PUT. Main-currency change surfaces the engine's inline `recalculation` summary (`Rewrote N transaction(s) in home currency.` from `total`, plus a yellow warning if `orphan_transfer_legs > 0`) — engine ships this on `PUT /v1/auth/settings` per the null-over-omission rule; the renderer skips the field cleanly when null.
 
 **Commit:** `feat(menu): Auth & profile — whoami/bootstrap/profile/settings/main_currency (Step 9.5.7)`
 
@@ -425,7 +429,7 @@ Wires the same template; `delete` warning mentions junction-row cascade (restore
 
 *Deliverable: terminal wipes on every menu transition; status messages stay readable.*
 
-Adds [expense/menu/term.py](../expense/menu/term.py) with `clear_screen()` (gentle viewport clear via `click.clear()`, preserves scrollback so `print_recap()` audit stays intact). Two-point clear in every menu loop (root + 9 groups): before each `questionary.select` and before each handler dispatch. Coupled audit: every early-return that prints user-facing status (`Aborted.` / `No changes.` / `Could not load …` / file errors) now calls `common.pause()` before returning, so the message stays readable instead of flashing under the next clear. Opt-out via `EXPENSE_NO_CLEAR=1` (matches `EXPENSE_NO_SYNC_AFTER` convention); no `--no-clear` flag since menu is TTY-only.
+Adds `expense/menu/term.py` (deleted at 10.X) with `clear_screen()` (gentle viewport clear via `click.clear()`, preserves scrollback so `print_recap()` audit stays intact). Two-point clear in every menu loop (root + 9 groups): before each `questionary.select` and before each handler dispatch. Coupled audit: every early-return that prints user-facing status (`Aborted.` / `No changes.` / `Could not load …` / file errors) now calls `common.pause()` before returning, so the message stays readable instead of flashing under the next clear. Opt-out via `EXPENSE_NO_CLEAR=1` (matches `EXPENSE_NO_SYNC_AFTER` convention); no `--no-clear` flag since menu is TTY-only.
 
 **Verify:** menu transitions render on a clean screen; abort/no-changes paths show `Press Enter to return…`; scrollback still contains prior recap lines (Cmd+UpArrow); `EXPENSE_NO_CLEAR=1 expense menu` matches pre-9.5.11b behavior.
 
@@ -451,7 +455,7 @@ Wires `Refresh (delta sync)` and `Full rebuild (--full)`. Each prints the per-re
 
 **Commit:** `feat(menu): Sync — delta + full rebuild (Step 9.5.13)`
 
-### Step 9.5.14 — Activity log menu
+### Step 9.5.14 — Activity log menu (shipped)
 
 *Deliverable: Activity group menu + 3 activity flows.*
 
@@ -475,7 +479,7 @@ Wires `Look up a rate` (target required; base + date optional with engine-defaul
 
 *Deliverable: Extend [tests/contract/test_freshman_flow.py](../tests/contract/test_freshman_flow.py) (or add a sibling) to drive the menu end-to-end. Closes Step 9.5.*
 
-Shipped as a sibling, [tests/contract/test_freshman_flow_menu.py](../tests/contract/test_freshman_flow_menu.py), driving the menu group flows per-leg against the live engine; the flat-command gate stays untouched alongside it.
+Shipped as a sibling, `tests/contract/test_freshman_flow_menu.py` (deleted at 10.X), driving the menu group flows per-leg against the live engine; the flat-command gate stays untouched alongside it.
 
 Walks `expense menu` through `Config → Set engine URL → Set token → Auth → Bootstrap → Accounts → Create → Categories → Create → Log → Outstanding Amounts` against the live engine without consulting `--help` or memorizing a flag. No new feature code — purely a gate that proves the freshman UX holds together. Depends on Config (9.5.6), Auth (9.5.7), Accounts (9.5.9), Categories (9.5.10).
 
@@ -500,7 +504,7 @@ The TUI is a new **client** of the same engine-integration layer (HTTP client, S
 **Resolved open decisions** (from [tui-plan.md §9](tui-plan.md)): entry command is **`expense world`** (#1); the TUI **replaced** `expense menu`, now deleted (#2 — see 10.X); reconcile reorder **shells out to `$EDITOR`** for v1 (#4). Still open: designer's final theme tokens (#3), minimum terminal size fallback (#5).
 
 ### Step 10.P0 — Walking skeleton (shipped)
-`expense world` launches; neutral theme; header banner + home menu with live status; Outstanding Amounts wired to live data (flat, then interactive category tree) via the worker helper. De-risked Textual + async + data-reuse.
+`expense world` launches; neutral theme; header banner + home menu with live status (the status line was later **removed by decision** at [polish-backlog.md](polish-backlog.md) §4.3 — it reported config presence as "connected" without ever probing the engine); Outstanding Amounts wired to live data (flat, then interactive category tree) via the worker helper. De-risked Textual + async + data-reuse.
 
 ### Step 10.P1 — Read views (shipped)
 List screens for Inbox, Transactions, Accounts, Categories, Hashtags (chips); interactive `▼/▶` category tree on Outstanding Amounts; record detail modals; loading/empty/error states. Every read surface browsable.
@@ -514,21 +518,30 @@ Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transac
 
 **Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before code** (per [CLAUDE.md](../CLAUDE.md) "Mock every screen before building it").
 
-### Step 10.P3 — Polish & hardening (not started)
-Designer theme tokens; light/dark + `NO_COLOR` paths; keybinding consistency, `?` help overlay, command palette; async edge cases + spinners; Textual pilot tests (existing CLI suite stays green); update `docs/roadmap.md` + `CLAUDE.md`. Exit criteria: shippable, feature-complete vs the flat command surface.
+### Step 10.P3 — Polish & hardening (in progress)
+Shipped so far via the **2026-07-02 quality-review backlog — all seven sections closed 2026-07-06** (item-by-item record removed from the live file by decision; last full copy at commit `2d42482`): keymap contract (r always refreshes, y alone confirms, enter never mutates), theme-resolved sign-colored amounts with a literal-color guard test, fake home status removed, q scoped to Home, unarchive prompt-free, Rates as a history table, the CLI/TUI dedup refactors (`EngineWriteMixin.run_write`, one `FormScreen` base, shared `_resource.py` helpers), error-handling/help-text passes, shared test conftest + coverage, and the review's final nits (reconcile list table, Deleted columns, engine-owned report validation).
+**Remaining:** the **2026-07-06 best-practices review** now open in [polish-backlog.md](polish-backlog.md); designer theme tokens; light theme + `NO_COLOR` paths; `?` help overlay; command palette; async edge cases + spinners; remaining Textual pilot tests. Exit criteria: shippable, feature-complete vs the flat command surface.
 
 ### Step 10.X — Delete `expense menu` (done — 2026-07-02)
 Removed `expense/menu/` and its tests (`test_menu_*.py`, `test_freshman_flow_menu.py`), dropped the `expense menu` Typer command from `expense/__main__.py`, and pruned the now-unused `questionary` dependency from `pyproject.toml`. Done ahead of the original gate (which waited on 10.P2 + 10.P3) by decision — the flat commands are the complete surface, so nothing was lost. The two front doors are now the flat commands + `expense world`. The flat commands and their freshman-flow contract test ([test_freshman_flow.py](../tests/contract/test_freshman_flow.py)) are untouched.
 
 ---
 
+## `expense import` — bulk `.xlsx` importer (shipped 2026-06-24)
+
+Landed between Step 9.5 and Step 10, outside the numbered steps: `expense import <file.xlsx> [--apply] [--chunk-size N] [--json]` — parses a spreadsheet, resolves names to ids against the replica, plans, and writes via the engine's `transactions batch` endpoint. Dry-run preview is the default; `--apply` writes. Package: [expense/import_/](../expense/import_/) (`reader` / `parse` / `mapping` / `plan` / `apply`) + [expense/commands/import_cmd.py](../expense/commands/import_cmd.py); optional `openpyxl` dep under the `[import]` extra.
+
+**Commit:** `feat(import): expense import — bulk .xlsx → engine via batch endpoint`
+
+---
+
 ## Post-Step-9 ergonomics
 
-Land in this order, separately from Step 9.5:
+Land in this order, separately from Step 10:
 
 1. **Quick-add natural-language parser** — `expense $20 today #food` → parses amount, sign, date, hashtag, title from free text and dispatches to the flat `log` command. Sign stays literal (`$20` = income, `-$20` = expense). The "low-friction capture" half of the dual-UX strategy; the TUI (`expense world`) is the "discoverable management" half.
 2. **Shell completions** — zsh, bash, fish. `expense <TAB>` shows commands; `expense auth <TAB>` shows subcommands. Lowest-effort discoverability win for the flat path.
-3. **`expense import csv`** — bulk transaction import for migration.
+3. **`expense import csv`** — CSV variant of the shipped `.xlsx` importer (see "`expense import`" above). Only if a real migration needs it; the xlsx path already covers the original migration use case.
 4. **Color conventions** — Rich-based output styling; opt-out flag for plain ANSI.
 5. **Human-name resolution for reference flags** — accept either UUIDs or human-readable names on every command that takes an `--account-id` / `--category-id` / `--hashtag-id` / `--reconciliation-id`. CLI-side lookup via the existing list endpoints with disambiguation rules (case-insensitive exact match; reject ambiguous matches with a "be more specific" error pointing at `expense <resource> list`). UUIDs continue to pass through unchanged. Significant feature; deserves its own plan-mode session.
 
@@ -545,10 +558,10 @@ These apply at every step — don't defer them.
 - **Confirm destructive operations** unless `--yes` is passed.
 - **Engine errors surface intact.** Human mode may prettify; `--json` passes through verbatim.
 - **Archive ≠ delete.** Archive is "retired-but-real"; delete is "mistake/gone". The CLI honors both states distinctly in list output and dashboard views.
-- **Testing.** Unit tests under `tests/unit/` use `respx` to mock httpx — fast, deterministic, engine-response fixtures checked in. Contract tests under `tests/contract/` hit the live staging engine and run only when `PYTEST_LIVE=1` is set; they're the safety net for engine-shape drift. Every new command lands with at least one unit test covering the happy path and one covering the primary error shape.
+- **Testing.** Unit tests under `tests/unit/` use `respx` to mock httpx — fast, deterministic, engine-response fixtures checked in. Contract tests under `tests/contract/` hit the live production engine and run only when `PYTEST_LIVE=1` is set; they're the safety net for engine-shape drift. Every new command lands with at least one unit test covering the happy path and one covering the primary error shape.
 - **Pagination.** Any endpoint the engine paginates (activity, transactions list, etc.) exposes `--limit` and `--cursor` flags. Human mode prints `next_cursor` as a hint under the table; `--json` passes it through verbatim.
 - **`--verbose`.** Global flag handled by the HTTP client wrapper. Prints request + response (method, URL, status, headers, body) to stderr. Redacts the `Authorization` header.
 
 ---
 
-*Last updated: 2026-07-02 (Step 10 TUI in progress; `expense menu` deleted at Step 10.X).*
+*Last updated: 2026-07-06 (Step 10 TUI: P2 lacks only the Reports screen, P3 polish backlog fully closed; `expense import` + `rates list` recorded).*

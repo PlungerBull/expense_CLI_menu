@@ -1,5 +1,7 @@
 # expense_CLI_menu — CLAUDE.md
 
+> Repo name note: `_menu` is historical — the questionary menu was deleted at Step 10.X. There is no menu package; the interactive surface is the Textual TUI (`expense world`).
+
 ## What this repo is
 
 The Hands. A Python (Typer) CLI that talks to the `expense_world_engine` via its HTTPS API. Every command is a thin wrapper around one or more engine endpoints. Zero business logic lives here — if the engine doesn't do it, the CLI can't either.
@@ -23,22 +25,33 @@ Implications for every decision in this repo:
 |---|---|---|
 | [docs/cli-spec.md](docs/cli-spec.md) | Command groups, output conventions, open questions | Local |
 | [docs/cli-runtime.md](docs/cli-runtime.md) | CLI runtime behavior — sync model, write semantics, X-Client-Id lifecycle, cache phasing | Local |
-| [docs/roadmap.md](docs/roadmap.md) | Step-by-step CLI build order | Local |
+| [docs/roadmap.md](docs/roadmap.md) | Step-by-step CLI build order + per-step status | Local |
+| [docs/tui-plan.md](docs/tui-plan.md) | Textual TUI (`expense world`) — architecture, phases, keymap contract, status | Local |
+| [docs/polish-backlog.md](docs/polish-backlog.md) | The **active** polish/quality backlog (currently the 2026-07-06 best-practices review; the worked-off 2026-07-02 review lives in git history at `2d42482`) | Local |
+| [docs/mockups/](docs/mockups/) | HTML mockups — the approval gate for every screen and table | Local |
 | `engine-spec.md` | Every endpoint, every business rule — the API contract the CLI consumes | [../expense_world_engine/docs/engine-spec.md](../expense_world_engine/docs/engine-spec.md) |
 | `api-design-principles.md` | Request/response conventions (error shape, null-over-omission, idempotency, sign) | [../expense_world_engine/docs/api-design-principles.md](../expense_world_engine/docs/api-design-principles.md) |
 | `design-philosophy.md` | Product vision shared across all clients | [../expense_world_engine/docs/design-philosophy.md](../expense_world_engine/docs/design-philosophy.md) |
 | `lessons-*.md` | UX lessons from YNAB, Lunch Money, TickTick, Todoist, Splitwise | [../expense_world_engine/docs/](../expense_world_engine/docs/) |
 
-Engine docs are **referenced, not copied**. Single source of truth lives in the engine repo.
+Engine docs are **referenced, not copied**. Single source of truth lives in the engine repo. Same rule inside this repo: **each fact has one home** — status lives in roadmap/tui-plan/backlog, this file points at it. When you ship something, update the owning doc, not (only) this one.
+
+## Dev loop
+
+- **Install:** `pip install -e ".[dev]"` — entry point is `expense` (TUI via `expense world`).
+- **Test:** `pytest tests/unit` (fast, respx-mocked, hermetic — an autouse fixture in [tests/unit/conftest.py](tests/unit/conftest.py) redirects `EXPENSE_CONFIG`/`EXPENSE_CACHE`; never bypass it). `tests/contract/` hits the **live production engine**, gated on `PYTEST_LIVE=1` (+ `EXPENSE_PAT`) — never set casually.
+- **Lint/format:** `ruff check . && ruff format .` — CI enforces both (`ruff format --check`) plus `pytest tests/unit`; pre-commit runs ruff `--fix` + ruff-format. Line length 100, target py311.
+- **Careful running live:** plain `expense …` commands use the developer's real `~/.expense-config` and hit the production engine. Don't run writes ad hoc.
+- **Env vars:** `EXPENSE_CONFIG`, `EXPENSE_CACHE` (path overrides), `EXPENSE_STATELESS=1` (bypass cache), `EXPENSE_NO_SYNC_AFTER=1` (skip post-write refresh), `PYTEST_LIVE=1` (contract tests).
 
 ## Tech stack
 
 - **Language:** Python 3.11+
-- **CLI framework:** Typer
-- **HTTP client:** httpx
+- **CLI framework:** Typer · **TUI framework:** Textual · **HTTP client:** httpx
+- **Importer:** `expense import` (.xlsx via `openpyxl`, optional extra `[import]`) — package [expense/import_/](expense/import_/)
 - **Config storage:** `~/.expense-config` (chmod 600)
-- **Local cache (Step 7b — committed deliverable, not optional):** SQLite under `~/.expense-cache.sqlite3` per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md). Stateless escape hatch via `--no-cache` / `EXPENSE_STATELESS=1`. See [docs/cli-runtime.md](docs/cli-runtime.md).
-- **Sync architecture — server-first, not local-first.** Writes go engine-direct over HTTPS; the local SQLite is a read-through replica only, never the origin of a write. No offline write queue (unlike Todoist's mobile clients — that's an **iOS-only future feature** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), explicitly excluded from CLI and web by design). Why: single source of truth = no conflict resolution, no CRDTs, no per-row vector clocks — every client inherits the same simple `POST → wait → done` contract.
+- **Local cache (committed deliverable, not optional):** SQLite under `~/.expense-cache.sqlite3` per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md) — cache-by-default, stateless escape hatch via `--no-cache` / `EXPENSE_STATELESS=1`. See [docs/cli-runtime.md](docs/cli-runtime.md).
+- **Sync architecture — server-first, not local-first.** Writes go engine-direct over HTTPS; the local SQLite is a read-through replica only, never the origin of a write. No offline write queue (that's iOS-only per §3b; see [docs/cli-runtime.md](docs/cli-runtime.md)). Why: single source of truth = no conflict resolution, no CRDTs, no per-row vector clocks — every client inherits the same simple `POST → wait → done` contract.
 
 ## Non-negotiable conventions
 
@@ -58,52 +71,23 @@ The HTTP client generates a fresh UUID per write and sets `X-Idempotency-Key`. R
 The engine's standard error shape (`{ error: { code, message, fields } }`) is rendered to the user. Never swallow, never reformat lossily.
 
 **Confirm destructive operations**
-Deletes, reverts, archives prompt for confirmation unless `--yes` is passed.
+Deletes, reverts, archives prompt for confirmation unless `--yes` is passed. (Unarchive and restore are prompt-free — they undo, not destroy.)
 
 **Config isolation**
 Auth token + engine URL live in `~/.expense-config`. Never checked in, never shared across machines. The GitHub repo (`PlungerBull/expense_CLI_menu`) is **public** by deliberate choice — which makes this rule non-negotiable: any secret committed is immediately public and permanent in git history. GitHub push protection is enabled as defense-in-depth, but the primary safeguard is that credentials never enter the repo in the first place.
 
 **Mock every screen before building it — every time**
-Before writing or changing UI code for any user-facing view or screen — a menu, dashboard, list, form, report, or TUI screen, anything the user will see — first present its **HTML mockup in [docs/mockups/](docs/mockups/)** and wait for the user's review. Do this **every time you pick up a screen, even one approved before** — a prior approval is not a standing license to skip the review; the user re-reads the mockup each session to make specific observations. Never assume layout, fields, or behavior: when a detail is unspecified or ambiguous, **stop and ask**.
+Before writing or changing UI code for any user-facing view or screen — a menu, dashboard, list, form, report, or TUI screen, anything the user will see — first present its **HTML mockup in [docs/mockups/](docs/mockups/)** and wait for the user's review. Do this **every time you pick up a screen, even one approved before** — a prior approval is not a standing license to skip the review; the user re-reads the mockup each session to make specific observations. **Showing mockups is not approval:** never implement (even in auto-accept mode) until the user explicitly picks one. This includes CLI tables: any new `<resource> list` renderer or column change needs a proposed column set + sign-off first (process rule in [docs/cli-spec.md](docs/cli-spec.md)). Never assume layout, fields, or behavior: when a detail is unspecified or ambiguous, **stop and ask**.
 
-## Build phases (current status)
+**One copy of everything shared**
+The TUI imports `fetch_*` and formatters from `expense/commands/*` — shared read/format helpers live in [expense/commands/_resource.py](expense/commands/_resource.py), TUI write plumbing in [expense/tui/screens/_base.py](expense/tui/screens/_base.py) (`EngineWriteMixin.run_write`), form scaffolding in [expense/tui/screens/_form.py](expense/tui/screens/_form.py). Never duplicate fetch/format/write logic between CLI and TUI; extend the shared helper instead.
 
-See [docs/roadmap.md](docs/roadmap.md). Engine is feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23) plus the follow-on `PUT /v1/auth/profile` (engine commit 7017615). CLI is through Step 9 (CLI-complete gate closed 2026-05-10): every engine endpoint with a CLI surface is wrapped, surface coverage is regression-armored by [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py), and the freshman flow is wired as a live contract test. Step 9.5 (questionary interactive shell, `expense menu`) shipped in full and was then **deleted at Step 10.X (2026-07-02)** — the Textual TUI replaces it; see below.
+**No literal colors in the TUI**
+All TUI color goes through theme tokens (`resolve_palette`), never hard-coded hex/ANSI in widgets. A guard test enforces this; see [docs/tui-plan.md](docs/tui-plan.md).
 
-**Current work — the Textual TUI (`expense world`), Step 10.** A retained-mode terminal app is the interactive front door (see [docs/tui-plan.md](docs/tui-plan.md)). It is another thin client of the same command/data layer — zero new business logic. Phases 0 (skeleton) and 1 (read views) are done; Phase 2 (write flows) is in progress. The **System reads (Sync · Activity · Rates)** screens are now wired ([expense/tui/screens/system.py](expense/tui/screens/system.py)) as three direct System-group entries; the one remaining stub is **Reports (Monthly report)**, still "coming later" in [expense/tui/screens/home.py](expense/tui/screens/home.py). Phase 3 (polish) shipped its first slice via [docs/polish-backlog.md](docs/polish-backlog.md) §4 (2026-07-05/06): keymap contract (§4.1/§4.5 — r always refreshes, y alone confirms, enter never mutates), theme-resolved sign-colored amounts (§4.2), the fake home status removed by decision (§4.3), and the form label column widened (§4.4) — each gated on an approved mockup and regression-armored (binding pilot tests, literal-color guard, hermetic test env, label-width guard). The audit's follow-ups §4.6 (q scoped to Home), §4.7 (unarchive prompt-free, matching CLI 1.2), and §4.8 (Rates redesigned as a history table over the engine's new `GET /v1/exchange-rates/history`, with flat `expense rates list` as its contract validator) shipped 2026-07-06 — **section 4 is closed**. The dedup backlog (§5, all six items) closed 2026-07-06 as pure refactors: `EngineWriteMixin.run_write` ([expense/tui/screens/_base.py](expense/tui/screens/_base.py) — now PUT + json_body + success/error callbacks + `exclusive=True`) replaced the eight copied TUI write workers; one `FormScreen` base ([expense/tui/screens/_form.py](expense/tui/screens/_form.py)) sits under all three bar-cycle forms; and [expense/commands/_resource.py](expense/commands/_resource.py) gained the shared `fetch_body` (the cache-vs-live skeleton behind every `fetch_*`/`get`), `render_record`, `items_of`, `format_bool`/`format_month`, `redact_token`, `format_hashtag_cell`, and `load_hashtag_name_map`. Section 7 (the quality review's last three low-severity nits) closed 2026-07-06, retiring the review in full: `reconcile list` renders a real table (Account · Name · Period · Begin · End · Source · Status · Deleted · Id, per gate mockup `cli-section7-tables.html`; status/period formatters live in [expense/commands/reconcile_cmd.py](expense/commands/reconcile_cmd.py) and the TUI imports them), accounts/categories lists gained the always-visible Deleted column (hashtags parity), and `reports monthly` stopped re-validating engine-owned rules (month range, inverted range, 24-month cap) — those now round-trip and surface the engine's 422, with only the YYYY-MM shape parse and flag-combination checks kept local by decision. `?` help overlay / command palette / docs remain for Phase 3. A bulk `.xlsx → engine` importer (`expense import`) also landed on this branch.
+**Testing conventions**
+Every new command lands with at least one happy-path + one error-shape unit test. [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py) is the surface armor — every command needs a docstring with an `Example:` block, `--json` on reads, `--yes` on destructive writes; a new command that skips these fails loudly.
 
-**Two front doors.** The flat commands (`expense log`, `expense dashboard`, …) stay the canonical contract-validator interface and remain the complete surface — every engine endpoint is reachable through them. The TUI (`expense world`) is the interactive surface. The questionary `expense menu` (Step 9.5, `expense/menu/`) **was deleted at Step 10.X (2026-07-02)**, retired ahead of full TUI parity by decision — no capability was lost because the flat commands cover everything. The fetch/print split still lets the TUI reuse the underlying command implementations directly.
+## Status
 
-Next is post-Step-9 ergonomics (quick-add parser, shell completions — see [docs/roadmap.md](docs/roadmap.md)).
-
-The CLI is **cache-by-default by design** per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md), with stateless as the explicit escape hatch. Step 7 phases: 7a (stateless milestone, shipped), 7b.1 (replica foundation, shipped), 7b.2.1 / 7b.2.2 / 7b.2.3 (replica reads, all shipped), 7b.3 (write-path refresh, shipped).
-
-| Step | Scope | Status |
-|---|---|---|
-| 0 | Repo & skeleton | Done |
-| 0.5 | Packaging, testing, CI | Done |
-| 1 | Auth + config + HTTP client | Done |
-| 2 | Accounts / categories / hashtags | Done |
-| 3 | Inbox + promote + log | Done |
-| 3.1 | Date input normalization | Done |
-| 4 | Transactions | Done |
-| 5 | Dashboard + reports | Done |
-| 6 | Reconciliations | Done |
-| 7a | Sync — stateless `--full` | Done |
-| 7b.1 | Sync — SQLite replica foundation | Done |
-| 7b.2.1 | Sync — replica reads for accounts/categories/hashtags + auto cold-start | Done |
-| 7b.2.2 | Sync — replica reads for inbox + reconciliations | Done |
-| 7b.2.3 | Sync — replica reads for transactions | Done |
-| 7b.3 | Sync — write-path refresh | Done |
-| 8.1 | Activity log read | Done |
-| 8.2 | Exchange-rate read | Done |
-| 9 | CLI complete (gate) | Done |
-| 9.5 | Menu — questionary interactive shell, all 16 sub-steps (`expense/menu/`) | Shipped, deleted at 10.X |
-| import | Bulk `.xlsx → engine` importer (`expense import`) | Done |
-| 10.P0 | TUI (`expense world`) — walking skeleton (Outstanding Amounts live) | Done |
-| 10.P1 | TUI — read views (Inbox / Transactions / Accounts / Categories / Hashtags / tree) | Done |
-| 10.P2 | TUI — write flows (Log/transfer, edit, create forms, Reconciliations, Config, Auth) | In progress |
-| 10.P2 | TUI — Reports (Monthly report) screen | Not started |
-| 10.P2 | TUI — System reads (Sync · Activity · Rates) screens | Done |
-| 10.P3 | TUI — polish (theme, `?` help, command palette, pilot tests, docs) | In progress (backlog §4 closed 2026-07-05/06, §5 + §7 closed 2026-07-06 — quality review fully worked off; help overlay + palette open) |
-| 10.X | Delete questionary `expense menu` (`expense/menu/` + tests + dep) | Done (2026-07-02) |
+Flat CLI is **complete** (Steps 0–9, plus the `.xlsx` bulk importer `expense import` and `rates list`); every engine endpoint with a CLI surface is wrapped and regression-armored. The questionary `expense menu` shipped at Step 9.5 and was **deleted at Step 10.X (2026-07-02)** — flat commands stay the canonical contract-validator surface; the Textual TUI `expense world` (Step 10) is the interactive surface on the same fetch/write layer. TUI read views and write flows are shipped; the 2026-07-02 quality review was fully worked off. **Open:** the 2026-07-06 best-practices backlog, the Monthly-report TUI screen, `?` help overlay, command palette, light/`NO_COLOR` theme; then post-Step-9 ergonomics (quick-add parser, shell completions). Live detail: [docs/roadmap.md](docs/roadmap.md) (step table) · [docs/tui-plan.md](docs/tui-plan.md) (TUI phases) · [docs/polish-backlog.md](docs/polish-backlog.md) (active backlog).

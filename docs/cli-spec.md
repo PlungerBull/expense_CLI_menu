@@ -9,7 +9,7 @@
 
 ## Status
 
-Engine feature-complete through Phase 9.2 (archive/unarchive shipped on accounts, categories, hashtags + dashboard `include_archived` + attach guard). CLI work begins at Step 0 — see [roadmap.md](roadmap.md).
+Flat CLI is **complete** (Step 9 gate closed 2026-05-10, plus the `expense import` bulk importer and `rates list`). This document catalogs that surface; per-step status lives in [roadmap.md](roadmap.md), TUI status in [tui-plan.md](tui-plan.md).
 
 ---
 
@@ -123,11 +123,19 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
   (stored daily rates, newest first, one row per pair per day; exact-day filter, no fallback).
 
 ### `expense sync`
-- `sync --full` — wildcard `*`, prints per-resource counts. Stateless.
-- `sync --cache` — optional local SQLite store under `~/.expense-cache.sqlite3`; persists `sync_token` per `X-Client-Id`. Enables `--offline` on read commands. Ship only if UX demands it.
+- `sync` (bare) — delta sync against the local SQLite replica (`~/.expense-cache.sqlite3`); cold-starts automatically on first run. Prints per-resource counts.
+- `sync --full` — cold start: wipe + full pull + rebuild cache.
+- `sync --no-cache` (root flag) — stateless wildcard `*` snapshot; cache untouched.
+- The cache is **default-on**; runtime detail (phasing, cold-start rules, tombstones) lives in [cli-runtime.md](cli-runtime.md).
 
 ### `expense health` / `expense ping`
 - `ping` → `GET /health`. Connectivity + auth sanity check.
+
+### `expense import`
+- `import <file.xlsx> [--apply] [--chunk-size N] [--json]` — bulk `.xlsx → engine` importer. Parses the spreadsheet, resolves names to ids, plans, then writes via the transactions batch endpoint. **Dry-run preview is the default**; `--apply` writes. Requires the `openpyxl` extra (`pip install -e ".[import]"`). Package: [expense/import_/](../expense/import_/).
+
+### `expense world`
+- `world` — launches the Textual TUI, the interactive front door over the same fetch/write layer. `expense` (no args) keeps group-help behavior. Replaced the questionary `expense menu` (deleted at Step 10.X, 2026-07-02). Full plan and status: [tui-plan.md](tui-plan.md).
 
 ---
 
@@ -137,7 +145,9 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 |---|---|---|
 | `--json` | every read command | Raw engine response, passed through verbatim |
 | `--yes` / `-y` | every destructive command | Skip confirmation prompt |
-| `--verbose` | every command | Print HTTP request/response for debugging |
+| `--verbose` | every command (root flag) | Print HTTP request/response for debugging |
+| `--no-cache` | every command (root flag) | Stateless mode: bypass the SQLite replica, hit the engine directly (`EXPENSE_STATELESS=1` equivalent) |
+| `--no-sync-after` | every write (root flag) | Skip the post-write cache refresh (`EXPENSE_NO_SYNC_AFTER=1` equivalent) — for batch scripts |
 | `--include-archived` | every `list` on resources that support archive | Include archived rows |
 | `--include-deleted` | every `list` | Include soft-deleted rows (recovery view) |
 
@@ -152,7 +162,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
   - **Truncation** — Free-text columns (`title`, `description`) truncate at 24 visible chars with a trailing `…`. The full value is still in `get` / `--json`.
 - **Amounts** — currency symbol prefix (`S/ 8,420.50`, `$5,200.00`). Native + home currency shown side-by-side when they differ. Outflows prefixed with `-`.
 - **Dates (output)** — ISO 8601 by default (`2026-04-19`). Relative hints (`3 days ago`) only in detail (`get`) views.
-- **Dates (input)** — Commands that accept `--date` (`expense log`, `expense inbox add`, `expense inbox update`; later `expense transactions update`) accept `YYYY-MM-DD`, `YYYY-MM-DD HH:MM[:SS]`, `YYYY-MM-DDTHH:MM[:SS]`, `YYYY-MM-DDTHH:MM:SSZ`, or `YYYY-MM-DDTHH:MM:SS±HH:MM`. Naive forms get the user's local timezone attached automatically by the CLI's normalizer in [expense/dates.py](../expense/dates.py). The engine itself rejects naive datetimes with 422 — the CLI's normalizer is the only place that accepts them.
+- **Dates (input)** — Commands that accept `--date` (`expense log`, `expense inbox add`, `expense inbox update`, `expense transactions update`) accept `YYYY-MM-DD`, `YYYY-MM-DD HH:MM[:SS]`, `YYYY-MM-DDTHH:MM[:SS]`, `YYYY-MM-DDTHH:MM:SSZ`, or `YYYY-MM-DDTHH:MM:SS±HH:MM`. Naive forms get the user's local timezone attached automatically by the CLI's normalizer in [expense/dates.py](../expense/dates.py). The engine itself rejects naive datetimes with 422 — the CLI's normalizer is the only place that accepts them.
 - **Errors** — engine's `{ error: { code, message, fields } }` rendered as:
   ```
   Error: VALIDATION_ERROR — Amount must not be zero.
@@ -164,8 +174,8 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ## To Be Defined
 
-- **`expense world` (Step 10)** — the interactive front door: a retained-mode Textual TUI over the entire flat command surface. Triggered explicitly via `expense world`; `expense` (no args) keeps current group-help behavior. The TUI calls the same command implementations under the hood — single source of truth for behavior. Designed for management/inspection workflows; capture goes through quick-add. Replaced the questionary `expense menu` (Step 9.5), which was deleted at Step 10.X (2026-07-02). See [roadmap.md](roadmap.md) Step 10 and [tui-plan.md](tui-plan.md).
 - **Quick-add natural-language parser (Post-Step-9)** — Todoist-style single-line capture (`expense $20 today #food` → parses amount/date/hashtag/title from free text). Sign stays literal: `$20` = income, `-$20` = expense; no default-to-expense magic. Pairs with `expense world` as the "fast capture" half of the dual-UX strategy.
-- Import commands (`expense import csv`)
 - Shell completions (zsh, bash, fish)
-- Local SQLite cache for `--offline` reads (decision deferred to Step 7)
+- `expense import csv` — CSV variant of the shipped `.xlsx` importer, only if a real migration needs it (see [roadmap.md](roadmap.md) Post-Step-9 ergonomics)
+
+*(Resolved and moved above: `expense world` shipped as a command — see its group entry; the local SQLite cache shipped cache-by-default through Step 7b.3 — see [cli-runtime.md](cli-runtime.md).)*

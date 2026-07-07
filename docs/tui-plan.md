@@ -1,12 +1,15 @@
 # Interactive TUI — Implementation Plan
 
 > Status: **in progress (Step 10)** — Phases 0 & 1 shipped, Phase 2 (write flows)
-> under way; Phase 3 partially delivered early via [polish-backlog.md](polish-backlog.md) §4
+> under way; Phase 3 partially delivered early via the 2026-07-02 quality-review backlog §4
 > (2026-07-05/06, all eight items closed: keymap contract, theme-resolved semantic colors,
 > form-label width, q scoped to Home, unarchive prompt-free, Rates as a history table)
 > and §5 (2026-07-06, all six dedup refactors closed: `EngineWriteMixin.run_write` behind
 > every TUI write worker, one `FormScreen` base under all three bar-cycle forms, shared
 > `fetch_body`/`render_record`/`items_of` and friends in `_resource.py`).
+> *(Backlog § references in this doc are to that 2026-07-02 review, fully worked off and
+> removed from the live file — last full copy at commit `2d42482`;
+> [polish-backlog.md](polish-backlog.md) now carries the open 2026-07-06 best-practices review.)*
 > Entry command is **`expense world`**. This TUI
 > **replaced the questionary `expense menu`**, which was **deleted at roadmap Step 10.X
 > (2026-07-02)** — `expense/menu/`, its tests, the Typer command, and the `questionary`
@@ -56,23 +59,28 @@ The `expense/tui/` package (which replaced the now-deleted `expense/menu/`):
 
 ```
 expense/tui/
-  app.py            # ExpenseApp(App): screen stack, global bindings, theme, worker helper
-  theme.tcss        # Textual CSS — NEUTRAL tokens (swap file to retheme)
+  app.py            # ExpenseApp(App): screen stack, global bindings, worker helper
+  app.tcss          # Textual CSS — layout + NEUTRAL theme tokens
+  theme.py          # Palette + resolve_palette(app) — semantic colors, theme-resolved (§4.2)
   widgets/
-    header.py       # full banner (home) + slim breadcrumb (sections)
-    keybar.py       # contextual footer key hints (Textual Footer)
-    table.py        # DataTable wrapper: glyph cols, right-aligned money, focus
-    tree.py         # category→hashtag expand/collapse tree
-    form.py         # reusable form: fields, validation, tri-state, conditional rows
-    swatch.py, status.py
+    header.py       # Breadcrumb — slim section header (home banner lives in home.py)
+    cells.py        # cell renderers: color swatch, sign-colored right-aligned amount_cell
+    cursor_list.py  # CursorList — arrow-key list (home menu, pickers)
+    checklist.py    # CheckList — multi-select (hashtag picker)
   screens/
-    home.py         # header + section menu
-    outstanding.py  # balances + people + category TREE + totals
+    _base.py        # EngineWriteMixin.run_write + SectionScreen (fetch workers, confirm, keymap)
+    _form.py        # FormScreen base — fields, validation, bar-cycle plumbing
+    home.py         # banner + section menu
+    outstanding.py  # balances + people + category ▼/▶ TREE + totals
     inbox.py        transactions.py  accounts.py  categories.py  hashtags.py
-    reconcile.py    reports.py  system.py        # config/auth/sync/activity/rates
-    forms/          # transaction_form, small_form (account/category/hashtag), reconcile_form
-    modals.py       # confirm (promote/delete/archive/…), record detail
+    reconciliations.py               # full lifecycle + $EDITOR reorder
+    system.py       # Config / Auth / Sync / Activity / Rates screens
+    quick_log.py    # the transaction form (log / transfer / edit)
+    create_forms.py # BarFormScreen + New{Account,Category,Hashtag} small forms
+    modals.py       # RecordModal, SnapshotModal, ConfirmModal, PromptModal
 ```
+
+*(A planned Reports screen — the one remaining Phase-2 stub — will land as `screens/reports.py`.)*
 
 **The one enabling refactor — "fetch / print" split.** Some commands fetch *and*
 print in one function (e.g. `reports_cmd.run_single_month` GETs then `typer.echo`s).
@@ -148,7 +156,9 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   *(Semantic colors now theme-resolve via `resolve_palette`/`amount_cell` — §4.2;
   light theme + NO_COLOR still open.)*
 - Keybinding consistency ✅ (§4.1/§4.5 keymap contract: r always refreshes, y alone
-  confirms, enter never mutates), `?` help overlay ⬜, Textual command palette ⬜.
+  confirms, enter never mutates; **standing constraint:** any future rename action on
+  Manage screens ships as `e`, never `r` — two older mockups showing `r rename` are
+  superseded), `?` help overlay ⬜, Textual command palette ⬜.
 - Async edge cases (slow net, offline, cold-start notice shown in-app), spinners.
 - Skeleton/empty/error states everywhere.
 - **Textual pilot tests** for navigation + key flows ◐ (binding-level pilot tests for

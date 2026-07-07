@@ -6,6 +6,8 @@ How the CLI behaves at runtime — sync model, write semantics, identity, error 
 
 The CLI is a thin wrapper around the engine. It holds no business logic. The engine is the only authoritative store; anything cached client-side is a disposable performance optimization that can be rebuilt at any time from `GET /sync`.
 
+Everything in this document applies equally to the Textual TUI (`expense world`): it is another client of the same layer — same HTTP client, same replica, same `fetch_*` functions and `refresh_after_write` — not a separate runtime. Likewise the bulk importer (`expense import`), which is engine-direct batched writes (see "Write semantics").
+
 Long-term the CLI is **cache-by-default** (matches iOS, web, every interactive client per §3b): a local SQLite replica under `~/.expense-cache.sqlite3` powers instant reads, with `GET /sync` keeping it current. The **stateless mode** is the explicit escape hatch — `--no-cache` (root flag) or `EXPENSE_STATELESS=1` (env var) — for CSV imports, CI, cron jobs, and `jq` automation where per-invocation freshness matters more than speed.
 
 The replica is being built in three phases:
@@ -40,7 +42,7 @@ The CLI maps onto these two modes through different invocation forms.
 | `expense inbox list/get` | **Replica-backed** |
 | `expense reconcile list/get` | **Replica-backed** (`get` embeds paginated cached transactions) |
 | `expense transactions list/get` | **Replica-backed** (8 filters incl. `--hashtag-id`, `--search`; `hashtag_ids` stripped from output) |
-| `expense dashboard`, `reports/*`, `whoami`, `ping` | Engine-only (FX drift / not in `/sync`) |
+| `expense dashboard`, `reports/*`, `activity`, `rates`, `whoami`, `ping` | Engine-only (FX drift / audit log and rates aren't in `/sync`) |
 | `expense reconcile move/reorder` | Engine-direct internal reads (write-path workflow) |
 | Writes (`create`/`update`/`delete`/`complete`/`log`/etc.) | Engine-direct; **post-write auto delta sync** keeps the cache current. `--no-sync-after` (or `EXPENSE_NO_SYNC_AFTER=1`) skips the refresh for batch scripts. |
 
@@ -53,6 +55,8 @@ Writes always go straight to the engine. There is **no offline write queue, no b
 - Network errors fail fast. The CLI prints the error and exits non-zero. A developer at a terminal — or a script in CI — gets synchronous feedback. Silent buffering would corrupt the contract that the next command can rely on the previous command having landed.
 
 The Todoist-style offline write queue is an iOS-only feature (§3b). The CLI does not get one. The web dashboard does not get one. If either client's product story changes, adding a queue is a per-client commitment, not an inherited default.
+
+The bulk importer (`expense import --apply`) is the same contract at scale: chunked `transactions batch` calls (default 200/request), each engine-direct with its own fresh idempotency key; the default invocation is a dry-run plan that writes nothing.
 
 **Post-write cache refresh.** After every successful write, the CLI fires a delta sync against `GET /v1/sync` to pull the engine's authoritative state for the affected rows into the local replica. This keeps cached reads consistent immediately after a user action — no manual `expense sync` required. Failures during the post-write sync are non-fatal: the write already landed on the engine, the CLI prints a one-line stderr warning (`Cache refresh failed after write: ... Run 'expense sync' to refresh.`) and exits 0. Pass `--no-sync-after` (root flag) or set `EXPENSE_NO_SYNC_AFTER=1` to skip the refresh — useful when a script batches many writes and runs `expense sync` once at the end. The flag is independent of `--no-cache`: with `--no-cache`, no post-write sync runs anyway (stateless mode means the replica is bypassed entirely).
 
