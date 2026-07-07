@@ -28,20 +28,23 @@ Implications for every decision in this repo:
 | [docs/roadmap.md](docs/roadmap.md) | Step-by-step CLI build order + per-step status | Local |
 | [docs/tui-plan.md](docs/tui-plan.md) | Textual TUI (`expense world`) — architecture, phases, keymap contract, status | Local |
 | [docs/polish-backlog.md](docs/polish-backlog.md) | The **active** polish/quality backlog (currently the 2026-07-06 best-practices review; the worked-off 2026-07-02 review lives in git history at `2d42482`) | Local |
+| [docs/decisions.md](docs/decisions.md) | Decision record — why the big calls were made, **including rejected alternatives**; index links whys that live elsewhere | Local |
 | [docs/mockups/](docs/mockups/) | HTML mockups — the approval gate for every screen and table | Local |
 | `engine-spec.md` | Every endpoint, every business rule — the API contract the CLI consumes | [../expense_world_engine/docs/engine-spec.md](../expense_world_engine/docs/engine-spec.md) |
 | `api-design-principles.md` | Request/response conventions (error shape, null-over-omission, idempotency, sign) | [../expense_world_engine/docs/api-design-principles.md](../expense_world_engine/docs/api-design-principles.md) |
 | `design-philosophy.md` | Product vision shared across all clients | [../expense_world_engine/docs/design-philosophy.md](../expense_world_engine/docs/design-philosophy.md) |
 | `lessons-*.md` | UX lessons from YNAB, Lunch Money, TickTick, Todoist, Splitwise | [../expense_world_engine/docs/](../expense_world_engine/docs/) |
 
-Engine docs are **referenced, not copied**. Single source of truth lives in the engine repo. Same rule inside this repo: **each fact has one home** — status lives in roadmap/tui-plan/backlog, this file points at it. When you ship something, update the owning doc, not (only) this one.
+Engine docs are **referenced, not copied**. Single source of truth lives in the engine repo, assumed to sit as a **sibling checkout** (`../expense_world_engine` — see README "Checkout layout"). Same rule inside this repo: **each fact has one home** — status lives in roadmap/tui-plan/backlog, this file points at it. When you ship something, update the owning doc, not (only) this one.
+
+Docs must outlive any one contributor, session, or AI model. Three durability rules: **(1) fresh-clone test** — every doc must work with zero conversation history; if acting on something needs unwritten context, write the context down (decision rationale, with rejected alternatives, goes in [docs/decisions.md](docs/decisions.md)). **(2) Executable beats prose** — when a convention can be checked mechanically, add a guard test next to the existing ones ([tests/unit/test_command_surface.py](tests/unit/test_command_surface.py), [tests/unit/test_tui_theme.py](tests/unit/test_tui_theme.py), [tests/unit/test_docs_links.py](tests/unit/test_docs_links.py) for doc link rot). **(3) Absolute dates only** — never "recently" or "last week".
 
 ## Dev loop
 
 - **Install:** `pip install -e ".[dev]" -c constraints.txt` — entry point is `expense` (TUI via `expense world`). `constraints.txt` pins the direct deps CI installs; refresh = bump a pin, merge on green CI.
 - **Test:** `pytest tests/unit` (fast, respx-mocked, hermetic — an autouse fixture in [tests/unit/conftest.py](tests/unit/conftest.py) redirects `EXPENSE_CONFIG`/`EXPENSE_CACHE`; never bypass it). `tests/contract/` hits the **live production engine**, gated on `PYTEST_LIVE=1` (+ `EXPENSE_PAT`) — never set casually.
 - **Lint/format/types:** `ruff check . && ruff format .` plus scoped `mypy` (permissive, `[tool.mypy]` covers `http.py`/`config.py`/`errors.py`/`cache/` — widen as modules get annotated). CI (matrix 3.11/3.12/3.13, deps pinned via `constraints.txt`) enforces ruff check + format, mypy, and `pytest tests/unit --cov` (coverage reported, not gated); pre-commit runs gitleaks + ruff `--fix` + ruff-format + mypy. Line length 100, target py311.
-- **Careful running live:** plain `expense …` commands use the developer's real `~/.expense-config` and hit the production engine. Don't run writes ad hoc.
+- **Careful running live:** plain `expense …` commands use the developer's real `~/.expense-config` and hit the production engine. Don't run writes ad hoc. Full ops guide — isolation levers, PAT provisioning, what the contract suite actually does: [docs/cli-runtime.md](docs/cli-runtime.md) "Working against the live engine".
 - **Env vars:** `EXPENSE_CONFIG`, `EXPENSE_CACHE` (path overrides), `EXPENSE_STATELESS=1` (bypass cache), `EXPENSE_NO_SYNC_AFTER=1` (skip post-write refresh), `PYTEST_LIVE=1` (contract tests).
 
 ## Tech stack

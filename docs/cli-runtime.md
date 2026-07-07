@@ -120,6 +120,21 @@ What is NOT CLI-specific (and must never be):
 
 - Sync semantics, idempotency keys, sign convention (`debit_as_negative`), error envelope shape, RFC 3339 dates, tombstone handling, junction-flattening (`hashtag_ids`). These are multi-client contracts; the CLI uses them faithfully so iOS and web inherit working patterns, not just specs.
 
+## Working against the live engine
+
+There is exactly **one engine: production** (`https://expense-world-engine.onrender.com`, hosted on Render). No staging, no sandbox — every PAT belongs to a real user and every write lands in a real ledger.
+
+**Developer default is live.** Plain `expense …` commands read `~/.expense-config` — the developer's real credential — and hit production. Reads are always safe; ad-hoc writes are real writes. Don't run write commands casually to "see what happens"; use `--verbose` on a read, or the unit suite, to inspect behavior.
+
+**Isolation levers, weakest to strongest:**
+
+- `EXPENSE_CONFIG` + `EXPENSE_CACHE` env overrides redirect the config file and replica to any path (this is how the contract suite sandboxes itself). This isolates *local state only* — the same PAT still writes to the same user's ledger.
+- A **separate PAT for a separate user** is the only true data isolation. PATs are issued out-of-band: `POST /v1/auth/pat` with a Supabase JWT returns the plaintext token (`ewe_pat_` prefix) exactly once — see [cli-spec.md](cli-spec.md) "Auth model" and the engine spec for the endpoint contract. CLI-side `auth pat create`/`revoke` are deferred.
+
+**The contract suite** (`tests/contract/`) hits production deliberately and is double-gated: `PYTEST_LIVE=1 EXPENSE_PAT=<token> pytest tests/contract`. `EXPENSE_ENGINE_URL` overrides the target if one ever exists besides prod. What it does: walks real flows (the freshman gate: config → ping → bootstrap → accounts/categories create → log → dashboard), redirects `EXPENSE_CONFIG`/`EXPENSE_CACHE` to a temp dir so the developer's install is untouched, and cleans up after itself best-effort in reverse dependency order. Cleanup means **soft-deletes** — the run leaves tombstoned rows in the PAT user's account (visible under `--include-deleted`). Run it at step gates, when engine-shape drift is suspected, or before calling a release done — never in CI (deps and gating are designed so CI stays hermetic).
+
+**Unit tests never touch the network.** `tests/unit/` is respx-mocked and hermetic; an autouse fixture in [tests/unit/conftest.py](../tests/unit/conftest.py) redirects `EXPENSE_CONFIG`/`EXPENSE_CACHE` so a test can never read the developer's real config. Never bypass it.
+
 ## Cross-references
 
 - [api-design-principles.md §3b](../../expense_world_engine/docs/api-design-principles.md) — Client Local Replica Standard (the architectural source of truth for this doc)

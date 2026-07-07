@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -104,6 +104,23 @@ def test_writes_get_unique_idempotency_keys(config):
     keys = [call.request.headers["X-Idempotency-Key"] for call in route.calls]
     assert len(keys) == 2
     assert keys[0] != keys[1]
+
+
+@pytest.mark.parametrize("verb", ["post", "put", "patch", "delete"])
+@respx.mock
+def test_every_write_verb_sends_a_wellformed_idempotency_key(config, verb):
+    """Idempotency on every write (CLAUDE.md non-negotiable) — every verb the
+    client exposes must mint a key the engine can replay, not just POST."""
+    route = getattr(respx, verb)("https://api.example.com/v1/accounts/a1").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    with ExpenseClient(config) as client:
+        if verb == "delete":
+            client.delete("/accounts/a1")
+        else:
+            getattr(client, verb)("/accounts/a1", json_body={"name": "x"})
+
+    UUID(route.calls.last.request.headers["X-Idempotency-Key"])  # raises if malformed
 
 
 @respx.mock
