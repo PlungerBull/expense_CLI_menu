@@ -1,4 +1,11 @@
 repos:
+  # Local secret scanning (backlog 4.5) — the public-repo doctrine's
+  # pre-commit line of defense; GitHub push protection stays as backstop.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.11
     hooks:
