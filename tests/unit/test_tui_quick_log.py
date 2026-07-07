@@ -189,6 +189,29 @@ def test_edit_prefills_and_puts_only_changed_fields(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
+def test_edit_add_hashtag_puts_merged_hashtag_ids(fake_client, monkeypatch):
+    """Hashtag appends must survive the edit diff — the snapshot must not alias (backlog 1.2)."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen(record=TXN, resource="transactions")
+            await app.push_screen(screen)
+            await _wait_loaded(screen, pilot)
+            screen._current = screen._sequence().index("hashtags")
+            _enter(screen, "trav")  # add #traveling next to the pre-existing #dog
+            assert screen._values["hashtags"] == ["h1", "h2"]
+            screen.action_submit()
+            await wait_for(pilot, lambda: fake_client.puts)
+            path, body = fake_client.puts[0]
+            assert path == "/transactions/tx1"
+            assert body == {"hashtag_ids": ["h1", "h2"]}  # diff only, both tags
+            assert not fake_client.posts
+
+    asyncio.run(scenario())
+
+
 def test_edit_no_changes_does_not_submit(fake_client, monkeypatch):
     _patch(monkeypatch)
 

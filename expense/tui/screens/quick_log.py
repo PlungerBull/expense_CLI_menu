@@ -19,6 +19,7 @@ highlight · `ctrl+s` submits. Sign explicit (− expense / + income); currency
 derived from the account.
 """
 
+import copy
 import io
 import uuid
 from datetime import date as date_cls
@@ -150,7 +151,9 @@ class QuickAddLogScreen(FormScreen):
             self._display["hashtags"] = " ".join("#" + t[:6] for t in tags)
         if rec.get("description"):
             self._values["note"] = self._display["note"] = rec["description"]
-        self._original = dict(self._values)
+        # deep: _commit_hashtag appends to _values["hashtags"] in place — a shallow
+        # copy would alias the list and the edit diff would never see the change.
+        self._original = copy.deepcopy(self._values)
         # transfer legs lock amount/account/date (engine read-only); reconciliation
         # locks rely on the engine's 422 (not reliably detectable from the row).
         if rec.get("transfer_transaction_id"):

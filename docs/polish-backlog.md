@@ -36,7 +36,7 @@ if you need the old detail.
   authenticated user id against the engine on the read path so
   `expected_user_id` is real. Add a regression test for the swap scenario.
 
-- [ ] **1.2 TUI hashtag edits are silently dropped.**
+- [x] **1.2 TUI hashtag edits are silently dropped.**
   `QuickAddLogScreen` snapshots the form with a shallow copy
   (`quick_log.py:153` — `self._original = dict(self._values)`), so
   `_original["hashtags"]` aliases the live list that `_commit_hashtag`
