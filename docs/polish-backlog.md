@@ -83,7 +83,7 @@ if you need the old detail.
   awaits). Fix: `run_worker`/await properly; add a pilot test that presses
   `f` and asserts the row set changed.
 
-- [ ] **1.6 The Step-9 live contract test cannot run at all.**
+- [x] **1.6 The Step-9 live contract test cannot run at all.**
   `CliRunner(mix_stderr=False)` raises `TypeError` under installed
   click 8.3.2 (`tests/contract/test_freshman_flow.py:44`; the kwarg was
   removed upstream — `_assert_ok`'s `result.stderr` access needs the same

@@ -41,7 +41,7 @@ def isolated_env(tmp_path, monkeypatch):
 
 
 def _run(*args):
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     return runner.invoke(app, list(args), catch_exceptions=False)
 
 
