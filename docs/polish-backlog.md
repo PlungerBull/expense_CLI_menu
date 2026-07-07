@@ -218,7 +218,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   network failure mid-cold-start leaves *no* cache instead of the stale one.
   Fetch first, wipe + apply only on success.
 
-- [ ] **3.9 Import chunk failures are unactionable.**
+- [x] **3.9 Import chunk failures are unactionable.**
   One engine 422 fails all 200 rows in its chunk and `failures` records only
   `(chunk_index, message)` (`apply.py:161-170`) — no sheet line numbers, no
   bisect. Report the sheet line range per failed chunk at minimum; per-row

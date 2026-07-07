@@ -122,10 +122,12 @@ def run_import(
     Re-running --apply is safe for unchanged and appended sheets: transaction
     ids derive from each row's content plus its line number, so already-imported
     rows are skipped and new rows still land (a chunk mixing both falls back to
-    row-by-row posts). Inserting or deleting rows mid-sheet shifts every later
-    line number — shifted rows get new ids and re-import as duplicates; append
-    new rows at the bottom instead. Full re-runs of large already-imported
-    sheets are slower (one request per row).
+    row-by-row posts). Rows the engine rejects fall back the same way — valid
+    rows land and each rejected row is reported with its sheet line. Inserting
+    or deleting rows mid-sheet shifts every later line number — shifted rows get
+    new ids and re-import as duplicates; append new rows at the bottom instead.
+    Full re-runs of large already-imported sheets are slower (one request per
+    row).
 
     Example: expense import ~/Downloads/Presupuesto.xlsx
     """

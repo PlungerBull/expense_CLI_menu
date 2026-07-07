@@ -1,10 +1,12 @@
 """Write path: resolve-or-create resources, then POST transactions in batches.
 
 Accounts/categories/hashtags are created FIRST (so they have ids); transactions
-then reference those ids. The batch endpoint is atomic: a chunk-level 409 only
-means "at least one id pre-exists", so the chunk is retried row-by-row (singleton
-batches) — pre-existing rows are skipped, new rows still land. Re-runs after a
-partial run or with appended sheet rows converge instead of silently dropping.
+then reference those ids. The batch endpoint is atomic: a chunk-level 409 ("at
+least one id pre-exists") or 422 ("at least one row is invalid") says nothing
+about WHICH row, so the chunk is retried row-by-row (singleton batches) —
+pre-existing rows are skipped, invalid rows report their sheet line, and the
+rest still land. Re-runs after a partial run or with appended sheet rows
+converge instead of silently dropping.
 """
 
 from collections.abc import Iterator
@@ -38,7 +40,9 @@ class ApplyResult:
     tx_created: int = 0
     tx_skipped_existing: int = 0  # rows whose singleton retry 409'd (id already imported)
     tx_failed: int = 0
-    failures: list[tuple[int, str]] = field(default_factory=list)  # (chunk_index, message)
+    # (chunk_index, message) — messages carry sheet line numbers so a failed
+    # row can be found in the workbook without bisecting.
+    failures: list[tuple[int, str]] = field(default_factory=list)
 
 
 _PAGE = 200  # engine caps `limit` at 200
@@ -151,13 +155,25 @@ def chunked(items: list, size: int) -> Iterator[list]:
         yield items[i : i + size]
 
 
-def _apply_singletons(
-    client: ExpenseClient, chunk: list[dict], chunk_index: int, result: ApplyResult
-) -> bool:
-    """Retry a 409'd chunk row-by-row via singleton batches.
+def _line_range(items: list[dict], line_by_id: dict[str, int]) -> str:
+    lines = sorted(line_by_id[item["id"]] for item in items)
+    if lines[0] == lines[-1]:
+        return f"sheet line {lines[0]}"
+    return f"sheet lines {lines[0]}-{lines[-1]}"
 
-    A batch 409 only says "≥1 id pre-exists"; posting one row per batch keeps
-    the endpoint's semantics ("this row exists") while letting new rows land.
+
+def _apply_singletons(
+    client: ExpenseClient,
+    chunk: list[dict],
+    chunk_index: int,
+    line_by_id: dict[str, int],
+    result: ApplyResult,
+) -> bool:
+    """Retry a 409'd/422'd chunk row-by-row via singleton batches.
+
+    An atomic-batch failure doesn't say which row; posting one row per batch
+    keeps the endpoint's semantics while letting good rows land — 409s are
+    skipped as already-imported, other errors report the row's sheet line.
     Returns False when a connection error stopped the run (this chunk's unsent
     tail is already counted failed).
     """
@@ -171,14 +187,19 @@ def _apply_singletons(
             else:
                 result.tx_failed += 1
                 result.failures.append(
-                    (chunk_index, f"{err.code}: {err.message} (id {item['id']})")
+                    (
+                        chunk_index,
+                        f"{err.code}: {err.message} "
+                        f"(sheet line {line_by_id[item['id']]}, id {item['id']})",
+                    )
                 )
         except EngineConnectionError as err:
             result.tx_failed += len(chunk) - pos
             result.failures.append(
                 (
                     chunk_index,
-                    f"CONNECTION_ERROR: {format_error(err)} — this and later rows were not sent",
+                    f"CONNECTION_ERROR: {format_error(err)} — rows from sheet line "
+                    f"{line_by_id[item['id']]} on were not sent",
                 )
             )
             return False
@@ -194,20 +215,24 @@ def apply_plan(
 ) -> ApplyResult:
     result = ApplyResult(resolve=res)
     items = [build_tx_payload(row, plan.tx_ids[row.line], res) for row in plan.rows]
+    line_by_id = {tid: line for line, tid in plan.tx_ids.items()}
     for chunk_index, chunk in enumerate(chunked(items, chunk_size)):
         try:
             client.post("/transactions/batch", json_body={"transactions": chunk})
             result.tx_created += len(chunk)
         except EngineError as err:
-            if err.status == 409:
-                if not _apply_singletons(client, chunk, chunk_index, result):
+            if err.status in (409, 422):
+                if not _apply_singletons(client, chunk, chunk_index, line_by_id, result):
                     # Fallback hit a connection error: its chunk tail is counted;
                     # add the never-sent later chunks, mirroring the branch below.
                     result.tx_failed += len(items) - (chunk_index * chunk_size + len(chunk))
                     break
             else:
+                # 401/403/5xx would fail identically per row — don't hammer.
                 result.tx_failed += len(chunk)
-                result.failures.append((chunk_index, f"{err.code}: {err.message}"))
+                result.failures.append(
+                    (chunk_index, f"{err.code}: {err.message} ({_line_range(chunk, line_by_id)})")
+                )
         except EngineConnectionError as err:
             # Stop sending, but return normally so the caller still renders the
             # summary of committed chunks (cache_after_write is already best-effort).
@@ -216,7 +241,8 @@ def apply_plan(
             result.failures.append(
                 (
                     chunk_index,
-                    f"CONNECTION_ERROR: {format_error(err)} — this and later chunks were not sent",
+                    f"CONNECTION_ERROR: {format_error(err)} — rows from sheet line "
+                    f"{line_by_id[chunk[0]['id']]} on were not sent",
                 )
             )
             break

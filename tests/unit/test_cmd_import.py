@@ -193,7 +193,7 @@ def test_per_row_fallback_reports_non_409_failure(configured):
     assert result.tx_skipped_existing == 1
     assert result.tx_failed == 1
     failed_id = plan.tx_ids[3]
-    assert result.failures == [(0, f"VALIDATION_ERROR: bad (id {failed_id})")]
+    assert result.failures == [(0, f"VALIDATION_ERROR: bad (sheet line 3, id {failed_id})")]
 
 
 @respx.mock
@@ -225,11 +225,13 @@ def test_per_row_fallback_connection_error_stops_run(configured):
     assert batch_route.call_count == 3  # batch, singleton 201, singleton ConnectError
     assert len(result.failures) == 1
     assert "CONNECTION_ERROR: could not reach engine" in result.failures[0][1]
+    assert "rows from sheet line 3 on were not sent" in result.failures[0][1]
 
 
 @respx.mock
-def test_batch_422_is_fatal_and_reported(configured):
-    plan = _plan([_prow(2)])
+def test_chunk_422_falls_back_to_per_row_isolating_bad_rows(configured):
+    """One invalid row must not sink its whole chunk, and must name its sheet line (backlog 3.9)."""
+    plan = _plan([_prow(2), _prow(3, amount_cents=-5500)])
     _mock_existing(
         accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
         categories=[],
@@ -237,10 +239,43 @@ def test_batch_422_is_fatal_and_reported(configured):
     )
     respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
     respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
-    respx.post(f"{BASE}/v1/transactions/batch").mock(
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=[
+            httpx.Response(
+                422, json={"error": {"code": "VALIDATION_ERROR", "message": "bad", "fields": {}}}
+            ),
+            httpx.Response(201, json={"created": []}),
+            httpx.Response(
+                422, json={"error": {"code": "VALIDATION_ERROR", "message": "bad", "fields": {}}}
+            ),
+        ]
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res)
+
+    assert result.tx_created == 1  # the valid row still landed
+    assert result.tx_failed == 1
+    assert batch_route.call_count == 3  # one batch + two singletons
+    assert "sheet line 3" in result.failures[0][1]
+
+
+@respx.mock
+def test_chunk_level_auth_failure_reports_line_range_without_per_row_hammering(configured):
+    """A non-409/422 chunk error fails once with the sheet line range (backlog 3.9)."""
+    plan = _plan([_prow(2), _prow(3, amount_cents=-5500)])
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
         return_value=httpx.Response(
-            422,
-            json={"error": {"code": "VALIDATION_ERROR", "message": "bad", "fields": {}}},
+            403, json={"error": {"code": "FORBIDDEN", "message": "nope", "fields": None}}
         )
     )
 
@@ -249,8 +284,9 @@ def test_batch_422_is_fatal_and_reported(configured):
         res = apply_mod.resolve_or_create(client, plan)
         result = apply_mod.apply_plan(client, plan, res)
 
-    assert result.tx_failed == 1
-    assert result.failures and result.failures[0][0] == 0
+    assert result.tx_failed == 2
+    assert batch_route.call_count == 1  # every row would 403 identically — no fallback
+    assert result.failures == [(0, "FORBIDDEN: nope (sheet lines 2-3)")]
 
 
 @respx.mock
