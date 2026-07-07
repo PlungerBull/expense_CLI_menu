@@ -1,0 +1,23 @@
+# Pins for the direct deps CI installs (backlog 4.4) — pyproject.toml keeps
+# open lower bounds; this file makes CI and dev installs reproducible instead
+# of floating on latest (click 8.2 silently removing CliRunner's mix_stderr
+# was the bite that motivated it). Use with:
+#     pip install -e ".[dev]" -c constraints.txt
+# To refresh: bump a pin, reinstall, and merge only on green CI.
+
+# runtime
+typer==0.24.1
+click==8.3.2
+httpx==0.28.1
+pydantic==2.13.3
+tzlocal==5.3.1
+textual==8.2.7
+
+# dev
+pytest==9.0.3
+pytest-cov==7.1.0
+respx==0.23.1
+ruff==0.15.11
+pre-commit==4.5.1
+openpyxl==3.1.5
+mypy==2.1.0
