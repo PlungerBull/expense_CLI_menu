@@ -16,7 +16,6 @@ from sqlite3 import Connection
 from typing import IO, Literal
 
 from expense.cache import db, state
-from expense.cache.db import SCHEMA_VERSION
 from expense.config import Config
 from expense.errors import EngineError
 from expense.http import ExpenseClient
@@ -199,6 +198,7 @@ def cold_start(client: ExpenseClient, cfg: Config) -> SyncSummary:
             user_id=user_id,
             client_id=str(cfg.client_id),
             engine_url=cfg.engine_url,
+            token_fingerprint=state.token_fingerprint(cfg.token),
         )
         state.write_token(conn, summary.sync_token)
     finally:
@@ -225,16 +225,13 @@ def ensure_synced(
     finally:
         conn.close()
 
-    if cur_state.user_id is None:
-        needs_cold_start = True
-    else:
-        healthy = state.is_healthy(
-            cur_state,
-            expected_user_id=cur_state.user_id,
-            expected_client_id=str(cfg.client_id),
-            expected_engine_url=cfg.engine_url,
-        )
-        needs_cold_start = (not healthy) or cur_state.sync_token is None
+    healthy = state.is_healthy(
+        cur_state,
+        expected_client_id=str(cfg.client_id),
+        expected_engine_url=cfg.engine_url,
+        expected_token_fingerprint=state.token_fingerprint(cfg.token),
+    )
+    needs_cold_start = (not healthy) or cur_state.sync_token is None
 
     if not needs_cold_start:
         return None
@@ -286,14 +283,13 @@ def delta_sync(client: ExpenseClient, cfg: Config) -> SyncSummary:
     finally:
         conn.close()
 
-    needs_cold_start = (
-        cur_state.schema_version != SCHEMA_VERSION
-        or cur_state.user_id is None
-        or cur_state.client_id != str(cfg.client_id)
-        or cur_state.engine_url != cfg.engine_url
-        or cur_state.sync_token is None
+    healthy = state.is_healthy(
+        cur_state,
+        expected_client_id=str(cfg.client_id),
+        expected_engine_url=cfg.engine_url,
+        expected_token_fingerprint=state.token_fingerprint(cfg.token),
     )
-    if needs_cold_start:
+    if not healthy or cur_state.sync_token is None:
         return cold_start(client, cfg)
 
     try:

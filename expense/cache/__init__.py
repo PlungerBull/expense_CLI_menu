@@ -20,7 +20,14 @@ from expense.cache.queries import (
     list_reconciliations,
     list_transactions,
 )
-from expense.cache.state import CacheState, is_healthy, read, write_identity, write_token
+from expense.cache.state import (
+    CacheState,
+    is_healthy,
+    read,
+    token_fingerprint,
+    write_identity,
+    write_token,
+)
 from expense.cache.sync import (
     RESOURCE_KEYS,
     SyncSummary,
@@ -57,6 +64,7 @@ __all__ = [
     "list_transactions",
     "read",
     "refresh_after_write",
+    "token_fingerprint",
     "wipe",
     "write_identity",
     "write_token",

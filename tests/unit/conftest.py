@@ -67,6 +67,7 @@ def configured_synced(configured):
             user_id="u1",
             client_id=str(cfg.client_id),
             engine_url=cfg.engine_url,
+            token_fingerprint=cache_state.token_fingerprint(cfg.token),
         )
         cache_state.write_token(conn, "tok-test")
     finally:

@@ -140,7 +140,11 @@ def cache_populated(configured):
         insert_inbox(conn, overdue_row)
 
         cache_state.write_identity(
-            conn, user_id="u1", client_id=str(cfg.client_id), engine_url=cfg.engine_url
+            conn,
+            user_id="u1",
+            client_id=str(cfg.client_id),
+            engine_url=cfg.engine_url,
+            token_fingerprint=cache_state.token_fingerprint(cfg.token),
         )
         cache_state.write_token(conn, "tok-populated")
     finally:

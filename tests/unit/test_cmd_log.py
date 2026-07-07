@@ -300,6 +300,7 @@ def test_log_triggers_post_write_sync(tmp_path, monkeypatch):
             user_id="u_123",
             client_id=str(cfg.client_id),
             engine_url=cfg.engine_url,
+            token_fingerprint=cache_state.token_fingerprint(cfg.token),
         )
         cache_state.write_token(conn, "tok-populated")
     finally:

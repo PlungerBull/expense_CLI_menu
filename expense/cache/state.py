@@ -3,16 +3,30 @@
 The `_cache_meta` table always has exactly one row (id=1), seeded by
 db.connect()'s schema bootstrap. Health is the conjunction of:
   schema_version matches SCHEMA_VERSION (else: wipe + cold-start)
-  user_id matches caller's expected user_id (else: wipe — token swap)
+  user_id is non-null (identity was written by a completed cold_start)
+  token_fingerprint matches the config token's (else: wipe — token swap)
   engine_url matches caller's expected engine_url (else: wipe — env swap)
-  sync_token is non-null (else: cold-start needed, but cache itself is OK)
+  client_id matches caller's expected client_id
+sync_token being non-null is a separate cold-start condition checked by
+callers — its absence means the cache is empty, not untrustworthy.
+
+The fingerprint stands in for the user id: there is no /me endpoint, so
+the only client-side proof that the cached rows belong to the current
+credential is that the credential itself hasn't changed.
 """
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from sqlite3 import Connection
 
 from expense.cache.db import SCHEMA_VERSION
+
+
+def token_fingerprint(token: str | None) -> str:
+    """SHA-256 hex of the raw token. A tokenless config hashes '' so the
+    stored value is always non-null after a completed cold_start."""
+    return hashlib.sha256((token or "").encode()).hexdigest()
 
 
 @dataclass
@@ -21,17 +35,22 @@ class CacheState:
     user_id: str | None
     client_id: str | None
     engine_url: str | None
+    token_fingerprint: str | None
     sync_token: str | None
     last_synced_at: str | None
 
 
 def read(conn: Connection) -> CacheState:
     row = conn.execute("SELECT * FROM _cache_meta WHERE id = 1").fetchone()
+    # Pre-v3 cache files lack the fingerprint column; read it defensively so
+    # is_healthy gets to notice the version mismatch instead of read() raising.
+    fingerprint = row["token_fingerprint"] if "token_fingerprint" in row.keys() else None
     return CacheState(
         schema_version=row["schema_version"],
         user_id=row["user_id"],
         client_id=row["client_id"],
         engine_url=row["engine_url"],
+        token_fingerprint=fingerprint,
         sync_token=row["sync_token"],
         last_synced_at=row["last_synced_at"],
     )
@@ -45,20 +64,26 @@ def write_token(conn: Connection, sync_token: str) -> None:
     )
 
 
-def write_identity(conn: Connection, *, user_id: str, client_id: str, engine_url: str) -> None:
+def write_identity(
+    conn: Connection, *, user_id: str, client_id: str, engine_url: str, token_fingerprint: str
+) -> None:
     """Set identity fields. Called once during cold_start after first sync."""
     conn.execute(
         """
         UPDATE _cache_meta
-        SET user_id = ?, client_id = ?, engine_url = ?
+        SET user_id = ?, client_id = ?, engine_url = ?, token_fingerprint = ?
         WHERE id = 1
         """,
-        (user_id, client_id, engine_url),
+        (user_id, client_id, engine_url, token_fingerprint),
     )
 
 
 def is_healthy(
-    state: CacheState, *, expected_user_id: str, expected_client_id: str, expected_engine_url: str
+    state: CacheState,
+    *,
+    expected_client_id: str,
+    expected_engine_url: str,
+    expected_token_fingerprint: str,
 ) -> bool:
     """Return True iff the cache can be trusted for delta sync.
 
@@ -66,7 +91,9 @@ def is_healthy(
     """
     if state.schema_version != SCHEMA_VERSION:
         return False
-    if state.user_id is None or state.user_id != expected_user_id:
+    if state.user_id is None:
+        return False
+    if state.token_fingerprint != expected_token_fingerprint:
         return False
     if state.engine_url is None or state.engine_url != expected_engine_url:
         return False

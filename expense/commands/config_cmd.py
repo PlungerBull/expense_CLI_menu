@@ -53,6 +53,14 @@ def set_cmd(
     config_module.save(new)
     typer.echo(f"Config saved to {config_module.config_path()}")
 
+    # A different token or engine URL means the replica may belong to another
+    # principal/environment — dispose of it. Same-value re-sets stay cheap.
+    identity_changed = (
+        existing is None or new.token != existing.token or new.engine_url != existing.engine_url
+    )
+    if identity_changed:
+        _wipe_cache_with_notice()
+
 
 def _redact_token(token: str | None) -> str | None:
     return None if token is None else redact_token(token)
@@ -100,3 +108,12 @@ def clear_cmd(
 
     config_module.clear()
     typer.echo(f"Config removed: {path}")
+    _wipe_cache_with_notice()
+
+
+def _wipe_cache_with_notice() -> None:
+    from expense.cache import db as cache_db  # local import to keep config commands cheap
+
+    if cache_db.cache_path().exists():
+        cache_db.wipe()
+        typer.echo("Local cache cleared — next read re-syncs from the engine.")

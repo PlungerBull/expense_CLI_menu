@@ -95,6 +95,7 @@ def cache_populated(configured):
             user_id="u1",
             client_id=str(cfg.client_id),
             engine_url=cfg.engine_url,
+            token_fingerprint=cache_state.token_fingerprint(cfg.token),
         )
         cache_state.write_token(conn, "tok-populated")
     finally:
@@ -303,6 +304,7 @@ def test_list_engine_url_swap_triggers_cold_start(cache_populated):
             user_id="u1",
             client_id=str(config_module.ensure_loaded().client_id),
             engine_url="https://stale.example.com",  # mismatch vs cfg
+            token_fingerprint=cache_state.token_fingerprint(config_module.ensure_loaded().token),
         )
     finally:
         conn.close()

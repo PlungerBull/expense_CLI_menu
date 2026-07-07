@@ -22,7 +22,7 @@ if you need the old detail.
 
 ## 1. Security & silent data loss (do first)
 
-- [ ] **1.1 Token swap serves the previous user's cached financial data.**
+- [x] **1.1 Token swap serves the previous user's cached financial data.**
   `ensure_synced` calls `state.is_healthy(cur_state,
   expected_user_id=cur_state.user_id, ...)` (`expense/cache/sync.py:231-233`)
   — comparing the cache's stored user id **to itself**, a tautology; the

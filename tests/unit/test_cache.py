@@ -1,3 +1,4 @@
+import io
 import json
 from uuid import uuid4
 
@@ -284,57 +285,159 @@ def test_cold_start_wipes_existing_rows(cache_path, cfg):
         conn.close()
 
 
-def test_is_healthy_checks_schema_user_engine(cache_path):
+def test_is_healthy_checks_schema_token_client_engine(cache_path):
+    fp = cache_state.token_fingerprint("ewe_pat_test")
     conn = cache.connect()
     try:
         cache_state.write_identity(
-            conn, user_id="u1", client_id="cid-1", engine_url="https://api.example.com"
+            conn,
+            user_id="u1",
+            client_id="cid-1",
+            engine_url="https://api.example.com",
+            token_fingerprint=fp,
         )
         s = cache_state.read(conn)
         assert cache_state.is_healthy(
             s,
-            expected_user_id="u1",
             expected_client_id="cid-1",
             expected_engine_url="https://api.example.com",
+            expected_token_fingerprint=fp,
+        )
+        # token swap — the whole point of the fingerprint
+        assert not cache_state.is_healthy(
+            s,
+            expected_client_id="cid-1",
+            expected_engine_url="https://api.example.com",
+            expected_token_fingerprint=cache_state.token_fingerprint("ewe_pat_other"),
         )
         assert not cache_state.is_healthy(
             s,
-            expected_user_id="u2",
-            expected_client_id="cid-1",
-            expected_engine_url="https://api.example.com",
-        )
-        assert not cache_state.is_healthy(
-            s,
-            expected_user_id="u1",
             expected_client_id="cid-2",
             expected_engine_url="https://api.example.com",
+            expected_token_fingerprint=fp,
         )
         assert not cache_state.is_healthy(
             s,
-            expected_user_id="u1",
             expected_client_id="cid-1",
             expected_engine_url="https://other.example.com",
+            expected_token_fingerprint=fp,
         )
     finally:
         conn.close()
 
 
+def test_is_healthy_requires_identity_written(cache_path):
+    conn = cache.connect()
+    try:
+        s = cache_state.read(conn)  # fresh meta row — cold_start never completed
+    finally:
+        conn.close()
+    assert not cache_state.is_healthy(
+        s,
+        expected_client_id="cid-1",
+        expected_engine_url="https://api.example.com",
+        expected_token_fingerprint=cache_state.token_fingerprint("ewe_pat_test"),
+    )
+
+
 def test_is_healthy_rejects_schema_version_mismatch(cache_path, monkeypatch):
+    fp = cache_state.token_fingerprint("ewe_pat_test")
     conn = cache.connect()
     try:
         cache_state.write_identity(
-            conn, user_id="u1", client_id="cid-1", engine_url="https://api.example.com"
+            conn,
+            user_id="u1",
+            client_id="cid-1",
+            engine_url="https://api.example.com",
+            token_fingerprint=fp,
         )
         s = cache_state.read(conn)
         monkeypatch.setattr(cache_state, "SCHEMA_VERSION", s.schema_version + 1)
         assert not cache_state.is_healthy(
             s,
-            expected_user_id="u1",
             expected_client_id="cid-1",
             expected_engine_url="https://api.example.com",
+            expected_token_fingerprint=fp,
         )
     finally:
         conn.close()
+
+
+def test_read_tolerates_pre_v3_meta_schema(cache_path):
+    """A v2 cache file lacks the fingerprint column — read() must not raise, so
+    the version check (not an IndexError) is what retires the old cache."""
+    conn = cache.connect()
+    try:
+        conn.execute("ALTER TABLE _cache_meta DROP COLUMN token_fingerprint")
+        conn.execute("UPDATE _cache_meta SET schema_version = 2 WHERE id = 1")
+        s = cache_state.read(conn)
+    finally:
+        conn.close()
+    assert s.token_fingerprint is None
+    assert not cache_state.is_healthy(
+        s,
+        expected_client_id="cid-1",
+        expected_engine_url="https://api.example.com",
+        expected_token_fingerprint=cache_state.token_fingerprint("ewe_pat_test"),
+    )
+
+
+@respx.mock
+def test_ensure_synced_cold_starts_on_token_swap(cache_path, cfg):
+    """User B's PAT must never read user A's replica (backlog 1.1)."""
+    route = respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+    assert route.call_count == 1
+
+    # Unchanged config → healthy replica, no engine call.
+    with _make_client(cfg) as client:
+        assert cache.ensure_synced(client, cfg, notice_stream=io.StringIO()) is None
+    assert route.call_count == 1
+
+    # Same machine, user B's token → fingerprint mismatch forces wipe + cold start.
+    cfg_b = Config(engine_url=cfg.engine_url, token="ewe_pat_other", client_id=cfg.client_id)
+    response_b = {
+        **SYNC_FULL_RESPONSE,
+        "sync_token": "token-b",
+        "accounts": [{**SYNC_FULL_RESPONSE["accounts"][0], "id": "b1", "user_id": "u2"}],
+        "categories": [],
+        "hashtags": [],
+        "transactions": [],
+        "settings": {"user_id": "u2", "main_currency": "PEN", "version": 1},
+    }
+    route.mock(return_value=httpx.Response(200, json=response_b))
+    with _make_client(cfg_b) as client:
+        summary = cache.ensure_synced(client, cfg_b, notice_stream=io.StringIO())
+    assert summary is not None and summary.kind == "cold_start"
+
+    conn = cache.connect()
+    try:
+        ids = [r[0] for r in conn.execute("SELECT id FROM accounts")]
+        assert ids == ["b1"]  # user A's rows are gone
+        assert cache_state.read(conn).user_id == "u2"
+    finally:
+        conn.close()
+
+
+@respx.mock
+def test_delta_sync_cold_starts_on_token_swap(cache_path, cfg):
+    """Bare `expense sync` / post-write refresh must also catch the swap."""
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+
+    cfg_b = Config(engine_url=cfg.engine_url, token="ewe_pat_other", client_id=cfg.client_id)
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json={**SYNC_FULL_RESPONSE, "sync_token": "token-b"})
+    )
+    with _make_client(cfg_b) as client:
+        summary = cache.delta_sync(client, cfg_b)
+    assert summary.kind == "cold_start"
 
 
 @respx.mock
@@ -422,7 +525,9 @@ def test_hashtag_ids_round_trip_in_body(cache_path):
 def test_wipe_removes_cache_file(cache_path):
     conn = cache.connect()
     try:
-        cache_state.write_identity(conn, user_id="u1", client_id="c", engine_url="x")
+        cache_state.write_identity(
+            conn, user_id="u1", client_id="c", engine_url="x", token_fingerprint="f"
+        )
     finally:
         conn.close()
     assert cache_db.cache_path().exists()

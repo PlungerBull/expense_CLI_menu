@@ -17,6 +17,13 @@ def tmp_config(tmp_path, monkeypatch):
     yield config_path
 
 
+@pytest.fixture
+def tmp_cache(tmp_path, monkeypatch):
+    cache_path = tmp_path / "cache.sqlite3"
+    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
+    yield cache_path
+
+
 def test_set_creates_config_on_first_run(tmp_config):
     result = runner.invoke(
         app,
@@ -123,6 +130,56 @@ def test_clear_with_yes_flag(tmp_config):
     result = runner.invoke(app, ["clear", "--yes"])
     assert result.exit_code == 0
     assert not tmp_config.exists()
+
+
+def test_set_token_change_wipes_cache(tmp_config, tmp_cache):
+    """A different PAT may be a different user — the replica must not survive (backlog 1.1)."""
+    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
+    tmp_cache.touch()
+
+    result = runner.invoke(app, ["set", "--token", "ewe_pat_b"])
+    assert result.exit_code == 0, result.output
+    assert "cache cleared" in result.output.lower()
+    assert not tmp_cache.exists()
+
+
+def test_set_engine_url_change_wipes_cache(tmp_config, tmp_cache):
+    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
+    tmp_cache.touch()
+
+    result = runner.invoke(app, ["set", "--engine-url", "https://y.com"])
+    assert result.exit_code == 0, result.output
+    assert not tmp_cache.exists()
+
+
+def test_set_main_currency_only_preserves_cache(tmp_config, tmp_cache):
+    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
+    tmp_cache.touch()
+
+    result = runner.invoke(app, ["set", "--main-currency", "PEN"])
+    assert result.exit_code == 0, result.output
+    assert "cache cleared" not in result.output.lower()
+    assert tmp_cache.exists()
+
+
+def test_set_same_token_preserves_cache(tmp_config, tmp_cache):
+    """Re-setting the identical token must not force a pointless cold start."""
+    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
+    tmp_cache.touch()
+
+    result = runner.invoke(app, ["set", "--token", "ewe_pat_a"])
+    assert result.exit_code == 0, result.output
+    assert tmp_cache.exists()
+
+
+def test_clear_wipes_cache(tmp_config, tmp_cache):
+    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
+    tmp_cache.touch()
+
+    result = runner.invoke(app, ["clear", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "cache cleared" in result.output.lower()
+    assert not tmp_cache.exists()
 
 
 def test_clear_no_file_is_idempotent(tmp_config):

@@ -10,7 +10,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def cache_path() -> Path:
@@ -63,13 +63,14 @@ def _bootstrap_schema(conn: sqlite3.Connection) -> None:
     cur.executescript(
         """
         CREATE TABLE IF NOT EXISTS _cache_meta (
-            id              INTEGER PRIMARY KEY CHECK (id = 1),
-            schema_version  INTEGER NOT NULL,
-            user_id         TEXT,
-            client_id       TEXT,
-            engine_url      TEXT,
-            sync_token      TEXT,
-            last_synced_at  TEXT
+            id                 INTEGER PRIMARY KEY CHECK (id = 1),
+            schema_version     INTEGER NOT NULL,
+            user_id            TEXT,
+            client_id          TEXT,
+            engine_url         TEXT,
+            token_fingerprint  TEXT,
+            sync_token         TEXT,
+            last_synced_at     TEXT
         );
 
         CREATE TABLE IF NOT EXISTS accounts (
@@ -186,7 +187,11 @@ def _bootstrap_schema(conn: sqlite3.Connection) -> None:
 
 
 def wipe() -> None:
-    """Delete the cache file. Used by cold_start and config changes."""
+    """Delete the cache file + WAL/SHM sidecars.
+
+    Called by cold_start, corrupt-DB recovery (connect), and the config
+    commands (`config set --token/--engine-url`, `config clear`).
+    """
     path = cache_path()
     if path.exists():
         path.unlink()
