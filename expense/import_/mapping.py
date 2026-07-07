@@ -9,6 +9,8 @@ layout-agnostic.
 
 import uuid
 
+from expense.currencies import SUPPORTED_CURRENCIES
+
 #: Worksheet that holds the transaction rows.
 SHEET_NAME = "Data"
 
@@ -28,8 +30,9 @@ FIELD_HEADERS = {
 #: Every field except ``description`` must be present in the header row.
 REQUIRED_FIELDS = frozenset(FIELD_HEADERS) - {"description"}
 
-#: Currencies the engine accepts (schema-locked to USD/PEN).
-VALID_CURRENCIES = frozenset({"PEN", "USD"})
+#: Currencies the engine accepts — see expense/currencies.py for the
+#: schema-lock provenance.
+VALID_CURRENCIES = frozenset(SUPPORTED_CURRENCIES)
 
 #: Deterministic-id namespace. DO NOT CHANGE — changing it breaks re-run dedup
 #: (the same sheet must always produce the same transaction ids).

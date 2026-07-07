@@ -15,6 +15,7 @@ from rich.table import Table
 from rich.text import Text
 from textual.widgets import Input
 
+from expense.currencies import SUPPORTED_CURRENCIES
 from expense.tui.screens._form import FormScreen
 
 _PALETTE = [
@@ -27,7 +28,7 @@ _PALETTE = [
     ("#d9744a", "orange"),
     ("#8a8f98", "grey"),
 ]
-_CURRENCIES = [("PEN", "PEN"), ("USD", "USD")]
+_CURRENCIES = [(c, c) for c in SUPPORTED_CURRENCIES]
 
 
 class Field:

@@ -21,6 +21,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands._resource import items_of, redact_token
+from expense.currencies import SUPPORTED_CURRENCIES
 from expense.errors import format_error
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
@@ -191,7 +192,9 @@ class AuthScreen(SectionScreen):
             if not value:
                 return
             cur = value.upper()
-            if cur not in ("USD", "PEN"):
+            if cur not in SUPPORTED_CURRENCIES:
+                # copy below stays literal ("USD or PEN") — update alongside
+                # expense.currencies.SUPPORTED_CURRENCIES
                 self.notify("Enter USD or PEN.", severity="error")
                 return
 

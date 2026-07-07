@@ -121,7 +121,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   a parameter; longer term, consider the engine exposing readiness in the
   sync payload so the client stops owning the rule.
 
-- [ ] **2.4 USD/PEN whitelist is hard-coded in three client spots**
+- [x] **2.4 USD/PEN whitelist is hard-coded in three client spots**
   (`create_forms.py:30`, `system.py:194-195`, `import_/mapping.py:32`).
   Adding a currency engine-side means hunting client constants. Single-source
   it (one module constant referenced by all three), and note the schema-lock
