@@ -303,6 +303,9 @@ class QuickAddLogScreen(FormScreen):
             if cents is None:
                 self.notify("Amount: a signed decimal, e.g. -99.92", severity="error")
                 return
+            # Mid-form ergonomics guard; mirrors the engine's 422
+            # amount_cents "Must not be zero." (engine-spec.md POST
+            # /transactions). Deliberately kept client-side — backlog 2.5.
             if cents == 0:
                 self.notify("Amount must be non-zero.", severity="error")
                 return
@@ -360,6 +363,10 @@ class QuickAddLogScreen(FormScreen):
         if picked is None:
             self.notify(f"No account matches “{text}”.", severity="error")
             return
+        # Mirrors the engine's 422 transfer.account_id "Must be a different
+        # account." (engine app/helpers/transfers.py — enforced but
+        # undocumented in engine-spec.md; spec gap flagged in backlog 2.5).
+        # Deliberately kept client-side.
         if picked[0] == self._values.get("account"):
             self.notify("Transfer destination must differ from the source.", severity="error")
             return

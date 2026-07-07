@@ -130,12 +130,18 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   it (one module constant referenced by all three), and note the schema-lock
   provenance where it's defined.
 
-- [ ] **2.5 Sweep the remaining TUI pre-validations of engine rules** —
-  non-zero amount (`quick_log.py:303-305`), transfer dest ≠ source
-  (`quick_log.py:360-362`), complete-needs-≥1 / revert-only-completed /
-  delete-draft-only (`reconciliations.py:711-742`). Engine 422/409s all of
-  these. Low urgency (they currently agree with the engine), but each is a
-  drift risk; replace with engine-error surfacing case by case.
+- [x] **2.5 Sweep the remaining TUI pre-validations of engine rules** —
+  resolved case by case (user decision): the three reconciliation action
+  guards (complete-needs-≥1 / revert-only-completed / delete-draft-only)
+  were **removed** — the engine's 422/409 messages surface via `run_write`
+  toasts, and revert-on-draft rides the engine's idempotent 200 no-op
+  (pinned by tests). The two quick_log mid-form guards (non-zero amount,
+  transfer dest ≠ source) were **kept** as form-flow ergonomics, each with
+  a comment pinning it to the engine rule it mirrors.
+  *Engine-spec gap noted:* the same-account transfer rejection
+  (engine `app/helpers/transfers.py`, 422 `transfer.account_id` "Must be a
+  different account.") is enforced but undocumented in engine-spec.md — to
+  be added in the engine repo.
 
 - [ ] **2.6 Document the two sanctioned exceptions** so future reviews stop
   re-flagging them: `accounts update --currency-code` exists solely to be

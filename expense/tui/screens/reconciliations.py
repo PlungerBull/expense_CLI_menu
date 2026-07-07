@@ -712,10 +712,9 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
         if self._completed:
             self.notify("Already completed.")
             return
-        if not (self._list and self._list.checked):
-            self.notify("Assign at least one transaction first.", severity="error")
-            return
-        n = len(self._list.checked)
+        # No ≥1-assigned pre-guard: the engine 422s an empty complete and
+        # run_write toasts its message (thin wrapper, backlog 2.5).
+        n = len(self._list.checked) if self._list else 0
         self._confirm(
             "Complete reconciliation?",
             f"Locks amount/account/title/date on the {n} assigned transaction(s).",
@@ -725,9 +724,8 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
         )
 
     def action_revert(self) -> None:
-        if not self._completed:
-            self.notify("Only completed reconciliations can be reverted.")
-            return
+        # No completed-only pre-guard: the engine treats revert-on-draft as
+        # an idempotent 200 no-op (thin wrapper, backlog 2.5).
         self._confirm(
             "Revert to draft?",
             "Unlocks the assigned transactions and this batch's balances.",
@@ -737,9 +735,9 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
         )
 
     def action_delete(self) -> None:
-        if self._completed:
-            self.notify("Revert before deleting a completed reconciliation.", severity="error")
-            return
+        # No draft-only pre-guard: deleting a completed reconciliation 409s
+        # engine-side ("… Revert to draft first.") and run_write toasts that
+        # message (thin wrapper, backlog 2.5).
         self._confirm(
             "Delete reconciliation?",
             "Detaches its transactions (they are not deleted) and removes the batch.",

@@ -2,6 +2,7 @@
 
 import asyncio
 
+from expense.errors import EngineError
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.reconciliations import ReconciliationDetailScreen, _txn_sub
@@ -154,7 +155,7 @@ def test_toggle_puts_reconciliation_id(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
-def test_complete_requires_assignment_then_posts(fake_client, monkeypatch):
+def test_complete_confirms_then_posts(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
@@ -163,7 +164,7 @@ def test_complete_requires_assignment_then_posts(fake_client, monkeypatch):
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
             await _wait_list(screen, pilot)
-            screen.action_complete()  # t1 already checked → opens confirm
+            screen.action_complete()  # opens confirm
             await pilot.pause(0.05)
             await pilot.press("y")  # confirm
             await wait_for(pilot, lambda: fake_client.posts)
@@ -184,9 +185,105 @@ def test_completed_is_read_only(fake_client, monkeypatch):
             await _wait_list(screen, pilot)
             assert screen._list._read_only
             assert [r[0] for r in screen._list._rows] == ["t1"]  # only batch txns
-            screen.action_delete()  # blocked while completed
-            await pilot.pause(0.05)
-            assert not fake_client.deletes
+
+    asyncio.run(scenario())
+
+
+def test_delete_completed_surfaces_engine_409(fake_client, monkeypatch):
+    """No draft-only pre-guard (backlog 2.5): the DELETE reaches the engine
+    and its 409 message toasts."""
+    completed = {**DRAFT, "status": 2}
+    _patch(monkeypatch)
+    fake_client.errors["DELETE"] = EngineError(
+        "CONFLICT",
+        "Cannot delete a completed reconciliation. Revert to draft first.",
+        None,
+        409,
+        {},
+    )
+    notices: list = []
+    monkeypatch.setattr(
+        ReconciliationDetailScreen, "notify", lambda self, message, **kw: notices.append(message)
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(completed))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            await pilot.press("d")
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("y")
+            await wait_for(pilot, lambda: notices)
+            assert fake_client.deletes == ["/reconciliations/r1"]  # request was attempted
+            assert any("Revert to draft first" in m for m in notices)
+
+    asyncio.run(scenario())
+
+
+def test_complete_with_zero_assigned_surfaces_engine_422(fake_client, monkeypatch):
+    """No ≥1-assigned pre-guard (backlog 2.5): the confirm opens, the POST
+    fires, and the engine's 422 message toasts."""
+    _patch(monkeypatch)
+
+    def fake_fetch(cfg, **k):  # nothing assigned to r1
+        if k.get("account") == "acc1":
+            return {"items": AVAILABLE}
+        return {"items": []}
+
+    monkeypatch.setattr("expense.commands.transactions_cmd.fetch_transactions", fake_fetch)
+    fake_client.errors["POST"] = EngineError(
+        "VALIDATION_ERROR",
+        "Cannot complete reconciliation with no assigned transactions.",
+        {"transactions": "At least one transaction must be assigned."},
+        422,
+        {},
+    )
+    notices: list = []
+    monkeypatch.setattr(
+        ReconciliationDetailScreen, "notify", lambda self, message, **kw: notices.append(message)
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            assert not screen._list.checked
+            screen.action_complete()  # no pre-block: confirm opens
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("y")
+            await wait_for(pilot, lambda: notices)
+            assert fake_client.posts == [("/reconciliations/r1/complete", None)]
+            assert any("At least one transaction must be assigned" in m for m in notices)
+
+    asyncio.run(scenario())
+
+
+def test_revert_on_draft_posts_idempotently(fake_client, monkeypatch):
+    """No completed-only pre-guard (backlog 2.5): revert on a draft POSTs and
+    the engine's idempotent 200 no-op reads as success."""
+    _patch(monkeypatch)
+    notices: list = []
+    monkeypatch.setattr(
+        ReconciliationDetailScreen, "notify", lambda self, message, **kw: notices.append(message)
+    )
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            await pilot.press("u")
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("y")
+            await wait_for(pilot, lambda: fake_client.posts)
+            assert fake_client.posts == [("/reconciliations/r1/revert", None)]
+            await wait_for(pilot, lambda: notices)
+            assert any("reverted to draft" in m for m in notices)
 
     asyncio.run(scenario())
 
