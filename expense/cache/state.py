@@ -7,7 +7,7 @@ db.connect()'s schema bootstrap. Health is the conjunction of:
   token_fingerprint matches the config token's (else: wipe — token swap)
   engine_url matches caller's expected engine_url (else: wipe — env swap)
   client_id matches caller's expected client_id
-sync_token being non-null is a separate cold-start condition checked by
+sync_token being non-empty is a separate cold-start condition checked by
 callers — its absence means the cache is empty, not untrustworthy.
 
 The fingerprint stands in for the user id: there is no /me endpoint, so

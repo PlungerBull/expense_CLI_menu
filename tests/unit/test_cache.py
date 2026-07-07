@@ -554,6 +554,70 @@ def test_connect_wipes_and_rebuilds_corrupt_cache(cache_path):
 
 
 @respx.mock
+def test_delta_missing_sync_token_errors_loudly(cache_path, cfg):
+    """A /sync response without a token must error, not degrade (backlog 3.7)."""
+    respx.get("https://api.example.com/v1/sync").mock(
+        side_effect=[
+            httpx.Response(200, json=SYNC_FULL_RESPONSE),
+            httpx.Response(200, json={**SYNC_FULL_RESPONSE, "sync_token": None}),
+        ]
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+        with pytest.raises(RuntimeError, match="sync_token"):
+            cache.delta_sync(client, cfg)
+
+    conn = cache.connect()
+    try:
+        # The guard fired before anything was applied or stored.
+        assert cache_state.read(conn).sync_token == "token-1"
+    finally:
+        conn.close()
+
+
+@respx.mock
+def test_cold_start_missing_sync_token_errors_before_wipe(cache_path, cfg):
+    """A token-less cold-start response must not cost the existing replica (backlog 3.7)."""
+    tokenless = {k: v for k, v in SYNC_FULL_RESPONSE.items() if k != "sync_token"}
+    respx.get("https://api.example.com/v1/sync").mock(
+        side_effect=[
+            httpx.Response(200, json=SYNC_FULL_RESPONSE),
+            httpx.Response(200, json=tokenless),
+        ]
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+        with pytest.raises(RuntimeError, match="sync_token"):
+            cache.cold_start(client, cfg)
+
+    conn = cache.connect()
+    try:
+        assert conn.execute("SELECT count(*) FROM accounts").fetchone()[0] == 1
+        assert cache_state.read(conn).sync_token == "token-1"
+    finally:
+        conn.close()
+
+
+@respx.mock
+def test_ensure_synced_cold_starts_on_stored_empty_token(cache_path, cfg):
+    """A legacy empty-string token must not delta with '*' silently (backlog 3.7)."""
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=SYNC_FULL_RESPONSE)
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)
+        conn = cache.connect()
+        try:
+            cache_state.write_token(conn, "")
+        finally:
+            conn.close()
+
+        summary = cache.ensure_synced(client, cfg, notice_stream=io.StringIO())
+
+    assert summary is not None and summary.kind == "cold_start"
+
+
+@respx.mock
 def test_cold_start_network_failure_preserves_stale_cache(cache_path, cfg):
     """A failed cold-start must degrade to 'still stale', not 'no cache' (backlog 3.8)."""
     respx.get("https://api.example.com/v1/sync").mock(

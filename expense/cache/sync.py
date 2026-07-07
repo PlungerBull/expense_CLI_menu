@@ -178,10 +178,16 @@ def apply_response(conn: Connection, response: dict, *, kind: str) -> SyncSummar
 
 
 def _fetch(client: ExpenseClient, sync_token: str) -> dict:
-    return client.get(
+    response = client.get(
         "/sync",
         params={"sync_token": sync_token, "debit_as_negative": "true"},
     )
+    if not response.get("sync_token"):
+        # A missing token would get stored as "" and the next delta would run
+        # sync_token=* — a full fetch applied as a delta without wiping,
+        # stranding rows deleted server-side. Broken contract: error out.
+        raise RuntimeError("Engine /sync response is missing sync_token; refusing to apply it.")
+    return response
 
 
 def cold_start(client: ExpenseClient, cfg: Config) -> SyncSummary:
@@ -236,7 +242,9 @@ def ensure_synced(
         expected_engine_url=cfg.engine_url,
         expected_token_fingerprint=state.token_fingerprint(cfg.token),
     )
-    needs_cold_start = (not healthy) or cur_state.sync_token is None
+    # `not sync_token` (rather than `is None`) also catches a legacy cache
+    # holding an empty-string token from before _fetch validated the contract.
+    needs_cold_start = (not healthy) or not cur_state.sync_token
 
     if not needs_cold_start:
         return None
@@ -294,11 +302,11 @@ def delta_sync(client: ExpenseClient, cfg: Config) -> SyncSummary:
         expected_engine_url=cfg.engine_url,
         expected_token_fingerprint=state.token_fingerprint(cfg.token),
     )
-    if not healthy or cur_state.sync_token is None:
+    if not healthy or not cur_state.sync_token:
         return cold_start(client, cfg)
 
     try:
-        response = _fetch(client, cur_state.sync_token or "*")
+        response = _fetch(client, cur_state.sync_token)
     except EngineError as err:
         if err.status == 422 and (err.fields or {}).get("sync_token"):
             return cold_start(client, cfg)

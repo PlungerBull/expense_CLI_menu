@@ -208,7 +208,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   (`config_cmd.py:13-14`), so a corrupted config file tracebacks on `set`
   but renders cleanly on `get`. Fix both; unit tests alongside.
 
-- [ ] **3.7 Fail loudly on a missing sync token.**
+- [x] **3.7 Fail loudly on a missing sync token.**
   `response.get("sync_token") or ""` (`sync.py:176`) silently stores an
   empty token; the next delta then runs `sync_token or "*"` (`sync.py:300`)
   — a full fetch applied *as a delta without wiping*, stranding rows deleted
