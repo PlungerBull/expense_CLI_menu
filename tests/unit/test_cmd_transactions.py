@@ -522,24 +522,87 @@ def test_batch_json_passthrough(configured):
     assert json.loads(result.output) == response
 
 
-def test_batch_rejects_transfer_field(configured):
-    items_in = [
+_BATCH_TRANSFER_ITEMS = [
+    {
+        "title": "a",
+        "amount_cents": -100,
+        "date": "2026-04-24T12:00:00Z",
+        "account_id": "acct-1",
+        "category_id": "cat-1",
+        "transfer": {
+            "id": "x",
+            "account_id": "acct-2",
+            "amount_cents": 50,
+        },
+    }
+]
+
+# Verified engine envelope for a transfer item in a batch
+# (engine app/helpers/transactions.py — fields key is transactions[i].transfer).
+_BATCH_TRANSFER_422 = {
+    "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "Transfers are not supported in batch creates.",
+        "fields": {"transactions[0].transfer": "Must not be present in batch."},
+    }
+}
+
+
+@respx.mock
+def test_batch_transfer_422_surfaces_with_hint(configured):
+    route = respx.post("https://api.example.com/v1/transactions/batch").mock(
+        return_value=httpx.Response(422, json=_BATCH_TRANSFER_422)
+    )
+    result = runner.invoke(
+        cli_app, ["transactions", "batch"], input=json.dumps(_BATCH_TRANSFER_ITEMS)
+    )
+    assert result.exit_code == 1
+    # thin wrapper: the request reaches the engine — no client pre-emption
+    assert route.called
+    assert "VALIDATION_ERROR" in result.output
+    assert "Transfers are not supported in batch creates." in result.output
+    assert "transactions[0].transfer" in result.output
+    assert "Hint: transfers are not supported in batch creates" in result.output
+
+
+@respx.mock
+def test_batch_transfer_422_json_mode_passes_envelope_verbatim(configured):
+    respx.post("https://api.example.com/v1/transactions/batch").mock(
+        return_value=httpx.Response(422, json=_BATCH_TRANSFER_422)
+    )
+    result = runner.invoke(
+        cli_app, ["transactions", "batch", "--json"], input=json.dumps(_BATCH_TRANSFER_ITEMS)
+    )
+    assert result.exit_code == 1
+    assert json.loads(result.stdout) == _BATCH_TRANSFER_422
+    assert "Hint:" in result.stderr
+
+
+@respx.mock
+def test_batch_other_422_prints_no_transfer_hint(configured):
+    envelope = {
+        "error": {
+            "code": "VALIDATION_ERROR",
+            "message": "Duplicate id within batch.",
+            "fields": {"transactions[1].id": "Duplicate id within batch."},
+        }
+    }
+    respx.post("https://api.example.com/v1/transactions/batch").mock(
+        return_value=httpx.Response(422, json=envelope)
+    )
+    items = [
         {
             "title": "a",
             "amount_cents": -100,
             "date": "2026-04-24T12:00:00Z",
             "account_id": "acct-1",
             "category_id": "cat-1",
-            "transfer": {
-                "id": "x",
-                "account_id": "acct-2",
-                "amount_cents": 50,
-            },
         }
     ]
-    result = runner.invoke(cli_app, ["transactions", "batch"], input=json.dumps(items_in))
+    result = runner.invoke(cli_app, ["transactions", "batch"], input=json.dumps(items))
     assert result.exit_code == 1
-    assert "Transfers are not supported in batch" in result.output
+    assert "Duplicate id within batch." in result.output
+    assert "Hint:" not in result.output
 
 
 def test_batch_invalid_json_errors(configured):

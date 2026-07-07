@@ -52,6 +52,11 @@ _TRANSFER_GUARD_HINT = (
     "delete and recreate the transfer to change them. "
     "title/description/cleared/category_id/hashtag_ids remain editable."
 )
+_BATCH_TRANSFER_HINT = (
+    "Hint: transfers are not supported in batch creates. "
+    "Log each transfer individually with "
+    "'expense log --transfer --to-account-id <id> --to-amount <cents>'."
+)
 
 
 def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
@@ -115,6 +120,16 @@ def _update_hint_for(err: EngineError) -> str | None:
     if "transfer" in haystack and ("pair" in haystack or "leg" in haystack or "guard" in haystack):
         return _TRANSFER_GUARD_HINT
     return None
+
+
+def _is_batch_transfer_422(err: EngineError) -> bool:
+    if err.status != 422:
+        return False
+    # verified engine shape: fields = {"transactions[i].transfer": "Must not be present in batch."}
+    if isinstance(err.fields, dict) and any(key.endswith(".transfer") for key in err.fields):
+        return True
+    message = (err.message or "").lower()
+    return "transfer" in message and "batch" in message
 
 
 def _parse_hashtag_ids(raw: str) -> list[str]:
@@ -440,19 +455,16 @@ def batch(
         if not isinstance(item, dict):
             typer.echo(f"Error: items[{index}] is not an object.", err=True)
             raise typer.Exit(code=1)
-        if "transfer" in item:
-            typer.echo(
-                f"Error: items[{index}] has a 'transfer' field. "
-                "Transfers are not supported in batch creates — "
-                "use 'expense log --transfer' instead.",
-                err=True,
-            )
-            raise typer.Exit(code=1)
         if "id" not in item:
             item["id"] = str(uuid4())
 
     with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.post(f"/{_RESOURCE}/batch", json_body={"transactions": items})
+        try:
+            body = client.post(f"/{_RESOURCE}/batch", json_body={"transactions": items})
+        except EngineError as err:
+            if _is_batch_transfer_422(err):
+                typer.echo(_BATCH_TRANSFER_HINT, err=True)
+            raise
         cache_after_write(ctx, client, cfg)
 
     if json_output:

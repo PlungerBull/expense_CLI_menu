@@ -106,7 +106,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   sign and let the engine 422 surface, or make the auto-fill an explicit
   suggested value the user can see before submit.
 
-- [ ] **2.2 `transactions batch` re-validates "no transfers in batch"**
+- [x] **2.2 `transactions batch` re-validates "no transfers in batch"**
   (`transactions_cmd.py:444-451`) — engine-spec.md:476 already rejects the
   whole batch. Convert to an except-hint on the engine's 422 like every
   other command (same treatment §7 gave reports).
