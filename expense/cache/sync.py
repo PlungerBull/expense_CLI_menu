@@ -1,7 +1,8 @@
 """Cold-start, delta-sync, and apply-response logic.
 
-Cold-start: wipe the cache, fetch sync_token=*, populate from a clean DB,
-persist the new token.
+Cold-start: fetch sync_token=*, then wipe the cache, populate from a clean
+DB, persist the new token. Fetch-first: a network failure mid-cold-start
+must leave the existing (stale) replica in place, not destroy it.
 
 Delta-sync: read the stored token, fetch sync_token=<token>, apply
 inserts/updates/tombstones inside one transaction, persist the new token.
@@ -184,12 +185,16 @@ def _fetch(client: ExpenseClient, sync_token: str) -> dict:
 
 
 def cold_start(client: ExpenseClient, cfg: Config) -> SyncSummary:
-    """Wipe the cache, fetch sync_token=*, populate, persist the new token."""
-    db.wipe()
+    """Fetch sync_token=*, wipe the cache, populate, persist the new token.
+
+    Wiping only after a successful fetch (and user_id derivation) means a
+    failed cold-start degrades to "still stale", never to "no cache at all".
+    """
     pulled_at = datetime.now(UTC)
     response = _fetch(client, "*")
     user_id = _derive_user_id(response)
 
+    db.wipe()
     conn = db.connect()
     try:
         summary = apply_response(conn, response, kind="cold_start")

@@ -214,7 +214,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   — a full fetch applied *as a delta without wiping*, stranding rows deleted
   server-side. A broken engine contract should error, not degrade.
 
-- [ ] **3.8 `cold_start` wipes before fetching** (`sync.py:189-191`) — a
+- [x] **3.8 `cold_start` wipes before fetching** (`sync.py:189-191`) — a
   network failure mid-cold-start leaves *no* cache instead of the stale one.
   Fetch first, wipe + apply only on success.
 

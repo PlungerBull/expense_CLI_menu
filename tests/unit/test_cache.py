@@ -12,7 +12,7 @@ from expense.cache import db as cache_db
 from expense.cache import state as cache_state
 from expense.cache import sync as cache_sync
 from expense.config import Config
-from expense.errors import CacheUnavailableError, EngineError
+from expense.errors import CacheUnavailableError, EngineConnectionError, EngineError
 from expense.http import ExpenseClient
 
 SYNC_FULL_RESPONSE = {
@@ -549,6 +549,29 @@ def test_connect_wipes_and_rebuilds_corrupt_cache(cache_path):
         # Fresh replica: no identity/token — the next read cold-starts.
         assert meta["user_id"] is None
         assert meta["sync_token"] is None
+    finally:
+        conn.close()
+
+
+@respx.mock
+def test_cold_start_network_failure_preserves_stale_cache(cache_path, cfg):
+    """A failed cold-start must degrade to 'still stale', not 'no cache' (backlog 3.8)."""
+    respx.get("https://api.example.com/v1/sync").mock(
+        side_effect=[
+            httpx.Response(200, json=SYNC_FULL_RESPONSE),
+            httpx.ConnectError("engine down"),
+        ]
+    )
+    with _make_client(cfg) as client:
+        cache.cold_start(client, cfg)  # healthy replica
+        with pytest.raises(EngineConnectionError):
+            cache.cold_start(client, cfg)  # re-run hits the wire failure
+
+    conn = cache.connect()
+    try:
+        # The stale replica survived intact — rows and sync state untouched.
+        assert conn.execute("SELECT count(*) FROM accounts").fetchone()[0] == 1
+        assert cache_state.read(conn).sync_token == "token-1"
     finally:
         conn.close()
 
