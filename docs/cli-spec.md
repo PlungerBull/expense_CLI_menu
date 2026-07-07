@@ -18,7 +18,7 @@ Flat CLI is **complete** (Step 9 gate closed 2026-05-10, plus the `expense impor
 - Every command is a thin wrapper around one or more engine API calls. No business logic in the CLI.
 - Output is human-readable by default. Every read command supports `--json` for machine-readable output.
 - The `debit_as_negative` convention is used end-to-end (negative = expense, positive = income). Enforced at input parsing and output rendering.
-- A fresh idempotency-key UUID is generated per write and sent as `X-Idempotency-Key`.
+- An idempotency-key UUID is minted per logical write and sent as `X-Idempotency-Key`; on timeout or 5xx the client re-sends the same key (bounded retry, see [cli-runtime.md](cli-runtime.md) Write semantics) so a retry can never double-apply.
 - Engine errors surface intact: human mode may prettify, `--json` passes through verbatim — never swallow, never reformat lossily. (Deviations: see Sanctioned exceptions below.)
 - Destructive operations (delete, archive, revert) prompt for confirmation unless `--yes` / `-y` is passed.
 - Archive vs delete distinction is honored (see [../../expense_world_engine/docs/engine-spec.md](../../expense_world_engine/docs/engine-spec.md) — archive = retired-but-real, delete = mistake/scrubbed).

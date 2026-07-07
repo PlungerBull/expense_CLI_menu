@@ -1,6 +1,7 @@
 import json
 import sys
 import threading
+import time
 import uuid
 from json import JSONDecodeError
 
@@ -10,6 +11,15 @@ from expense.config import Config
 from expense.errors import EngineConnectionError, EngineError
 
 _WRITE_METHODS = frozenset(["POST", "PUT", "PATCH", "DELETE"])
+
+# Bounded same-key retry for writes (backlog 3.1): the engine replays the
+# original response for a repeated X-Idempotency-Key (24h TTL), so re-sending
+# after a timeout or transient 5xx can never double-apply. Scope is exactly
+# timeout + 5xx — a connect failure means the engine isn't reachable at all
+# and fails fast, and reads are safe for callers to re-run themselves.
+_WRITE_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = (1.0, 2.0)
+_RETRYABLE_STATUS = frozenset({500, 502, 503, 504})
 
 
 class ExpenseClient:
@@ -78,28 +88,42 @@ class ExpenseClient:
         headers: dict[str, str] = {}
         if auth and self._config.token:
             headers["Authorization"] = f"Bearer {self._config.token}"
-        if method in _WRITE_METHODS:
+        is_write = method in _WRITE_METHODS
+        if is_write:
+            # Minted once per logical write; the retry loop below re-sends the
+            # same key so the engine replays instead of double-applying.
             headers["X-Idempotency-Key"] = str(uuid.uuid4())
 
         timer = self._start_cold_notice() if self._cold_start_notice else None
+        attempts = _WRITE_ATTEMPTS if is_write else 1
 
         try:
-            request = self._client.build_request(
-                method,
-                resolved,
-                params=params,
-                json=json_body,
-                headers=headers,
-            )
-            if self._verbose:
-                self._dump_request(request)
-            try:
-                response = self._client.send(request)
-            except httpx.TransportError as exc:
-                # Base of connect/timeout plus read/write aborts, protocol and
-                # proxy failures, and UnsupportedProtocol (scheme-less URL) —
-                # none of these may escape as a raw traceback.
-                raise EngineConnectionError(url=str(request.url), original=exc) from exc
+            for attempt in range(1, attempts + 1):
+                request = self._client.build_request(
+                    method,
+                    resolved,
+                    params=params,
+                    json=json_body,
+                    headers=headers,
+                )
+                if self._verbose:
+                    self._dump_request(request)
+                try:
+                    response = self._client.send(request)
+                except httpx.TransportError as exc:
+                    # Base of connect/timeout plus read/write aborts, protocol
+                    # and proxy failures, and UnsupportedProtocol (scheme-less
+                    # URL) — none of these may escape as a raw traceback.
+                    if isinstance(exc, httpx.TimeoutException) and attempt < attempts:
+                        self._notify_retry(attempt, attempts, "timed out")
+                        time.sleep(_RETRY_BACKOFF_SECONDS[attempt - 1])
+                        continue
+                    raise EngineConnectionError(url=str(request.url), original=exc) from exc
+                if response.status_code in _RETRYABLE_STATUS and attempt < attempts:
+                    self._notify_retry(attempt, attempts, f"got HTTP {response.status_code}")
+                    time.sleep(_RETRY_BACKOFF_SECONDS[attempt - 1])
+                    continue
+                break
         finally:
             if timer is not None:
                 timer.cancel()
@@ -135,6 +159,14 @@ class ExpenseClient:
             fields=error.get("fields"),
             status=response.status_code,
             raw_body=body,
+        )
+
+    def _notify_retry(self, attempt: int, attempts: int, cause: str) -> None:
+        print(
+            f"Write {cause}; retrying ({attempt + 1}/{attempts}) with the same "
+            "idempotency key — the engine replays instead of double-applying.",
+            file=sys.stderr,
+            flush=True,
         )
 
     def _start_cold_notice(self) -> threading.Timer:

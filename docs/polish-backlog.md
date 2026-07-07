@@ -153,7 +153,11 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
 
 ## 3. Robustness & error handling
 
-- [ ] **3.1 Idempotency key protects nothing today.**
+- [x] **3.1 Idempotency key protects nothing today.**
+  Resolved as implementation (user-approved plan): `_request` retries a
+  timed-out/5xx write up to twice with the same key (1s/2s backoff, stderr
+  notice); connect failures and reads still fail fast. Docs updated
+  (cli-runtime.md Write semantics, cli-spec.md, CLAUDE.md).
   `http.py:81-82` mints a fresh UUID per request and no code path ever
   re-sends the same key (no transport retries, no retry loop) — so a re-run
   after a timeout double-applies, the exact failure CLAUDE.md says the key

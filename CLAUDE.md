@@ -65,7 +65,7 @@ Input and output are both signed (`debit_as_negative`): negative = expense, posi
 Every read command supports `--json` for machine-readable output. Human mode may prettify; `--json` is always the raw engine response, passed through verbatim.
 
 **Idempotency on every write**
-The HTTP client generates a fresh UUID per write and sets `X-Idempotency-Key`. Retrying a failed command must never double-apply.
+The HTTP client mints a UUID per logical write and sets `X-Idempotency-Key`; timed-out/5xx writes auto-retry (bounded) with the **same** key, so a retry — manual or automatic — must never double-apply. Details in [docs/cli-runtime.md](docs/cli-runtime.md).
 
 **Engine errors surface cleanly**
 The engine's standard error shape (`{ error: { code, message, fields } }`) is rendered to the user. Never swallow, never reformat lossily.

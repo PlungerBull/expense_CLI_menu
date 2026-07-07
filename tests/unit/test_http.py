@@ -218,6 +218,115 @@ def test_connection_error_on_malformed_error_envelope(config):
         client.get("/auth/me")
 
 
+# --- bounded same-key write retry (backlog 3.1) ------------------------------
+
+
+@pytest.fixture
+def no_backoff(monkeypatch):
+    monkeypatch.setattr("expense.http._RETRY_BACKOFF_SECONDS", (0, 0))
+
+
+def _envelope(status: int, code: str) -> httpx.Response:
+    return httpx.Response(status, json={"error": {"code": code, "message": "boom", "fields": None}})
+
+
+@respx.mock
+def test_write_timeout_is_retried_with_same_idempotency_key(config, no_backoff, capsys):
+    route = respx.post("https://api.example.com/v1/accounts").mock(
+        side_effect=[httpx.TimeoutException("timed out"), httpx.Response(201, json={"id": "a"})]
+    )
+    with ExpenseClient(config) as client:
+        result = client.post("/accounts", json_body={"name": "x"})
+
+    assert result == {"id": "a"}
+    assert route.call_count == 2
+    keys = {call.request.headers["X-Idempotency-Key"] for call in route.calls}
+    assert len(keys) == 1  # the retry replays, it does not re-mint
+    assert "idempotency key" in capsys.readouterr().err
+
+
+@respx.mock
+def test_write_5xx_is_retried_with_same_idempotency_key(config, no_backoff):
+    route = respx.post("https://api.example.com/v1/accounts").mock(
+        side_effect=[_envelope(503, "UNAVAILABLE"), httpx.Response(201, json={"id": "a"})]
+    )
+    with ExpenseClient(config) as client:
+        result = client.post("/accounts", json_body={"name": "x"})
+
+    assert result == {"id": "a"}
+    assert route.call_count == 2
+    keys = {call.request.headers["X-Idempotency-Key"] for call in route.calls}
+    assert len(keys) == 1
+
+
+@respx.mock
+def test_write_retry_is_bounded_then_raises_connection_error(config, no_backoff):
+    route = respx.post("https://api.example.com/v1/accounts").mock(
+        side_effect=httpx.TimeoutException("timed out")
+    )
+    with ExpenseClient(config) as client, pytest.raises(EngineConnectionError):
+        client.post("/accounts", json_body={"name": "x"})
+
+    assert route.call_count == 3
+
+
+@respx.mock
+def test_write_5xx_exhaustion_surfaces_the_engine_error(config, no_backoff):
+    route = respx.post("https://api.example.com/v1/accounts").mock(
+        return_value=_envelope(503, "UNAVAILABLE")
+    )
+    with ExpenseClient(config) as client, pytest.raises(EngineError) as exc:
+        client.post("/accounts", json_body={"name": "x"})
+
+    assert route.call_count == 3
+    assert exc.value.status == 503  # the final envelope still renders verbatim
+
+
+@respx.mock
+def test_write_connect_error_fails_fast(config, no_backoff):
+    """Connect-refused means the engine isn't there — no retry, no ambiguity."""
+    route = respx.post("https://api.example.com/v1/accounts").mock(
+        side_effect=httpx.ConnectError("refused")
+    )
+    with ExpenseClient(config) as client, pytest.raises(EngineConnectionError):
+        client.post("/accounts", json_body={"name": "x"})
+
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_write_4xx_is_not_retried(config, no_backoff):
+    route = respx.post("https://api.example.com/v1/accounts").mock(
+        return_value=_envelope(422, "VALIDATION_ERROR")
+    )
+    with ExpenseClient(config) as client, pytest.raises(EngineError):
+        client.post("/accounts", json_body={"name": "x"})
+
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_read_timeout_is_not_retried(config, no_backoff):
+    route = respx.get("https://api.example.com/v1/auth/me").mock(
+        side_effect=httpx.TimeoutException("timed out")
+    )
+    with ExpenseClient(config) as client, pytest.raises(EngineConnectionError):
+        client.get("/auth/me")
+
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_read_5xx_is_not_retried(config, no_backoff):
+    route = respx.get("https://api.example.com/v1/auth/me").mock(
+        return_value=_envelope(500, "INTERNAL")
+    )
+    with ExpenseClient(config) as client, pytest.raises(EngineError):
+        client.get("/auth/me")
+
+    assert route.call_count == 1
+
+
 @respx.mock
 def test_verbose_dump_redacts_authorization(config, capsys):
     respx.get("https://api.example.com/v1/auth/me").mock(
