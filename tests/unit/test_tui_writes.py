@@ -5,7 +5,7 @@ engine endpoint would be called via the ConfirmModal → run_write path.
 """
 
 import asyncio
-import time
+import threading
 
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen
@@ -68,12 +68,18 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
     """
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
     real_post = fake_client.post
+    release = threading.Event()
 
-    def slow_post(path, json_body=None):
-        time.sleep(0.15)  # keep the write worker observable in flight
+    def gated_post(path, json_body=None):
+        # Hold the write in flight until the test releases it. A fixed sleep is
+        # racy: pilot.press awaits Textual's CPU-idleness heuristic, which on a
+        # busy runner doesn't return until the whole write (sleep + refresh +
+        # reload) has finished, so the engine-write worker is already gone by
+        # the time we snapshot app.workers. The gate makes the window definite.
+        release.wait(2.0)
         return real_post(path, json_body=json_body)
 
-    fake_client.post = slow_post
+    fake_client.post = gated_post
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
@@ -91,14 +97,26 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
             )
             await pilot.press("a")  # archive → ConfirmModal
             await pilot.pause(0.05)
-            await pilot.press("y")  # confirm → slow run_write
-            write_workers = [w for w in app.workers if w.group == "engine-write"]
-            assert write_workers, "write worker not running in its own group"
+            await pilot.press("y")  # confirm → gated run_write
+            # Poll (don't snapshot) until the write worker registers — it's
+            # blocked in gated_post, so this state is stable, not fleeting.
+            await wait_for(
+                pilot,
+                lambda: [w for w in app.workers if w.group == "engine-write"],
+                message="write worker not running in its own group",
+            )
+            write_worker = next(w for w in app.workers if w.group == "engine-write")
             await pilot.press("r")  # refresh while the write is in flight
+            await pilot.pause(0.05)
+            assert not write_worker.is_cancelled, "refresh cancelled the in-flight write"
+            release.set()  # let the gated write complete
             await wait_for(pilot, lambda: fake_client.calls)
-            assert not write_workers[0].is_cancelled
+            assert not write_worker.is_cancelled
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()  # never leave the worker thread blocked on the gate
     assert ("POST", "/accounts/a1/archive") in fake_client.requests
 
 
