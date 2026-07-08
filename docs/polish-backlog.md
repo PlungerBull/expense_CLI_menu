@@ -328,8 +328,164 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   backstop for unit tests (pytest-socket or a global
   `respx.mock(assert_all_mocked=True)`).
 
+## 6. Multi-agent review 2026-07-07 (branch `feat/expense-import`)
+
+Source: 8-angle parallel review (line-by-line, removed-behavior, cross-file,
+reuse, simplification, efficiency, altitude, conventions) over
+`git diff main...HEAD`. Items 6.1/6.2 were **spot-verified by reading the
+cited code**; the rest were surfaced by the review and should be reconfirmed
+at their line when picked up (same rule as the sections above). Findings that
+merely duplicate an existing section-5 nit were dropped; **upgrades** to an
+existing item are marked.
+
+### 6.1 Crashes (verified)
+
+- [ ] **`cache/db.py:213` — `wipe()` crashes for an extensionless
+  `EXPENSE_CACHE`.** `path.with_suffix(path.suffix + "-wal")` raises
+  `ValueError: Invalid suffix '-wal'` when the cache path has no dot (a
+  documented env override, e.g. `EXPENSE_CACHE=/home/u/expense-cache`).
+  `wipe()` runs on every cold-start and on `config set --token`, so the first
+  cached read or a token change dumps a raw traceback. Default path
+  (`.sqlite3`) is unaffected, which is why tests miss it. Fix:
+  `path.parent / (path.name + "-wal")`.
+
+- [ ] **`cache/sync.py:104,191` — bare `RuntimeError` escapes `handle_errors`
+  as a raw traceback.** `_derive_user_id` (settings null + every resource
+  empty) and `_fetch` (engine omits `sync_token`) raise `RuntimeError`, which
+  `errors.handle_errors` does not catch (it catches only the five domain
+  errors). Reachable: a fresh user installs a PAT and runs `expense accounts
+  list` **before** `auth bootstrap` → cold-start derives no user_id → full
+  traceback instead of a "run auth bootstrap" hint. The TUI path is fine (it
+  wraps in `except Exception`). Fix: raise a domain error (or a new
+  `SyncContractError` that `handle_errors` renders).
+
+### 6.2 TUI correctness (verified / high-confidence)
+
+- [ ] **`tui/screens/reconciliations.py:682` — detail `_populate` does the
+  unserialized `#rlist` swap that `SectionScreen._swap_lock` (just added in
+  `0fc1513`) exists to prevent.** `_load_txns` never checks `is_cancelled`
+  (cooperative cancellation), so pressing `r` while a toggle-failure resync is
+  finishing lets two `_populate` coroutines interleave their
+  remove/mount and stack two `CheckList`s with duplicate rows; toggles then
+  fire against the stale one. Fix: reuse the same lock/cancellation discipline
+  on the detail screen.
+
+- [ ] **`tui/screens/reconciliations.py:633` + list `fetch` (~:142) — refresh
+  searches only page 1, falsely reports a batch deleted.**
+  `_load_txns(refresh_record=True)` scans `items_of(fetch_reconciliations(cfg,
+  **kw))` with no `limit/offset`, so a reconciliation past the cache's default
+  100-row page is `None` → `_record_gone()` dismisses the open screen with
+  "no longer exists"; the list screen truncates the same way, so
+  `ctrl+up/down` reorder acts on wrong neighbors. Fix: fetch the single record
+  by id (the `reconcile get` / `cache.get_reconciliation` path already
+  exists) instead of scanning the collection.
+
+- [ ] **`tui/screens/reconciliations.py:217` — `on_cursor_list_highlighted`
+  guards on `_mode` but not on the event's source list.** While `_mode ==
+  "accts"`, a `Highlighted` from the *batches* pane (reachable by Tab/click
+  focus without a select) is written to `self._acct_idx`, silently switching
+  the selected account; a following `n` then creates the new batch under the
+  wrong account. Fix: ignore events whose `event.control` isn't the accounts
+  list.
+
+- [ ] **`tui/screens/system.py:224` — TUI Bootstrap crashes when timezone
+  detection fails** (*upgrades the §5 "promote `_detect_timezone`" nit from
+  cleanup to crash*). `_bootstrap` calls `auth_cmd._detect_timezone()` on the
+  UI thread with no guard; it raises `typer.BadParameter` (whose text even
+  says "Pass --timezone explicitly", a flag the TUI lacks) on systems where
+  `/etc/localtime` isn't a zoneinfo symlink (some containers/WSL) → unhandled
+  exception through Textual's message pump crashes the app. Promoting the
+  helper to raise a neutral error the TUI can catch fixes both.
+
+- [ ] **`tui/screens/quick_log.py` name-resolution — `None[:8]` on a missing
+  reference id.** The inline `names.get(id, id[:8])` copies (quick_log
+  `_resolve`/`_tag_display_names`, `reconciliations.py:69,585`) raise
+  `TypeError` on a null `account_id`/`category_id` where the shared
+  `_resource.resolve_name` returns an em-dash. Fix folds into 6.4's
+  resolve_name consolidation.
+
+### 6.3 Convention / error surfacing
+
+- [ ] **`import_/apply.py:192,234` — import error summary drops the engine
+  envelope's `fields`.** Failure lines hand-roll `f"{err.code}: {err.message}"`
+  instead of the shared `format_error` (already imported for connection errors
+  in this file), so a 422 from `transactions batch` loses the per-row field
+  detail — violates CLAUDE.md "Engine errors surface cleanly … never reformat
+  lossily" (the sanctioned `import --json` exception covers the summary shape,
+  not lossy human errors). Fix: render failures through `format_error`.
+
+- [ ] **`tui/screens/system.py:112` — TUI ConfigScreen skips the engine-URL
+  validation the CLI got in backlog 3.4.** `_save` writes `engine_url`
+  straight through `config.save()`, so a scheme-less/malformed URL entered via
+  the TUI saves "Config saved." then fails every later call with a generic
+  connection error — the exact late-failure 3.4 removed for `config set`. Fix:
+  hoist `_validate_engine_url` into `expense/config.py` so both entry points
+  inherit it.
+
+### 6.4 Reuse & altitude (maintenance risk, not live bugs)
+
+- [ ] **Three hand-rolled "fetch every page" loops with three different
+  termination rules** — `import_/apply.py:51` (`_list_all`, stops on
+  `total is None`), `tui/screens/reconciliations.py:500` (`_fetch_all_txns`,
+  stops on short page), `commands/reconcile_cmd.py:~632` (chain, total-vs-len)
+  — each hard-codes the engine's 200 cap in its own constant. This is the
+  class behind backlog 3.3; the next cap/off-by-one fix must land in all three
+  or one surface silently truncates. Hoist one `fetch_all_pages` helper into
+  `_resource.py`.
+
+- [ ] **`run_write` (`_base.py`) doesn't actually serialize writes despite the
+  exclusivity its docstring implies.** Thread-worker cancellation is
+  cooperative and `run_write` never checks `is_cancelled`, so rapid repeated
+  writes on any screen (e.g. double-pressing archive) fire overlapping,
+  unordered PUTs — the general form of the checklist-toggle race fixed
+  screen-locally in 3.2. Centralize serialization in the mixin.
+
+- [ ] **Duplicated inline id→name resolution and account-picker builders.**
+  Four copies of `names.get(id, id[:8])` (see 6.2) and three copies of the
+  `(id, name-or-'(unnamed)', currency)` account-choices build
+  (`quick_log._load_entities`, `reconciliations._load_accounts`,
+  `ReconciliationsScreen.fetch`) that already filter people differently —
+  route through `_resource.resolve_name` and one shared account-choices helper.
+
+- [ ] **Duplicated row/branch builders**: `batch_rows` vs `reconciliation_rows`
+  (same file, differ only by the leading Account cell); `AccountsScreen` /
+  `CategoriesScreen` / `HashtagsScreen` are the same ~80-line screen pasted
+  three times; `errors.render` is four near-identical branches (two added this
+  branch) that a `{ExcType: (code, exit)}` table would collapse;
+  `import_/apply.py:72 resolve_or_create` is three near-identical
+  resolve-or-POST blocks; the 10-site quiet-fetch kwarg incantation
+  (`cold_start_notice=False, notice_stream=StringIO()`) wants a
+  `SectionScreen` helper. All one edit from silent drift.
+
+- [ ] **`import_/plan.py:67` — unreachable duplicate-row skip branch.**
+  `tx_id_for` hashes `stable_row_key`, which embeds the unique `row.line`, so
+  `tid in seen_ids` can never be true; the branch is dead and advertises a
+  content-dedup that doesn't exist (the misunderstanding behind 1.3). Delete
+  it or make the key content-based if dedup is actually wanted.
+
+### 6.5 Efficiency (personal-scale, note or fix opportunistically)
+
+- [ ] **Checklist toggle fires a full delta sync per toggle**
+  (`reconciliations.py` `_pump_toggles` → `run_write` → `refresh_after_write`).
+  Reconciling a statement (15–30 toggles) becomes 2 engine round-trips each
+  against Render. Add a skip-refresh flag for queued toggles and run one delta
+  sync when the queue drains.
+
+- [ ] **`quick_log._load_entities` reads each table twice** — `fetch_*` for the
+  suggestion pools then `load_*_name_map()` again — six list queries per form
+  open where three (with `include_archived`) would feed both.
+
+- [ ] **Name maps loaded on the UI thread** in `reconciliations._render_header`
+  and `outstanding.build` (`load_*_name_map()` = a full-table SQLite read on
+  the render path) — blocks first paint and can stall on the cache busy-timeout
+  if a concurrent `expense sync` holds the lock. Resolve names worker-side like
+  `transactions.py` does.
+
 ## Suggested sequencing
 
+0. **Section 6 crashes first** — 6.1 (both are one-line fixes with an obvious
+   regression test) then 6.2 reconciliation-detail race/paging before any more
+   reconcile TUI work.
 1. **Section 1** — the security hole and the four silent-data-loss bugs;
    each is small and independently shippable with a regression test.
 2. **1.6 + 4.4 together** — fix the contract test and pin deps in one pass
