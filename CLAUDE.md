@@ -41,7 +41,8 @@ Docs must outlive any one contributor, session, or AI model. Three durability ru
 
 ## Dev loop
 
-- **Install:** `pip install -e ".[dev]" -c constraints.txt` — entry point is `expense` (TUI via `expense world`). `constraints.txt` pins the direct deps CI installs; refresh = bump a pin, merge on green CI.
+- **Single branch — `main` only.** This repo has exactly one branch; no feature branches exist. Commit and push straight to `main` (this overrides any default "branch first" habit). CI runs on push to `main`; if a change needs isolating, use a throwaway git worktree, not a branch that outlives the work.
+- **Install:** `pip install -e ".[dev]" -c constraints.txt` — entry point is `expense` (TUI via `expense world`). `constraints.txt` pins the direct deps CI installs; refresh = bump a pin, land on `main` on green CI.
 - **Test:** `pytest tests/unit` (fast, respx-mocked, hermetic — an autouse fixture in [tests/unit/conftest.py](tests/unit/conftest.py) redirects `EXPENSE_CONFIG`/`EXPENSE_CACHE`; never bypass it). `tests/contract/` hits the **live production engine**, gated on `PYTEST_LIVE=1` (+ `EXPENSE_PAT`) — never set casually.
 - **Lint/format/types:** `ruff check . && ruff format .` plus scoped `mypy` (permissive, `[tool.mypy]` covers `http.py`/`config.py`/`errors.py`/`cache/` — widen as modules get annotated). CI (matrix 3.11/3.12/3.13, deps pinned via `constraints.txt`) enforces ruff check + format, mypy, and `pytest tests/unit --cov` (coverage reported, not gated); pre-commit runs gitleaks + ruff `--fix` + ruff-format + mypy. Line length 100, target py311.
 - **Careful running live:** plain `expense …` commands use the developer's real `~/.expense-config` and hit the production engine. Don't run writes ad hoc. Full ops guide — isolation levers, PAT provisioning, what the contract suite actually does: [docs/cli-runtime.md](docs/cli-runtime.md) "Working against the live engine".

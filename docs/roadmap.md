@@ -42,7 +42,7 @@ Pure plumbing — no engine calls, no product decisions. Unblocked by the PAT vs
 4. **Test scaffold** — `pytest` with `respx` for mocking httpx responses. Directory layout: `tests/unit/` (respx-mocked), `tests/contract/` (hits staging engine only when `PYTEST_LIVE=1`). One placeholder test per directory proves the harness works.
 5. **GitHub Actions CI** — single workflow on push + PR: install, ruff check, ruff format check, pytest (unit only — contract tests stay manual until staging creds are wired).
 
-**Verify:** `pip install -e . && expense --help` works from a fresh shell in any directory. `pytest` runs green. Push a branch — CI goes green.
+**Verify:** `pip install -e . && expense --help` works from a fresh shell in any directory. `pytest` runs green. Push to `main` — CI goes green.
 
 **Commit:** `chore: packaging + test scaffold + CI`
 

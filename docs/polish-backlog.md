@@ -328,11 +328,11 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   backstop for unit tests (pytest-socket or a global
   `respx.mock(assert_all_mocked=True)`).
 
-## 6. Multi-agent review 2026-07-07 (branch `feat/expense-import`)
+## 6. Multi-agent review 2026-07-07 (since merged to `main`)
 
 Source: 8-angle parallel review (line-by-line, removed-behavior, cross-file,
-reuse, simplification, efficiency, altitude, conventions) over
-`git diff main...HEAD`. Items 6.1/6.2 were **spot-verified by reading the
+reuse, simplification, efficiency, altitude, conventions) over the review's
+change set (since merged to `main` — the repo is single-branch). Items 6.1/6.2 were **spot-verified by reading the
 cited code**; the rest were surfaced by the review and should be reconfirmed
 at their line when picked up (same rule as the sections above). Findings that
 merely duplicate an existing section-5 nit were dropped; **upgrades** to an
@@ -450,8 +450,8 @@ existing item are marked.
 - [ ] **Duplicated row/branch builders**: `batch_rows` vs `reconciliation_rows`
   (same file, differ only by the leading Account cell); `AccountsScreen` /
   `CategoriesScreen` / `HashtagsScreen` are the same ~80-line screen pasted
-  three times; `errors.render` is four near-identical branches (two added this
-  branch) that a `{ExcType: (code, exit)}` table would collapse;
+  three times; `errors.render` is four near-identical branches (two added
+  recently) that a `{ExcType: (code, exit)}` table would collapse;
   `import_/apply.py:72 resolve_or_create` is three near-identical
   resolve-or-POST blocks; the 10-site quiet-fetch kwarg incantation
   (`cold_start_notice=False, notice_stream=StringIO()`) wants a
