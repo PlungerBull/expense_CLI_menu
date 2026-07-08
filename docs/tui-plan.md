@@ -138,14 +138,19 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 > (account/category/hashtag), full Reconciliations screen (assign/complete/revert/delete +
 > account-first browse + reorder), Config, Auth & profile, and the **Sync · Activity ·
 > Rates** system-read screens.
-> **Remaining before parity:** the **Monthly report** screen (still a `"soon"` stub on the
-> home menu).
+> **Remaining before parity:** (1) the **Monthly report** screen (still a `"soon"` stub on
+> the home menu); (2) the **Manage edit flow** — Accounts/Categories/Hashtags have New (`n`)
+> and Archive (`a`) but no way to rename/recolor, and `enter` today opens a raw read-only
+> field dump. **Decided direction (2026-07-07, approved):** `enter` opens an *editable*
+> detail screen (reuse the create bar-form, prefilled) with archive/unarchive as an action
+> *inside* it — folding the bare `a` hotkey into the detail. Needs a mockup before build.
 - **Confirm modal** (one component) for promote / delete / archive / restore /
   complete / revert / sync — reuses idempotency + error envelope.
 - **The transaction form** (Log / Inbox-add / Transaction-edit — same fields): required
   fields, signed-amount validation, **tri-state cleared**, hashtag multi-select,
   **conditional transfer sub-flow** (opposite-sign rule), inline 422 surfacing.
-- **Small forms** (reuse the form component): account, category, hashtag create/edit.
+- **Small forms** (reuse the form component): account, category, hashtag create ✅ /
+  edit ⏳ (edit is the decided-but-unbuilt `enter`→editable-detail flow above).
 - **Reconciliation** create/edit form; reorder — shell out to the existing `$EDITOR`
   flow first, native reorder later.
 - **Config / Auth & profile** forms. Post-write refresh reuses `refresh_after_write`.

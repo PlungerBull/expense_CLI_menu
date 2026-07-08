@@ -77,18 +77,28 @@ Screen {
     height: auto;
 }
 
-/* modal screens — center the auto-sized #modal box (else it collapses top-left) */
+/* modal screens — center the #modal box (else it collapses top-left) */
 RecordModal, SnapshotModal, ConfirmModal, PromptModal {
     align: center middle;
 }
+/* width is DEFINITE, not `auto`: inside `align: center middle` on Textual 8.x,
+   `width: auto` measures to 0, collapsing the box to an empty border (Enter's
+   detail view, the archive/delete confirm, and activity before/after all went
+   invisible). max-width keeps it inside narrow terminals. Guarded by
+   tests/unit/test_tui_modals.py so a Textual bump can't silently re-break it. */
 #modal {
-    width: auto;
+    width: 72;
     max-width: 90%;
     height: auto;
     max-height: 80%;
     border: round $surface;
     background: $panel;
     padding: 1 2;
+}
+/* confirm/prompt carry short messages — a narrower box reads better */
+ConfirmModal #modal, PromptModal #modal {
+    width: 52;
+    max-width: 90%;
 }
 .modal-title {
     color: $accent;
