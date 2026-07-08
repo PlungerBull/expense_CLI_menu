@@ -40,7 +40,7 @@ Pure plumbing — no engine calls, no product decisions. Unblocked by the PAT vs
 2. **Lint + format** — `ruff check` + `ruff format` configured in `pyproject.toml`. Optional `mypy` for the Pydantic models layer.
 3. **Pre-commit hook** — runs ruff on staged files. Keeps style drift out of commits.
 4. **Test scaffold** — `pytest` with `respx` for mocking httpx responses. Directory layout: `tests/unit/` (respx-mocked), `tests/contract/` (hits staging engine only when `PYTEST_LIVE=1`). One placeholder test per directory proves the harness works.
-5. **GitHub Actions CI** — single workflow on push + PR: install, ruff check, ruff format check, pytest (unit only — contract tests stay manual until staging creds are wired).
+5. **GitHub Actions CI** — single workflow on push to `main`: install, ruff check, ruff format check, pytest (unit only — contract tests stay manual until staging creds are wired).
 
 **Verify:** `pip install -e . && expense --help` works from a fresh shell in any directory. `pytest` runs green. Push to `main` — CI goes green.
 
