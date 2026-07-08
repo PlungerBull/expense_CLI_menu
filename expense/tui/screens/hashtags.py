@@ -1,9 +1,9 @@
-"""Hashtags screen — cross-cutting tags (read-only browse for Phase 1).
+"""Hashtags screen — cross-cutting tags.
 
 A plain list (Name / Status), consistent with the other list screens, rather
 than the chip mockup — usage counts would need engine support the list endpoint
-doesn't provide. Archived rows dimmed; `enter` opens the detail modal.
-New/rename/archive land in Phase 2.
+doesn't provide. Archived rows dimmed. `n` creates; `enter` opens the record
+detail (HashtagDetailScreen), where `e` renames and `a` archives.
 """
 
 import io
@@ -15,7 +15,7 @@ from textual.widgets import Static
 from expense.commands import hashtags_cmd
 from expense.commands._resource import items_of
 from expense.tui.screens._base import SectionScreen
-from expense.tui.screens.modals import RecordModal
+from expense.tui.screens.manage_detail import HashtagDetailScreen
 from expense.tui.widgets.cursor_list import CursorList
 
 _HEADERS = ["Name", "Status"]
@@ -35,14 +35,11 @@ def hashtag_rows(items: list[dict]) -> list:
 class HashtagsScreen(SectionScreen):
     crumb = ("Manage", "Hashtags")
     CARD_WIDTH = 48
-    BINDINGS = [("a", "archive", "Archive"), ("n", "new", "New")]
+    BINDINGS = [("n", "new", "New")]  # archive lives on the detail (enter), not the list
 
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
-
-    def action_archive(self) -> None:
-        self.archive_selected("hashtags", "hashtag")
 
     def action_new(self) -> None:
         from expense.tui.screens.create_forms import NewHashtagScreen
@@ -73,4 +70,4 @@ class HashtagsScreen(SectionScreen):
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
         item = self._by_id.get(event.key)
         if item:
-            self.app.push_screen(RecordModal(f"Hashtag · {item.get('name') or '—'}", item))
+            self.app.push_screen(HashtagDetailScreen(item), lambda _result: self._load())

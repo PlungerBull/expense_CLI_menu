@@ -1,7 +1,9 @@
-"""Phase 2 write-action smoke tests (Inbox promote/delete, Accounts archive).
+"""Phase 2 write-action smoke tests (Inbox promote/delete + write-worker
+isolation / content-swap serialization on a SectionScreen).
 
 Uses a fake HTTP client so nothing real is mutated — asserts the right
 engine endpoint would be called via the ConfirmModal → run_write path.
+Manage-list archive moved to the record detail — see test_tui_manage_detail.py.
 """
 
 import asyncio
@@ -53,20 +55,16 @@ def test_inbox_delete_calls_engine(fake_client, monkeypatch):
     assert ("DELETE", "/inbox/i1") in fake_client.requests
 
 
-def test_accounts_archive_calls_engine(fake_client, monkeypatch):
-    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
-
-    asyncio.run(_drive(ExpenseApp(no_cache=True), AccountsScreen(), "a", fake_client))
-    assert ("POST", "/accounts/a1/archive") in fake_client.requests
-
-
 def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
     """`r` mid-write must not cancel the engine-write worker (backlog 3.2).
 
     run_write and _load used to share the default exclusive group, so a
-    refresh or theme change cancelled an in-flight write worker.
+    refresh or theme change cancelled an in-flight write worker. Exercised on
+    Inbox promote (a SectionScreen list write + inherited `r` refresh).
     """
-    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
+    monkeypatch.setattr("expense.commands.inbox_cmd.fetch_inbox", lambda *a, **k: {"items": INBOX})
+    monkeypatch.setattr("expense.tui.screens.inbox.load_account_name_map", lambda: {})
+    monkeypatch.setattr("expense.tui.screens.inbox.load_category_name_map", lambda: {})
     real_post = fake_client.post
     release = threading.Event()
 
@@ -84,7 +82,7 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
-            screen = AccountsScreen()
+            screen = InboxScreen()
             await app.push_screen(screen)
             from expense.tui.widgets.cursor_list import CursorList
 
@@ -95,7 +93,7 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
                     and not app.screen.query("#content LoadingIndicator")
                 ),
             )
-            await pilot.press("a")  # archive → ConfirmModal
+            await pilot.press("p")  # promote → ConfirmModal
             await pilot.pause(0.05)
             await pilot.press("y")  # confirm → gated run_write
             # Poll (don't snapshot) until the write worker registers — it's
@@ -117,7 +115,7 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
         asyncio.run(scenario())
     finally:
         release.set()  # never leave the worker thread blocked on the gate
-    assert ("POST", "/accounts/a1/archive") in fake_client.requests
+    assert ("POST", "/inbox/i1/promote") in fake_client.requests
 
 
 def test_concurrent_content_swaps_mount_one_card(fake_client, monkeypatch):
@@ -147,32 +145,3 @@ def test_concurrent_content_swaps_mount_one_card(fake_client, monkeypatch):
             assert len(screen.query("#card")) == 1
 
     asyncio.run(scenario())
-
-
-ARCHIVED = [{"id": "a1", "name": "BCP", "is_person": False, "is_archived": True, "color": None}]
-
-
-def test_accounts_unarchive_is_direct(fake_client, monkeypatch):
-    """Unarchive skips the ConfirmModal (backlog 4.7 — mirrors the flat CLI, 1.2)."""
-    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ARCHIVED)
-
-    async def scenario():
-        app = ExpenseApp(no_cache=True)
-        async with app.run_test() as pilot:
-            screen = AccountsScreen()
-            await app.push_screen(screen)
-            from expense.tui.widgets.cursor_list import CursorList
-
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
-            await pilot.press("a")  # unarchive: no modal, straight to the write
-            await wait_for(pilot, lambda: fake_client.calls)
-            assert not isinstance(app.screen, ConfirmModal)
-
-    asyncio.run(scenario())
-    assert ("POST", "/accounts/a1/unarchive") in fake_client.requests

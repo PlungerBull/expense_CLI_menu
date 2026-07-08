@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — Manage edit flow (Accounts / Categories / Hashtags)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     Manage EDIT flow — the decided-but-unbuilt piece from tui-plan Phase 2.
+     Today: Accounts/Categories/Hashtags have New (n) + Archive (a) but NO
+     rename/recolor, and `enter` opens a raw read-only field dump (which was
+     also collapsing to a black box — fixed 2026-07-07 in app.tcss).
+     This sketch proposes how `enter` should behave. TWO options are drawn;
+     the user picks ONE before any code is written (CLAUDE.md mockup rule).
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --term:#121216; --panel:#1d1d22;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9db1c2; --sel:#2b303a;
+    --pos:#7fbf8f; --warn:#d6b878; --neg:#cf8d8d;
+    --blue:#4a90d9; --green:#5ab87a; --red:#d96a5a;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:22px;
+       padding:38px 20px 70px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  .lbl{width:min(1040px,100%);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .step{width:min(1040px,100%);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:14px}
+  .duo{width:min(1040px,100%);display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .term{background:var(--term);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:12.5px;line-height:1.55}
+  .solo{width:min(1040px,100%)}
+  .bar{display:flex;align-items:center;gap:9px;padding:8px 13px;background:#101015}
+  .ttl{color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .tag{margin-left:auto;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+       padding:2px 9px;border-radius:999px;border:1px solid var(--dimmer);color:var(--accent)}
+  .tag.rec{color:var(--pos);border-color:#2f4636}
+  .tag.now{color:var(--warn);border-color:#43381f}
+  .tag.alt{color:var(--muted);border-color:var(--dimmer)}
+  .screen{padding:13px 16px 15px}
+  .crumb{color:var(--muted);font-size:12.5px;margin-bottom:10px}
+  .crumb b{color:var(--text)} .crumb .s{color:var(--dimmer)}
+  .sect{color:var(--text);font-weight:600;margin:2px 0 8px}
+  .expl{color:var(--dim);font-size:11.5px;margin-bottom:10px}
+  .legend{color:var(--dim);font-size:11.5px;margin-top:11px;border-top:1px solid #20202a;padding-top:8px}
+  .legend b{color:var(--accent);font-weight:600}
+
+  /* read-detail key/value grid */
+  .kv{display:grid;grid-template-columns:96px 1fr;gap:4px 16px;margin:2px 0 4px}
+  .kv .k{color:var(--dim)}
+  .kv .ro{color:var(--dim);font-size:11px;margin-left:8px}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px;margin-right:6px}
+  .neg{color:var(--neg)} .pos{color:var(--pos)}
+  .lock{color:var(--warn)}
+
+  /* bar-form representation */
+  .inbar{display:flex;align-items:stretch;border:1px solid #2c3340;border-radius:8px;margin:2px 0 8px;overflow:hidden}
+  .inbar .fld{background:#14161b;color:var(--accent);font-weight:700;padding:6px 12px;min-width:120px;
+              border-right:1px solid #23232a;letter-spacing:.04em}
+  .inbar .val{padding:6px 12px;flex:1;color:var(--text)}
+  .inbar .cur{color:var(--accent)}
+  .hint{color:var(--dim);font-size:11.5px;margin:0 0 8px 2px}
+  .sug{margin:2px 0 8px 2px}
+  .sug .o{padding:2px 10px;border-radius:5px;color:var(--muted)}
+  .sug .o.on{background:var(--sel);color:var(--text)}
+  .summ{display:grid;grid-template-columns:110px 1fr;gap:3px 14px;margin:6px 0 2px}
+  .summ .sk{color:var(--dim)} .summ .sk.on{color:var(--text);font-weight:700}
+  .summ .sv .ro{color:var(--dim);font-size:11px;margin-left:8px}
+  .summ .sv.empty{color:var(--dim)}
+
+  /* confirm modal */
+  .modal{border:1px solid #2c3340;border-radius:10px;background:var(--panel);padding:12px 16px;margin:6px auto;max-width:360px}
+  .modal .mt{color:var(--accent);font-weight:700;margin-bottom:5px}
+  .modal .mm{color:var(--text)} .modal .mk{color:var(--dim);font-size:11.5px;margin-top:8px}
+
+  .note{width:min(1040px,100%);color:var(--dim);font-size:12.5px;line-height:1.6}
+  .note b{color:var(--muted)} .note .hd{color:var(--accent);letter-spacing:.12em;text-transform:uppercase;font-size:11.5px}
+  .note .q{color:var(--warn)}
+  .note ol{margin:6px 0 0;padding-left:20px} .note li{margin:5px 0}
+</style>
+</head>
+<body>
+
+<div class="lbl">expense world — Manage EDIT flow · Accounts · Categories · Hashtags
+  <span><br/>The gap: these three screens can create (<b>n</b>) and archive (<b>a</b>) but can't rename/recolor,
+  and <b>enter</b> opens a raw field dump. Below: the problem today, then <b style="color:var(--pos)">two options</b>
+  for what <b>enter</b> should do. Pick one — nothing gets built until you do.</span>
+</div>
+
+<!-- ============ TODAY ============ -->
+<div class="step">0 · Today — enter dumps raw fields; a archives from the list</div>
+<div class="duo">
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>enter</b> on a row → raw read-only dump (now renders after the 07-07 fix)</div><span class="tag now">now</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Accounts</div>
+      <div class="sect">Account · BCP USD</div>
+      <div class="kv" style="grid-template-columns:150px 1fr">
+        <span class="k">id</span><span>a1f0…9c</span>
+        <span class="k">name</span><span>BCP USD</span>
+        <span class="k">is_person</span><span>False</span>
+        <span class="k">currency_code</span><span>PEN</span>
+        <span class="k">color</span><span>#4a90d9</span>
+        <span class="k">current_balance_cents</span><span>−74.95</span>
+        <span class="k">is_archived</span><span>False</span>
+      </div>
+      <div class="legend"><b>esc</b> close — that's all. No edit, no status change here.</div>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>a</b> archives whatever row the cursor sits on — from any list</div><span class="tag now">now</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Accounts</div>
+      <div class="sect">Accounts — banks &amp; people</div>
+      <div class="kv" style="grid-template-columns:1fr 60px 90px">
+        <span class="k" style="color:var(--text)">BCP USD</span><span class="k">bank</span><span class="neg">−74.95</span>
+        <span style="background:var(--sel);border-radius:4px;padding:0 4px">Interbank PEN</span><span class="k" style="background:var(--sel)">bank</span><span class="pos" style="background:var(--sel);border-radius:4px">0.00</span>
+        <span class="k" style="color:var(--text)">Fondo Mutuo</span><span class="k">bank</span><span class="pos">2,222.21</span>
+      </div>
+      <div class="legend"><b>a</b> archive · <b>n</b> new · <b>r</b> refresh · <b>esc</b> back
+        &nbsp;— <span class="q">your concern: a fires on any list, disconnected from a detail view.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ OPTION A ============ -->
+<div class="step">Option A · enter opens the editable form directly (the literally-approved wording)</div>
+<div class="duo">
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>enter</b> → prefilled bar-form · on the NAME field</div><span class="tag alt">option a</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Accounts <span class="s">›</span> <b>BCP USD</b></div>
+      <div class="inbar"><div class="fld">NAME</div><div class="val">BCP USD<span class="cur">▏</span></div></div>
+      <div class="hint">edit the name · ^s save · ^↑/^↓ move field · esc cancel</div>
+      <div class="summ">
+        <span class="sk on">name</span><span class="sv">BCP USD</span>
+        <span class="sk">currency</span><span class="sv">PEN <span class="ro">read-only</span></span>
+        <span class="sk">color</span><span class="sv"><span class="sw" style="background:var(--blue)"></span>blue</span>
+        <span class="sk">status</span><span class="sv">active <span class="ro">↵ here → archive</span></span>
+      </div>
+      <div class="legend"><b>^s</b> save · <b>^↑/^↓</b> field · on <b>status</b>: <b>↵</b> archive/unarchive · <b>esc</b> cancel</div>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl">on the COLOR field → swatch picker (same as New)</div><span class="tag alt">option a</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Accounts <span class="s">›</span> <b>BCP USD</b></div>
+      <div class="inbar"><div class="fld">COLOR</div><div class="val">blue<span class="cur">▏</span></div></div>
+      <div class="hint">pick a swatch · ↑/↓ choose · ↵ set · ^s save</div>
+      <div class="sug">
+        <div class="o on"><span class="sw" style="background:var(--blue)"></span>blue</div>
+        <div class="o"><span class="sw" style="background:var(--green)"></span>green</div>
+        <div class="o"><span class="sw" style="background:var(--red)"></span>red</div>
+      </div>
+      <div class="summ">
+        <span class="sk">name</span><span class="sv">BCP USD</span>
+        <span class="sk">currency</span><span class="sv">PEN <span class="ro">read-only</span></span>
+        <span class="sk on">color</span><span class="sv"><span class="sw" style="background:var(--blue)"></span>blue</span>
+        <span class="sk">status</span><span class="sv">active</span>
+      </div>
+      <div class="legend"><b>↑/↓</b> pick · <b>↵</b> set · <b>^s</b> save · <b>esc</b> cancel</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ OPTION B ============ -->
+<div class="step">Option B · enter opens a clean read detail; e edits, a archives (recommended)</div>
+<div class="duo">
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>enter</b> → read detail (contextual · enter never mutates)</div><span class="tag rec">option b · rec</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Accounts <span class="s">›</span> <b>BCP USD</b></div>
+      <div class="sect">BCP USD</div>
+      <div class="kv">
+        <span class="k">Name</span><span>BCP USD</span>
+        <span class="k">Type</span><span>bank</span>
+        <span class="k">Currency</span><span>PEN <span class="ro">read-only</span></span>
+        <span class="k">Color</span><span><span class="sw" style="background:var(--blue)"></span>blue</span>
+        <span class="k">Balance</span><span class="neg">−74.95 PEN</span>
+        <span class="k">Status</span><span>active</span>
+      </div>
+      <div class="legend"><b>e</b> edit · <b>a</b> archive · <b>esc</b> back
+        &nbsp;— a now acts on <b>this</b> record you opened, not a stray list row.</div>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>e</b> → the same prefilled bar-form (name + color)</div><span class="tag rec">option b · rec</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">···</span> BCP USD <span class="s">›</span> <b>Edit</b></div>
+      <div class="inbar"><div class="fld">NAME</div><div class="val">BCP USD<span class="cur">▏</span></div></div>
+      <div class="hint">edit the name · ^s save · esc back to detail</div>
+      <div class="summ">
+        <span class="sk on">name</span><span class="sv">BCP USD</span>
+        <span class="sk">currency</span><span class="sv">PEN <span class="ro">read-only</span></span>
+        <span class="sk">color</span><span class="sv"><span class="sw" style="background:var(--blue)"></span>blue</span>
+      </div>
+      <div class="legend"><b>^s</b> save · <b>^↑/^↓</b> field · <b>esc</b> back to detail</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CATEGORIES + HASHTAGS (Option B chrome) ============ -->
+<div class="step">Same detail for Categories &amp; Hashtags — plus the system-category lock</div>
+<div class="duo">
+  <div class="term">
+    <div class="bar"><div class="ttl">Category · normal</div><span class="tag rec">option b</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Categories <span class="s">›</span> <b>Comida</b></div>
+      <div class="sect">Comida</div>
+      <div class="kv">
+        <span class="k">Name</span><span>Comida</span>
+        <span class="k">Color</span><span><span class="sw" style="background:var(--red)"></span>red</span>
+        <span class="k">System</span><span>—</span>
+        <span class="k">Status</span><span>active</span>
+      </div>
+      <div class="legend"><b>e</b> edit · <b>a</b> archive · <b>esc</b> back</div>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl">Category · system (@Transfer) — <span class="lock">rename/recolor OK · archive hidden</span></div><span class="tag rec">option b</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Categories <span class="s">›</span> <b>@Transfer</b></div>
+      <div class="sect">@Transfer <span class="lock">🔒</span></div>
+      <div class="kv">
+        <span class="k">Name</span><span>@Transfer</span>
+        <span class="k">Color</span><span><span class="sw" style="background:var(--dimmer)"></span>—</span>
+        <span class="k">System</span><span class="lock">yes 🔒</span>
+        <span class="k">Status</span><span>active</span>
+      </div>
+      <div class="legend"><b>e</b> edit (rename/recolor — safe, keyed by system_key) · <span class="lock">no a — archive/delete 403 the transfer pipeline</span> · <b>esc</b> back</div>
+    </div>
+  </div>
+</div>
+<div class="duo" style="margin-top:2px">
+  <div class="term">
+    <div class="bar"><div class="ttl">Hashtag · detail (name-only)</div><span class="tag rec">option b</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Hashtags <span class="s">›</span> <b>#trabajo</b></div>
+      <div class="sect">#trabajo</div>
+      <div class="kv">
+        <span class="k">Name</span><span>#trabajo</span>
+        <span class="k">Status</span><span>active</span>
+      </div>
+      <div class="legend"><b>e</b> edit (rename) · <b>a</b> archive · <b>esc</b> back</div>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl">Archive → the confirm modal (renders now; y required)</div><span class="tag rec">shared</span></div>
+    <div class="screen">
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">···</span> #trabajo</div>
+      <div class="modal">
+        <div class="mt">Archive hashtag?</div>
+        <div class="mm">Archive “#trabajo”.</div>
+        <div class="mk">[y] confirm&nbsp;&nbsp;&nbsp;&nbsp;[enter / n / esc] cancel</div>
+      </div>
+      <div class="legend">unarchive is prompt-free (it undoes, not destroys) — matches the flat CLI.</div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <span class="hd">Why Option B is the recommendation</span><br/>
+  Your stated discomfort was that <b>a</b> fires on <b>any</b> list row. Option B moves <b>a</b> off the list and
+  onto the record you deliberately opened — contextual, not stray — and keeps the <b>enter-never-mutates</b>
+  keymap contract (enter opens a read detail; <b>e</b> edits; <b>a</b> archives). Option A is closer to the
+  original wording (enter → form) but has to solve the "letters type into the input" problem: archive can't be a
+  bare <b>a</b> while the name field is focused, so it becomes a <b>status</b> action-field you cursor to and press
+  ↵ on. Workable, but busier. Both reuse the exact create bar-form for the actual editing.<br/><br/>
+  <span class="hd">Fields, per the engine contract</span><br/>
+  · <b>Account:</b> name + color editable; <b>currency is immutable</b> (PUT rejects it — accounts_cmd.py) → shown
+  read-only. Type/person is not editable (People API unshipped).<br/>
+  · <b>Category:</b> name + color editable.<br/>
+  · <b>Hashtag:</b> name only.<br/><br/>
+  <span class="hd">Decisions — resolved 2026-07-07 (shipped)</span>
+  <ol>
+    <li><b>Model:</b> <b>Option B</b> — enter → read detail; <b>e</b> edit; <b>a</b> archive. Bare <b>a</b> removed
+      from the Manage lists (archive is now contextual to the record you opened).</li>
+    <li><b>System categories:</b> <b>e</b> edit <b>is</b> offered — the engine keys them by <b>system_key</b>, not
+      name, so rename/recolor is pipeline-safe and allowed (engine-spec §Categories); supports localization
+      (@Transfer → @Transferencia). <b>a</b> is hidden — archive/delete deterministically <b>403</b> (they anchor
+      the transfer pipeline), so suppressing the action reflects engine truth, not a client-invented rule.</li>
+    <li><b>Delete:</b> archive-only. The engine <b>409</b>s deletion of any category with transactions and points at
+      archive, so a delete button would dead-end on exactly the categories you'd want to remove.</li>
+  </ol>
+</div>
+
+</body>
+</html>

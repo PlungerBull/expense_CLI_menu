@@ -132,6 +132,7 @@ class BarFormScreen(FormScreen):
         t.add_column("k")
         t.add_column("v")
         for i, f in enumerate(self.FIELDS):
+            locked = f.key in self._locked
             if f.key in self._values:
                 if f.kind == "color":
                     hex_ = self._values[f.key]
@@ -140,8 +141,10 @@ class BarFormScreen(FormScreen):
                     value = Text(str(self._values[f.key]))
             else:
                 value = Text("—" + ("  *" if f.required else "  (optional)"), style="dim")
-            label = Text(f.label.lower())
-            if i == self._current:
+            if locked:  # edit forms lock immutable fields (e.g. account currency)
+                value.append("  read-only", style="dim")
+            label = Text(f.label.lower(), style="dim" if locked else "")
+            if i == self._current and not locked:
                 label.stylize("bold")
             t.add_row(label, value)
         return t
@@ -207,3 +210,76 @@ class NewAccountScreen(BarFormScreen):
         if self._values.get("color"):
             payload["color"] = self._values["color"]
         return payload
+
+
+# --------------------------------------------------------------------------- #
+# Edit forms — same bar-form, prefilled, PUT instead of POST. Reached with `e`
+# on the Manage detail screen (manage_detail.py). Currency is immutable
+# (engine rejects it), so account edit locks it to a read-only summary row.
+# --------------------------------------------------------------------------- #
+class EditHashtagScreen(NewHashtagScreen):
+    def __init__(self, record: dict) -> None:
+        super().__init__()
+        self._id = record["id"]
+        self._values = {"name": (record.get("name") or "").lstrip("#")}
+        self.crumb = ("Manage", "Hashtags", record.get("name") or "—", "Edit")
+
+    def _submit_request(self) -> tuple[str, str, dict, str]:
+        return ("PUT", f"/hashtags/{self._id}", self._payload(), "Saving…")
+
+    def _payload(self) -> dict:
+        return {"name": self._values["name"].lstrip("#")}
+
+    def _done(self) -> None:
+        self.notify("Saved.")
+        self.dismiss()
+
+
+class EditCategoryScreen(NewCategoryScreen):
+    def __init__(self, record: dict) -> None:
+        super().__init__()
+        self._id = record["id"]
+        self._values = {"name": record.get("name") or ""}
+        if record.get("color"):
+            self._values["color"] = record["color"]
+        self.crumb = ("Manage", "Categories", record.get("name") or "—", "Edit")
+
+    def _submit_request(self) -> tuple[str, str, dict, str]:
+        return ("PUT", f"/categories/{self._id}", self._payload(), "Saving…")
+
+    def _payload(self) -> dict:
+        payload = {"name": self._values["name"]}
+        if self._values.get("color"):
+            payload["color"] = self._values["color"]
+        return payload
+
+    def _done(self) -> None:
+        self.notify("Saved.")
+        self.dismiss()
+
+
+class EditAccountScreen(NewAccountScreen):
+    def __init__(self, record: dict) -> None:
+        super().__init__()
+        self._id = record["id"]
+        self._locked = {"currency"}  # immutable after creation (engine rejects a change)
+        self._values = {
+            "name": record.get("name") or "",
+            "currency": record.get("currency_code") or "",
+        }
+        if record.get("color"):
+            self._values["color"] = record["color"]
+        self.crumb = ("Manage", "Accounts", record.get("name") or "—", "Edit")
+
+    def _submit_request(self) -> tuple[str, str, dict, str]:
+        return ("PUT", f"/accounts/{self._id}", self._payload(), "Saving…")
+
+    def _payload(self) -> dict:
+        payload = {"name": self._values["name"]}
+        if self._values.get("color"):
+            payload["color"] = self._values["color"]
+        return payload
+
+    def _done(self) -> None:
+        self.notify("Saved.")
+        self.dismiss()

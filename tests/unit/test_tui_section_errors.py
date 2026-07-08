@@ -11,8 +11,8 @@ from textual.widgets import Static
 
 from expense.errors import EngineError
 from expense.tui.app import ExpenseApp
-from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.accounts import AccountsScreen
+from expense.tui.screens.manage_detail import AccountDetailScreen, ManageDetailScreen
 from expense.tui.screens.modals import ConfirmModal
 from tests.unit.helpers import wait_for
 
@@ -71,19 +71,23 @@ def test_action_reload_recovers_after_error(fake_client, monkeypatch):
 
 
 def test_run_write_failure_notifies_and_skips_after_write(fake_client, monkeypatch):
-    """A failing write toasts title='Failed' and never fires success/refresh/reload."""
+    """A failing write toasts title='Failed' and never fires success/refresh/reload.
+
+    Archive now lives on the record detail (ManageDetailScreen), which shares
+    EngineWriteMixin.run_write with SectionScreen — same failure path.
+    """
     fake_client.errors["POST"] = EngineError("CONFLICT", "cannot archive", None, 409, {})
-    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
     seen: list = []
     monkeypatch.setattr(
-        SectionScreen, "notify", lambda self, message, **kw: seen.append((message, kw))
+        ManageDetailScreen, "notify", lambda self, message, **kw: seen.append((message, kw))
     )
+    account = {"id": "a1", "name": "BCP", "is_person": False, "is_archived": False, "color": None}
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
-            await app.push_screen(AccountsScreen())
-            await wait_for(pilot, lambda: app.screen.query("#card"))
+            await app.push_screen(AccountDetailScreen(account))
+            await pilot.pause(0.05)
             await pilot.press("a")  # archive → ConfirmModal
             await pilot.pause(0.05)
             assert isinstance(app.screen, ConfirmModal)
@@ -92,7 +96,7 @@ def test_run_write_failure_notifies_and_skips_after_write(fake_client, monkeypat
             message, kw = seen[0]
             assert "CONFLICT — cannot archive" in message
             assert kw.get("title") == "Failed" and kw.get("severity") == "error"
-            assert len(seen) == 1  # no success toast (_after_write skipped)
+            assert len(seen) == 1  # no success toast, no reload (_written skipped)
             assert fake_client.refreshes == 0  # refresh_after_write never reached
 
     asyncio.run(scenario())

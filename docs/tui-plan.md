@@ -135,22 +135,29 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 
 ### Phase 2 — Write flows · **1–2 weeks** · 🔨 in progress
 > **Shipped:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms
-> (account/category/hashtag), full Reconciliations screen (assign/complete/revert/delete +
-> account-first browse + reorder), Config, Auth & profile, and the **Sync · Activity ·
-> Rates** system-read screens.
-> **Remaining before parity:** (1) the **Monthly report** screen (still a `"soon"` stub on
-> the home menu); (2) the **Manage edit flow** — Accounts/Categories/Hashtags have New (`n`)
-> and Archive (`a`) but no way to rename/recolor, and `enter` today opens a raw read-only
-> field dump. **Decided direction (2026-07-07, approved):** `enter` opens an *editable*
-> detail screen (reuse the create bar-form, prefilled) with archive/unarchive as an action
-> *inside* it — folding the bare `a` hotkey into the detail. Needs a mockup before build.
+> (account/category/hashtag), the **Manage edit flow** (Option B — see below), full
+> Reconciliations screen (assign/complete/revert/delete + account-first browse + reorder),
+> Config, Auth & profile, and the **Sync · Activity · Rates** system-read screens.
+> **Remaining before parity:** the **Monthly report** screen (still a `"soon"` stub on the
+> home menu).
+>
+> **Manage edit flow — shipped 2026-07-07 (Option B).** `enter` on an Accounts/Categories/
+> Hashtags row opens a read detail (`manage_detail.py`, enter never mutates); there `e` edits
+> (rename/recolor via the prefilled create bar-form — `Edit*Screen` in `create_forms.py`,
+> PUT), `a` archives/unarchives, `esc` back. The bare `a` was **removed from the lists** so
+> archive is contextual to the opened record. **System categories:** `e` is offered (engine
+> keys them by `system_key`, so rename/recolor is pipeline-safe — engine-spec §Categories),
+> `a` is hidden (`check_action` → archive/delete `403` them). Delete is not surfaced
+> (archive-only): the engine `409`s deletion of any category with transactions. Rationale +
+> rejected alternatives in [decisions.md](decisions.md); mockup:
+> [mockups/expense-world-manage-edit.html](mockups/expense-world-manage-edit.html).
 - **Confirm modal** (one component) for promote / delete / archive / restore /
   complete / revert / sync — reuses idempotency + error envelope.
 - **The transaction form** (Log / Inbox-add / Transaction-edit — same fields): required
   fields, signed-amount validation, **tri-state cleared**, hashtag multi-select,
   **conditional transfer sub-flow** (opposite-sign rule), inline 422 surfacing.
 - **Small forms** (reuse the form component): account, category, hashtag create ✅ /
-  edit ⏳ (edit is the decided-but-unbuilt `enter`→editable-detail flow above).
+  edit ✅ (`enter`→detail→`e`, the Manage edit flow above).
 - **Reconciliation** create/edit form; reorder — shell out to the existing `$EDITOR`
   flow first, native reorder later.
 - **Config / Auth & profile** forms. Post-write refresh reuses `refresh_after_write`.

@@ -1,7 +1,9 @@
-"""Categories screen — spending buckets (read-only browse for Phase 1).
+"""Categories screen — spending buckets.
 
-Color swatch + system-lock marker; archived rows dimmed. `enter` opens the
-detail modal. New/edit/recolor/archive land in Phase 2.
+Color swatch + system-lock marker; archived rows dimmed. `n` creates; `enter`
+opens the record detail (CategoryDetailScreen), where `e` edits and `a`
+archives. System categories (@Transfer, @Debt) can be renamed/recolored (the
+engine keys them by `system_key`, not name) but cannot be archived/deleted.
 """
 
 import io
@@ -13,7 +15,7 @@ from textual.widgets import Static
 from expense.commands import categories_cmd
 from expense.commands._resource import items_of
 from expense.tui.screens._base import SectionScreen
-from expense.tui.screens.modals import RecordModal
+from expense.tui.screens.manage_detail import CategoryDetailScreen
 from expense.tui.widgets.cells import swatch
 from expense.tui.widgets.cursor_list import CursorList
 
@@ -38,14 +40,11 @@ def category_rows(items: list[dict]) -> list:
 class CategoriesScreen(SectionScreen):
     crumb = ("Manage", "Categories")
     CARD_WIDTH = 60
-    BINDINGS = [("a", "archive", "Archive"), ("n", "new", "New")]
+    BINDINGS = [("n", "new", "New")]  # archive lives on the detail (enter), not the list
 
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
-
-    def action_archive(self) -> None:
-        self.archive_selected("categories", "category")
 
     def action_new(self) -> None:
         from expense.tui.screens.create_forms import NewCategoryScreen
@@ -68,7 +67,7 @@ class CategoriesScreen(SectionScreen):
 
     def build(self, items: list) -> list[Widget]:
         self._by_id = {it.get("id"): it for it in items}
-        note = "system categories (@Transfer, @Debt) cannot be renamed"
+        note = "system categories (@Transfer, @Debt) can be renamed but not archived"
         return [
             Static(Text("Categories — buckets for every transaction"), classes="section-title"),
             CursorList(_HEADERS, category_rows(items), empty="(no categories)"),
@@ -78,4 +77,4 @@ class CategoriesScreen(SectionScreen):
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
         item = self._by_id.get(event.key)
         if item:
-            self.app.push_screen(RecordModal(f"Category · {item.get('name') or '—'}", item))
+            self.app.push_screen(CategoryDetailScreen(item), lambda _result: self._load())

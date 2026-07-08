@@ -6,7 +6,7 @@ from rich.text import Text
 
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen, account_rows
-from expense.tui.screens.modals import RecordModal
+from expense.tui.screens.manage_detail import AccountDetailScreen
 from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for
 
@@ -76,6 +76,6 @@ def test_accounts_screen_lists_and_opens_detail(monkeypatch):
             assert cl is not None
             await pilot.press("enter")
             await pilot.pause(0.05)
-            assert isinstance(app.screen, RecordModal)
+            assert isinstance(app.screen, AccountDetailScreen)
 
     asyncio.run(scenario())

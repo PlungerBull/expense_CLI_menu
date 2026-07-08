@@ -1,10 +1,10 @@
-"""Accounts screen — banks & people (read-only browse for Phase 1).
+"""Accounts screen — banks & people.
 
 Built on SectionScreen + the shared CursorList. Includes people and archived
 accounts (archived rows dimmed); the Color column renders the account's hex
 color as a swatch. Native-currency balances (home equivalents live in
-Outstanding Amounts). `enter` opens the read-only detail modal. New/edit/archive
-land in Phase 2.
+Outstanding Amounts). `n` creates; `enter` opens the record detail
+(AccountDetailScreen), where `e` edits and `a` archives.
 """
 
 import io
@@ -16,7 +16,7 @@ from textual.widgets import Static
 from expense.commands import accounts_cmd
 from expense.commands._resource import items_of
 from expense.tui.screens._base import SectionScreen
-from expense.tui.screens.modals import RecordModal
+from expense.tui.screens.manage_detail import AccountDetailScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell, swatch
 from expense.tui.widgets.cursor_list import CursorList
@@ -44,14 +44,11 @@ def account_rows(items: list[dict], palette: Palette | None = None) -> list:
 class AccountsScreen(SectionScreen):
     crumb = ("Manage", "Accounts")
     CARD_WIDTH = 80
-    BINDINGS = [("a", "archive", "Archive"), ("n", "new", "New")]
+    BINDINGS = [("n", "new", "New")]  # archive lives on the detail (enter), not the list
 
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
-
-    def action_archive(self) -> None:
-        self.archive_selected("accounts", "account")
 
     def action_new(self) -> None:
         from expense.tui.screens.create_forms import NewAccountScreen
@@ -92,4 +89,4 @@ class AccountsScreen(SectionScreen):
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
         item = self._by_id.get(event.key)
         if item:
-            self.app.push_screen(RecordModal(f"Account · {item.get('name') or '—'}", item))
+            self.app.push_screen(AccountDetailScreen(item), lambda _result: self._load())
