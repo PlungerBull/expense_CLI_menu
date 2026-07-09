@@ -531,9 +531,35 @@ def test_wipe_removes_cache_file(cache_path):
         )
     finally:
         conn.close()
+    # SQLite names sidecars by appending to the full filename.
+    wal = cache_path.parent / (cache_path.name + "-wal")
+    shm = cache_path.parent / (cache_path.name + "-shm")
+    wal.write_bytes(b"")
+    shm.write_bytes(b"")
     assert cache_db.cache_path().exists()
     cache.wipe()
     assert not cache_db.cache_path().exists()
+    assert not wal.exists()
+    assert not shm.exists()
+
+
+def test_wipe_handles_extensionless_cache_path(tmp_path, monkeypatch):
+    """wipe() must not crash on a dot-free EXPENSE_CACHE path (backlog 6.1a).
+
+    with_suffix() raises ValueError for a suffix that doesn't start with a dot,
+    which fired on every cold-start and token change under such an override.
+    """
+    path = tmp_path / "expense-cache"
+    monkeypatch.setenv("EXPENSE_CACHE", str(path))
+    path.write_bytes(b"")
+    wal = tmp_path / "expense-cache-wal"
+    shm = tmp_path / "expense-cache-shm"
+    wal.write_bytes(b"")
+    shm.write_bytes(b"")
+    cache.wipe()
+    assert not path.exists()
+    assert not wal.exists()
+    assert not shm.exists()
 
 
 def test_connect_wipes_and_rebuilds_corrupt_cache(cache_path):

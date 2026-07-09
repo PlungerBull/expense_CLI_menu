@@ -340,7 +340,7 @@ existing item are marked.
 
 ### 6.1 Crashes (verified)
 
-- [ ] **`cache/db.py:213` — `wipe()` crashes for an extensionless
+- [x] **`cache/db.py:213` — `wipe()` crashes for an extensionless
   `EXPENSE_CACHE`.** `path.with_suffix(path.suffix + "-wal")` raises
   `ValueError: Invalid suffix '-wal'` when the cache path has no dot (a
   documented env override, e.g. `EXPENSE_CACHE=/home/u/expense-cache`).

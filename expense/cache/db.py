@@ -210,6 +210,9 @@ def wipe() -> None:
     path = cache_path()
     if path.exists():
         path.unlink()
-    for sidecar in (path.with_suffix(path.suffix + "-wal"), path.with_suffix(path.suffix + "-shm")):
+    # Plain name concatenation, not with_suffix(): SQLite names sidecars by
+    # appending to the full filename, and with_suffix() raises ValueError when
+    # EXPENSE_CACHE points at an extensionless path.
+    for sidecar in (path.parent / (path.name + "-wal"), path.parent / (path.name + "-shm")):
         if sidecar.exists():
             sidecar.unlink()
