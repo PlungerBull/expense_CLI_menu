@@ -460,15 +460,25 @@ def test_revert_key_is_u(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
-def test_r_refreshes_record_and_never_writes(fake_client, monkeypatch):
-    """`r` refetches the batch (header + status gate) and the checklist; no write."""
+def test_r_refreshes_record_by_id_and_never_writes(fake_client, monkeypatch):
+    """`r` refetches the batch by id (header + status gate) and the checklist;
+    no write, no dismiss. By id, because scanning the collection stopped at
+    page 1 and falsely reported later records as deleted (backlog 6.2b)."""
     completed = {**DRAFT, "status": 2}
     _patch(monkeypatch)
-    fresh = {**completed, "ending_balance_cents": 999999}
-    monkeypatch.setattr(
-        "expense.commands.reconcile_cmd.fetch_reconciliations",
-        lambda cfg, **k: {"items": [fresh]},
-    )
+    fresh = {
+        **completed,
+        "ending_balance_cents": 999999,
+        "transactions": [],
+        "transactions_total": 0,
+    }
+    fetched_ids: list = []
+
+    def fake_get(cfg, id_, **k):
+        fetched_ids.append(id_)
+        return dict(fresh)
+
+    monkeypatch.setattr("expense.commands.reconcile_cmd.fetch_reconciliation", fake_get)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
@@ -477,20 +487,30 @@ def test_r_refreshes_record_and_never_writes(fake_client, monkeypatch):
             await app.push_screen(screen)
             await _wait_list(screen, pilot)
             await pilot.press("r")
-            await wait_for(pilot, lambda: screen._record is fresh)
+            await wait_for(pilot, lambda: screen._record.get("ending_balance_cents") == 999999)
             await pilot.pause(0.05)
-            assert app.screen is screen  # no confirm modal opened
+            assert fetched_ids == ["r1"]  # single-record fetch, not a collection scan
+            assert "transactions" not in screen._record  # embedded window stripped
+            assert app.screen is screen  # not dismissed — the 6.2b false positive
             assert not fake_client.posts and not fake_client.deletes
 
     asyncio.run(scenario())
 
 
 def test_r_refresh_dismisses_when_record_gone(fake_client, monkeypatch):
-    """Batch deleted elsewhere → refresh notifies and pops instead of lying."""
+    """Batch deleted elsewhere → the by-id fetch 404s → notify and pop."""
     _patch(monkeypatch)
-    monkeypatch.setattr(
-        "expense.commands.reconcile_cmd.fetch_reconciliations", lambda cfg, **k: {"items": []}
-    )
+
+    def gone(cfg, id_, **k):
+        raise EngineError(
+            "NOT_FOUND",
+            f"reconciliation {id_} not found.",
+            None,
+            404,
+            {"error": {"code": "NOT_FOUND", "message": "x", "fields": None}},
+        )
+
+    monkeypatch.setattr("expense.commands.reconcile_cmd.fetch_reconciliation", gone)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)

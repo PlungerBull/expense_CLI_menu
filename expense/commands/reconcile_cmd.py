@@ -105,6 +105,46 @@ def fetch_reconciliations(
     )
 
 
+def fetch_reconciliation(
+    cfg,
+    id_: str,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+    no_cache: bool = False,
+    verbose: bool = False,
+    cold_start_notice: bool = True,
+    notice_stream=None,
+) -> dict:
+    """GET /v1/reconciliations/{id} → the raw engine/replica body. Pure data.
+
+    Shared by the flat `reconcile get` command and the TUI detail screen's
+    refresh, which must fetch by id — scanning the collection stops at one
+    page and falsely reported later records as deleted (backlog 6.2b).
+    Missing record → EngineError(status=404) on both the cache and live paths.
+    """
+    params: dict = {}
+    if limit is not None:
+        params["limit"] = str(limit)
+    if offset is not None:
+        params["offset"] = str(offset)
+    # Always signed: the replica stores debit_as_negative=true, so the
+    # stateless path must match or the two modes disagree on sign.
+    params["debit_as_negative"] = "true"
+    return fetch_body(
+        cfg,
+        path=f"/{_RESOURCE}/{id_}",
+        params=params,
+        cache_read=lambda: cache_pkg.get_reconciliation(
+            id_, embedded_limit=limit, embedded_offset=offset
+        ),
+        no_cache=no_cache,
+        verbose=verbose,
+        cold_start_notice=cold_start_notice,
+        notice_stream=notice_stream,
+    )
+
+
 _CHAINED_AMBIGUITY_HINT = (
     "Hint: --source chained cannot be combined with --beginning-balance.\n"
     "Chained mode derives the value from the previous reconciliation.\n"
@@ -306,21 +346,11 @@ def get(
     Example: expense reconcile get <id> --limit 100
     """
     cfg = config_module.ensure_loaded()
-    params: dict = {}
-    if limit is not None:
-        params["limit"] = str(limit)
-    if offset is not None:
-        params["offset"] = str(offset)
-    # Always signed: the replica stores debit_as_negative=true, so the
-    # stateless path must match or the two modes disagree on sign.
-    params["debit_as_negative"] = "true"
-    body = fetch_body(
+    body = fetch_reconciliation(
         cfg,
-        path=f"/{_RESOURCE}/{id_}",
-        params=params,
-        cache_read=lambda: cache_pkg.get_reconciliation(
-            id_, embedded_limit=limit, embedded_offset=offset
-        ),
+        id_,
+        limit=limit,
+        offset=offset,
         no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )

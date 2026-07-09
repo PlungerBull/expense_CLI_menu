@@ -42,7 +42,7 @@ from expense.commands._resource import (
     load_hashtag_name_map,
 )
 from expense.dates import to_canonical_aware
-from expense.errors import format_error
+from expense.errors import EngineError, format_error
 from expense.tui.screens._base import ContentSwapLockMixin, EngineWriteMixin, SectionScreen
 from expense.tui.screens._form import FormScreen
 from expense.tui.screens.modals import ConfirmModal
@@ -631,21 +631,21 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
             )
             if refresh_record:
                 # refetch the batch itself too — a stale header/status would
-                # misrepresent balances and the read-only gate
-                fresh = next(
-                    (
-                        it
-                        for it in items_of(reconcile_cmd.fetch_reconciliations(cfg, **kw))
-                        if it.get("id") == self._id
-                    ),
-                    None,
-                )
+                # misrepresent balances and the read-only gate. By id: scanning
+                # the collection stops at one page and falsely reported later
+                # records as deleted (backlog 6.2b).
+                try:
+                    fresh = reconcile_cmd.fetch_reconciliation(cfg, self._id, limit=1, **kw)
+                except EngineError as err:
+                    if err.status == 404:
+                        if not worker.is_cancelled:
+                            self.app.call_from_thread(self._record_gone)
+                        return
+                    raise
                 if worker.is_cancelled:
                     return
-                if fresh is None:
-                    self.app.call_from_thread(self._record_gone)
-                    return
-                self._record = fresh
+                # keep _record list-row-shaped: drop the embedded window keys
+                self._record = {k: v for k, v in fresh.items() if not k.startswith("transactions")}
                 self.app.call_from_thread(self._render_header)
             # assigned-to-this-batch transactions (always; any date)
             assigned = _fetch_all_txns(cfg, reconciliation=self._id, **kw)
