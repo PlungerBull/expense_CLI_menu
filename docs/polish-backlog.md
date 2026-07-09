@@ -481,6 +481,15 @@ existing item are marked.
   if a concurrent `expense sync` holds the lock. Resolve names worker-side like
   `transactions.py` does.
 
+> **§6 closed 2026-07-08** — all 17 items shipped (commits `6260211..3145125`),
+> verified by the full unit suite (925 tests, 92% cov) and a supervised live
+> contract run. *Engine-spec gap found by that gate:* `GET /accounts` is
+> documented unpaginated ("returns all", engine-spec.md §Bank Accounts) but the
+> engine serves default-limit-50 pages and honors `limit`/`offset` — to be
+> fixed in the engine repo (spec or behavior). The contract suite now pages
+> via `fetch_all_pages`; the CLI's `accounts list` still reads one page, which
+> only bites past 50 accounts (fine at personal scale, note if it recurs).
+
 ## Suggested sequencing
 
 0. **Section 6 crashes first** — 6.1 (both are one-line fixes with an obvious

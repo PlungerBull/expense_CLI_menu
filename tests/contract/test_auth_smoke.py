@@ -15,7 +15,9 @@ pytestmark = pytest.mark.skipif(
 
 def test_health_live():
     """Engine /health returns 200 with {'status': 'ok'}. Cold-start tolerated."""
-    with httpx.Client(timeout=httpx.Timeout(connect=10.0, read=60.0)) as client:
+    # Timeout needs a positional default (httpx requires default-or-all-four);
+    # 60s read tolerates a Render cold start.
+    with httpx.Client(timeout=httpx.Timeout(10.0, read=60.0)) as client:
         response = client.get(f"{ENGINE_URL}/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

@@ -74,7 +74,9 @@ def test_freshman_flow(isolated_env):
     assert config_file.exists(), "config file was not created at the EXPENSE_CONFIG path"
 
     _assert_ok(_run("ping"), "ping")
-    _assert_ok(_run("auth", "bootstrap"), "auth bootstrap")
+    # --display-name is required; bootstrap is an idempotent re-login for an
+    # already-provisioned PAT user and never overwrites their display_name.
+    _assert_ok(_run("auth", "bootstrap", "--display-name", "Freshman Gate"), "auth bootstrap")
 
     me_result = _run("auth", "me", "--json")
     _assert_ok(me_result, "auth me --json")
@@ -98,7 +100,15 @@ def test_freshman_flow(isolated_env):
         _assert_ok(result, "accounts create")
         account_id = _parse_json_stdout(result.stdout)["id"]
 
-        result = _run("categories", "create", "--name", f"freshman-cat-{suffix}", "--json")
+        result = _run(
+            "categories",
+            "create",
+            "--name",
+            f"freshman-cat-{suffix}",
+            "--color",
+            "#4ECDC4",  # required by the engine (categories carry a color hint)
+            "--json",
+        )
         _assert_ok(result, "categories create")
         category_id = _parse_json_stdout(result.stdout)["id"]
 
