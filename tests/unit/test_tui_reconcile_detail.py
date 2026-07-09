@@ -221,8 +221,33 @@ def test_toggle_error_drops_queued_intents_and_resyncs(fake_client, monkeypatch)
             screen._list.action_toggle()  # queued behind the failing PUT
             await wait_for(pilot, lambda: notices)
             await pilot.pause(0.05)
-            assert not screen._toggle_queue  # stale intent dropped, not sent
+            assert not screen._write_queue  # stale intent dropped, not sent
             assert len(fake_client.puts) == 1
+
+    asyncio.run(scenario())
+
+
+def test_toggle_burst_syncs_replica_once_on_drain(fake_client, monkeypatch):
+    """N queued toggles fire N PUTs but one delta sync when the queue drains,
+    not one per toggle (backlog 6.5a)."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            screen._list._cursor = 0
+            screen._list.action_toggle()  # t1 → out
+            screen._list._cursor = 1
+            screen._list.action_toggle()  # t2 → in
+            screen._list._cursor = 0
+            screen._list.action_toggle()  # t1 → back in
+            await wait_for(pilot, lambda: len(fake_client.puts) == 3)
+            await wait_for(pilot, lambda: fake_client.refreshes == 1)
+            await pilot.pause(0.1)  # window for any (wrong) extra refreshes
+            assert fake_client.refreshes == 1
 
     asyncio.run(scenario())
 

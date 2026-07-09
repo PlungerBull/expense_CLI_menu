@@ -433,7 +433,7 @@ existing item are marked.
   or one surface silently truncates. Hoist one `fetch_all_pages` helper into
   `_resource.py`.
 
-- [ ] **`run_write` (`_base.py`) doesn't actually serialize writes despite the
+- [x] **`run_write` (`_base.py`) doesn't actually serialize writes despite the
   exclusivity its docstring implies.** Thread-worker cancellation is
   cooperative and `run_write` never checks `is_cancelled`, so rapid repeated
   writes on any screen (e.g. double-pressing archive) fire overlapping,
@@ -465,7 +465,7 @@ existing item are marked.
 
 ### 6.5 Efficiency (personal-scale, note or fix opportunistically)
 
-- [ ] **Checklist toggle fires a full delta sync per toggle**
+- [x] **Checklist toggle fires a full delta sync per toggle**
   (`reconciliations.py` `_pump_toggles` → `run_write` → `refresh_after_write`).
   Reconciling a statement (15–30 toggles) becomes 2 engine round-trips each
   against Render. Add a skip-refresh flag for queued toggles and run one delta

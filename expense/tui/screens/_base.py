@@ -11,7 +11,9 @@ Owns the breadcrumb header, the bounded content card, the worker-backed fetch
 """
 
 import asyncio
+from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from rich.console import Group
 from rich.text import Text
@@ -27,20 +29,41 @@ from expense.errors import format_error
 from expense.tui.widgets.header import Breadcrumb
 
 
-class EngineWriteMixin:
-    """One engine write off the UI thread: config → client → verb → replica refresh.
+@dataclass
+class _QueuedWrite:
+    method: str
+    path: str
+    json_body: dict | None
+    success: str
+    on_success: Callable[[], None] | None
+    on_error: Callable[[str], None] | None
+    refresh: bool
 
-    Shared by SectionScreen and the bar-cycle form screens (which subclass plain
-    Screen). Success/error callbacks land back on the UI thread via
-    `call_from_thread`; without callbacks, errors notify with a "Failed" toast
-    and success runs `_after_write`. Idempotency + error envelope come from the
-    client. Writes run in their own `engine-write` group so a load/refresh or
-    theme change can never cancel an in-flight write worker (or vice versa);
-    `exclusive=True` within the group still guards against stale queued writes —
-    an in-flight request always completes (thread workers cancel cooperatively).
+
+class EngineWriteMixin:
+    """Engine writes off the UI thread — one at a time, in order, per screen.
+
+    Shared by SectionScreen and the bar-cycle form screens (which subclass
+    plain Screen). `run_write` appends to a per-screen FIFO and exactly one
+    request is in flight at any moment: thread workers cancel cooperatively,
+    so `exclusive=True` alone never serialized overlapping writes
+    (backlog 6.4b). Success/error callbacks land on the UI thread; without
+    callbacks, errors notify a "Failed" toast and success runs `_after_write`.
+    Idempotency + error envelope come from the client. The `engine-write`
+    worker group keeps loads/theme changes from ever cancelling a write.
+
+    A failed write **drops the queued remainder** — those intents were decided
+    against a screen state the engine just contradicted; the error callback
+    typically resyncs. Writes queued with `refresh=False` coalesce their
+    replica refresh into a single delta sync when the queue drains
+    (backlog 6.5a) — after an error drain too, since earlier skipped-refresh
+    successes already changed engine state.
     """
 
-    @work(thread=True, exclusive=True, group="engine-write")
+    _write_queue: deque[_QueuedWrite] | None = None  # lazily created; UI-thread only
+    _write_inflight: bool = False
+    _refresh_on_drain: bool = False
+
     def run_write(
         self,
         method: str,
@@ -50,7 +73,23 @@ class EngineWriteMixin:
         success: str = "Done.",
         on_success: Callable[[], None] | None = None,
         on_error: Callable[[str], None] | None = None,
+        refresh: bool = True,
     ) -> None:
+        if self._write_queue is None:
+            self._write_queue = deque()
+        self._write_queue.append(
+            _QueuedWrite(method, path, json_body, success, on_success, on_error, refresh)
+        )
+        self._pump_writes()
+
+    def _pump_writes(self) -> None:
+        if self._write_inflight or not self._write_queue:
+            return
+        self._write_inflight = True
+        self._execute_write(self._write_queue.popleft())
+
+    @work(thread=True, group="engine-write")
+    def _execute_write(self, item: _QueuedWrite) -> None:
         # Imports stay function-local: the test fixtures patch these module
         # attributes, and only a lazy lookup sees the patch.
         import io
@@ -59,17 +98,65 @@ class EngineWriteMixin:
         from expense.cache import refresh_after_write
         from expense.http import ExpenseClient
 
-        cfg = config_module.ensure_loaded()
+        error: str | None = None
         try:
+            cfg = config_module.ensure_loaded()
             with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                if method == "POST":
-                    client.post(path, json_body=json_body)
-                elif method == "PUT":
-                    client.put(path, json_body=json_body)
-                elif method == "DELETE":
-                    client.delete(path)
+                if item.method == "POST":
+                    client.post(item.path, json_body=item.json_body)
+                elif item.method == "PUT":
+                    client.put(item.path, json_body=item.json_body)
+                elif item.method == "DELETE":
+                    client.delete(item.path)
                 else:
-                    raise ValueError(f"unsupported write method: {method}")
+                    raise ValueError(f"unsupported write method: {item.method}")
+                if item.refresh:
+                    refresh_after_write(
+                        client,
+                        cfg,
+                        no_cache=self.app._no_cache,
+                        no_sync_after=False,
+                        notice_stream=io.StringIO(),
+                    )
+        except Exception as exc:
+            error = format_error(exc)
+        self.app.call_from_thread(self._write_finished, item, error)
+
+    def _write_finished(self, item: _QueuedWrite, error: str | None) -> None:
+        # UI thread: report the outcome, then pump the next write or, on a
+        # drained queue, run the coalesced refresh.
+        self._write_inflight = False
+        if error is not None:
+            if self._write_queue:
+                self._write_queue.clear()
+            if item.on_error is not None:
+                item.on_error(error)
+            else:
+                self.notify(error, title="Failed", severity="error")
+        else:
+            if not item.refresh:
+                self._refresh_on_drain = True
+            if item.on_success is not None:
+                item.on_success()
+            else:
+                self._after_write(item.success)
+        if self._write_queue:
+            self._pump_writes()
+        elif self._refresh_on_drain:
+            self._refresh_on_drain = False
+            self._drain_refresh()
+
+    @work(thread=True, group="engine-write")
+    def _drain_refresh(self) -> None:
+        import io
+
+        from expense import config as config_module
+        from expense.cache import refresh_after_write
+        from expense.http import ExpenseClient
+
+        try:
+            cfg = config_module.ensure_loaded()
+            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
                 refresh_after_write(
                     client,
                     cfg,
@@ -77,17 +164,10 @@ class EngineWriteMixin:
                     no_sync_after=False,
                     notice_stream=io.StringIO(),
                 )
-        except Exception as exc:
-            message = format_error(exc)
-            if on_error is not None:
-                self.app.call_from_thread(on_error, message)
-            else:
-                self.app.call_from_thread(self.notify, message, title="Failed", severity="error")
-            return
-        if on_success is not None:
-            self.app.call_from_thread(on_success)
-        else:
-            self.app.call_from_thread(self._after_write, success)
+        except Exception:
+            # Best-effort: write outcomes were already reported, and a stale
+            # replica self-heals on the next read's sync.
+            pass
 
     def _after_write(self, message: str) -> None:
         self.notify(message)

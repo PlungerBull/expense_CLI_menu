@@ -118,6 +118,57 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
     assert ("POST", "/inbox/i1/promote") in fake_client.requests
 
 
+def test_rapid_writes_serialize_in_order_and_refresh_each(fake_client, monkeypatch):
+    """Two immediate run_writes on any screen send both, one at a time, in
+    order, each with its own replica refresh (default refresh=True) — the
+    mixin-level generalization of the checklist-toggle queue (backlog 6.4b)."""
+    import time
+
+    monkeypatch.setattr("expense.commands.inbox_cmd.fetch_inbox", lambda *a, **k: {"items": INBOX})
+    monkeypatch.setattr("expense.tui.screens.inbox.load_account_name_map", lambda: {})
+    monkeypatch.setattr("expense.tui.screens.inbox.load_category_name_map", lambda: {})
+
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+    real_post = fake_client.post
+
+    def slow_post(path, json_body=None):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.08)  # wide enough that overlapping POSTs would be caught
+        with lock:
+            active -= 1
+        return real_post(path, json_body=json_body)
+
+    fake_client.post = slow_post
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = InboxScreen()
+            await app.push_screen(screen)
+            from expense.tui.widgets.cursor_list import CursorList
+
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            screen.run_write("POST", "/inbox/i1/promote", on_success=lambda: None)
+            screen.run_write("POST", "/inbox/i1/snooze", on_success=lambda: None)
+            await wait_for(pilot, lambda: len(fake_client.posts) == 2)
+            await wait_for(pilot, lambda: fake_client.refreshes == 2)
+
+    asyncio.run(scenario())
+    assert max_active == 1  # serialized: never two writes in flight
+    assert [p for p, _ in fake_client.posts] == ["/inbox/i1/promote", "/inbox/i1/snooze"]
+
+
 def test_concurrent_content_swaps_mount_one_card(fake_client, monkeypatch):
     """Two loads landing together must swap #content atomically.
 

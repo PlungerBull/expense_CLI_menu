@@ -558,9 +558,6 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
         self._account_id = record.get("account_id")
         self._busy = False
         self._list: CheckList | None = None
-        # toggle serialization (backlog 3.2): pending (tx_id, recon_id) intents
-        self._toggle_queue: list[tuple[object, object]] = []
-        self._toggle_inflight = False
 
     @property
     def _completed(self) -> bool:
@@ -713,37 +710,24 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
 
     # ---- assign / unassign ----------------------------------------------
     def on_check_list_toggled(self, event: CheckList.Toggled) -> None:
-        # Queued, one PUT in flight at a time: rapid `space` presses would
-        # otherwise race overlapping writes with no ordering guarantee (thread
-        # cancellation is cooperative, so exclusive workers don't serialize).
-        self._toggle_queue.append((event.key, self._id if event.checked else None))
-        self._pump_toggles()
-
-    def _pump_toggles(self) -> None:
-        if self._toggle_inflight or not self._toggle_queue:
-            return
-        tx_id, recon_id = self._toggle_queue.pop(0)
-        self._toggle_inflight = True
-        # Success is silent — the checklist toggle already shows the new state.
+        # The mixin queue sends one PUT at a time, in order (backlog 6.4b);
+        # refresh=False coalesces the replica sync into a single delta when
+        # the toggle burst drains (backlog 6.5a). Success is silent — the
+        # checklist toggle already shows the new state.
         self.run_write(
             "PUT",
-            f"/transactions/{tx_id}",
-            json_body={"reconciliation_id": recon_id},
-            on_success=self._toggle_done,
+            f"/transactions/{event.key}",
+            json_body={"reconciliation_id": self._id if event.checked else None},
+            refresh=False,
+            on_success=lambda: None,
             on_error=self._assign_failed,
         )
 
-    def _toggle_done(self) -> None:
-        self._toggle_inflight = False
-        self._pump_toggles()
-
     def _assign_failed(self, message: str) -> None:
-        # Queued intents were made against a checklist state the engine just
-        # contradicted — drop them and resync to the engine's truth.
-        self._toggle_inflight = False
-        self._toggle_queue.clear()
+        # The mixin already dropped the queued intents (they were made against
+        # a checklist state the engine just contradicted) — resync to truth.
         self.notify(message, title="Couldn't update", severity="error")
-        self._load_txns()  # resync the checklist to the engine's truth
+        self._load_txns()
 
     # ---- status actions --------------------------------------------------
     def action_back(self) -> None:
