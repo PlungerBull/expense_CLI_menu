@@ -194,6 +194,39 @@ def test_highlight_from_batches_pane_does_not_switch_account(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_reconciliations_list_pages_past_engine_cap(monkeypatch):
+    """The browse fetch pages through the whole collection — a batch past the
+    default page must not vanish from the chain, or ctrl+up/down reorders
+    against wrong neighbors (backlog 6.2b, list half)."""
+    total = 201
+    all_items = [
+        {"id": f"r{i}", "account_id": "acc1", "name": f"B{i}", "status": 1, "sort_order": i}
+        for i in range(total)
+    ]
+
+    def paged(cfg, *, limit=None, offset=None, **k):
+        lo = offset or 0
+        return {"items": all_items[lo : lo + (limit or 100)], "total": total}
+
+    monkeypatch.setattr("expense.commands.reconcile_cmd.fetch_reconciliations", paged)
+    monkeypatch.setattr(
+        "expense.commands.accounts_cmd.fetch_accounts",
+        lambda *a, **k: [{"id": "acc1", "name": "BCP PEN", "currency_code": "PEN"}],
+    )
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationsScreen()
+            await app.push_screen(screen)
+            await _wait_browse(app, pilot)
+            assert len(screen._recons) == total  # both pages collected
+            assert len(screen._batches) == total  # full chain for the account
+
+    asyncio.run(scenario())
+
+
 def test_new_reconciliation_from_account_drops_account_field():
     screen = NewReconciliationScreen(account_id="acc1", account_name="BCP PEN")
     assert "account" not in screen._sequence()  # account preset from browse

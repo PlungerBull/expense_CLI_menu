@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from expense.commands._resource import (
     build_update_payload,
+    fetch_all_pages,
     fetch_body,
     format_bool,
     format_cents,
@@ -533,3 +534,66 @@ def test_engine_error_attribute_access():
     assert err.status == 403
     assert err.code == "X"
     assert err.fields == {"a": "b"}
+
+
+# ---------------------------------------------------------------------------
+# fetch_all_pages (backlog 6.4a — the one pagination loop)
+# ---------------------------------------------------------------------------
+
+
+def _pager(pages):
+    """fetch_page stub serving canned bodies; records (limit, offset) calls."""
+    calls: list[tuple[int, int]] = []
+
+    def fetch_page(limit, offset):
+        calls.append((limit, offset))
+        return pages[len(calls) - 1]
+
+    return fetch_page, calls
+
+
+def test_fetch_all_pages_full_then_short_page():
+    full = {"items": [{"id": f"t{i}"} for i in range(200)], "total": 240}
+    short = {"items": [{"id": f"t{200 + i}"} for i in range(40)], "total": 240}
+    fetch_page, calls = _pager([full, short])
+    rows = fetch_all_pages(fetch_page)
+    assert calls == [(200, 0), (200, 200)]
+    assert len(rows) == 240
+
+
+def test_fetch_all_pages_flat_list_returned_whole():
+    fetch_page, calls = _pager([[{"id": "a1"}, {"id": "a2"}]])
+    rows = fetch_all_pages(fetch_page)
+    assert calls == [(200, 0)]
+    assert rows == [{"id": "a1"}, {"id": "a2"}]
+
+
+def test_fetch_all_pages_empty_first_page():
+    fetch_page, calls = _pager([{"items": [], "total": 0}])
+    assert fetch_all_pages(fetch_page) == []
+    assert calls == [(200, 0)]
+
+
+def test_fetch_all_pages_total_stops_padded_pages():
+    """A full page with total == collected stops without an extra request."""
+    page = {"items": [{"id": f"t{i}"} for i in range(200)], "total": 200}
+    fetch_page, calls = _pager([page])
+    assert len(fetch_all_pages(fetch_page)) == 200
+    assert calls == [(200, 0)]
+
+
+def test_fetch_all_pages_no_total_stops_on_short_page():
+    """Missing total falls back to the short-page rule (keeps paging first)."""
+    full = {"items": [{"id": f"t{i}"} for i in range(200)]}
+    short = {"items": [{"id": "t200"}]}
+    fetch_page, calls = _pager([full, short])
+    assert len(fetch_all_pages(fetch_page)) == 201
+    assert calls == [(200, 0), (200, 200)]
+
+
+def test_fetch_all_pages_custom_page_size():
+    full = {"items": [{"id": "a"}, {"id": "b"}]}
+    short = {"items": [{"id": "c"}]}
+    fetch_page, calls = _pager([full, short])
+    assert len(fetch_all_pages(fetch_page, page_size=2)) == 3
+    assert calls == [(2, 0), (2, 2)]

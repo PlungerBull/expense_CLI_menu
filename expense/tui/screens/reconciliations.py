@@ -35,6 +35,7 @@ from textual.worker import get_current_worker
 
 from expense.commands import accounts_cmd, reconcile_cmd, transactions_cmd
 from expense.commands._resource import (
+    fetch_all_pages,
     format_cents,
     items_of,
     load_account_name_map,
@@ -140,7 +141,13 @@ class ReconciliationsScreen(SectionScreen):
             cold_start_notice=False,
             notice_stream=io.StringIO(),
         )
-        recons = items_of(reconcile_cmd.fetch_reconciliations(cfg, **kw))
+        # page through everything: the default ~100-row page truncated the
+        # chain, so ctrl+up/down reordered against wrong neighbors (6.2b)
+        recons = fetch_all_pages(
+            lambda limit, offset: reconcile_cmd.fetch_reconciliations(
+                cfg, limit=limit, offset=offset, **kw
+            )
+        )
         accts = items_of(accounts_cmd.fetch_accounts(cfg, **kw))
         accounts = [
             (
@@ -498,25 +505,17 @@ class NewReconciliationScreen(FormScreen):
 # --------------------------------------------------------------------------- #
 # Working / detail screen — assign transactions, complete / revert / delete
 # --------------------------------------------------------------------------- #
-_TXN_PAGE = 200  # engine hard cap on `limit` — page instead of one oversized request
-
-
 def _fetch_all_txns(cfg, **kw) -> list[dict]:
     """Every matching transaction, paged at the engine cap.
 
     A single limit=500 request 422s live (cap is 200) and silently truncates
-    the checklist even cached; loop until a short page instead.
+    the checklist even cached; page through instead (backlog 3.3 → 6.4a).
     """
-    out: list[dict] = []
-    offset = 0
-    while True:
-        page = items_of(
-            transactions_cmd.fetch_transactions(cfg, limit=_TXN_PAGE, offset=offset, **kw)
+    return fetch_all_pages(
+        lambda limit, offset: transactions_cmd.fetch_transactions(
+            cfg, limit=limit, offset=offset, **kw
         )
-        out.extend(page)
-        if len(page) < _TXN_PAGE:
-            return out
-        offset += _TXN_PAGE
+    )
 
 
 def _status_span(status: str, palette: Palette) -> tuple[str, str]:

@@ -14,6 +14,7 @@ from expense.commands._resource import (
     YES_OPT,
     build_update_payload,
     cache_after_write,
+    fetch_all_pages,
     fetch_body,
     format_bool,
     format_cents,
@@ -659,31 +660,14 @@ def revert(
 # ---------------------------------------------------------------------------
 
 
-_CHAIN_PAGE_SIZE = 200
-
-
 def _fetch_account_chain(client: ExpenseClient, account_id: str) -> list[dict]:
     """Return every active reconciliation for an account in sort_order ASC."""
-    items: list[dict] = []
-    offset = 0
-    while True:
-        body = client.get(
+    return fetch_all_pages(
+        lambda limit, offset: client.get(
             f"/{_RESOURCE}",
-            params={
-                "account_id": account_id,
-                "limit": str(_CHAIN_PAGE_SIZE),
-                "offset": str(offset),
-            },
+            params={"account_id": account_id, "limit": str(limit), "offset": str(offset)},
         )
-        page = items_of(body)
-        items.extend(page)
-        if not isinstance(body, dict):
-            break
-        total = body.get("total")
-        if not isinstance(total, int) or len(items) >= total or not page:
-            break
-        offset += len(page)
-    return items
+    )
 
 
 def _render_reorder_response(body: dict, *, json_mode: bool) -> None:

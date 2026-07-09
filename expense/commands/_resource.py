@@ -182,6 +182,34 @@ def items_of(body: object) -> list:
     return body if isinstance(body, list) else []
 
 
+ENGINE_PAGE_CAP = 200  # the engine's hard cap on `limit` — the one copy (backlog 6.4a)
+
+
+def fetch_all_pages(
+    fetch_page: Callable[[int, int], Any], *, page_size: int = ENGINE_PAGE_CAP
+) -> list[dict]:
+    """Exhaust a paginated resource. `fetch_page(limit, offset)` returns one raw body.
+
+    A flat-list body (unpaginated endpoint, e.g. /accounts) is returned whole.
+    Stops on an empty page, a short page, or having collected >= body["total"]
+    (when the engine sends an int total). One copy of the loop — the previous
+    three hand-rolled variants each had their own termination rule.
+    """
+    out: list[dict] = []
+    offset = 0
+    while True:
+        body = fetch_page(page_size, offset)
+        if isinstance(body, list):  # flat, unpaginated endpoint
+            out.extend(body)
+            return out
+        page = items_of(body)
+        out.extend(page)
+        total = body.get("total") if isinstance(body, dict) else None
+        if not page or len(page) < page_size or (isinstance(total, int) and len(out) >= total):
+            return out
+        offset += len(page)
+
+
 def load_account_name_map() -> dict[str, str]:
     """Cache-backed account id → name map. Empty on any cache failure.
 

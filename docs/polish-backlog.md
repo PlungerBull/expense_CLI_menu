@@ -370,7 +370,7 @@ existing item are marked.
   fire against the stale one. Fix: reuse the same lock/cancellation discipline
   on the detail screen.
 
-- [ ] **`tui/screens/reconciliations.py:633` + list `fetch` (~:142) — refresh
+- [x] **`tui/screens/reconciliations.py:633` + list `fetch` (~:142) — refresh
   searches only page 1, falsely reports a batch deleted.**
   `_load_txns(refresh_record=True)` scans `items_of(fetch_reconciliations(cfg,
   **kw))` with no `limit/offset`, so a reconciliation past the cache's default
@@ -424,7 +424,7 @@ existing item are marked.
 
 ### 6.4 Reuse & altitude (maintenance risk, not live bugs)
 
-- [ ] **Three hand-rolled "fetch every page" loops with three different
+- [x] **Three hand-rolled "fetch every page" loops with three different
   termination rules** — `import_/apply.py:51` (`_list_all`, stops on
   `total is None`), `tui/screens/reconciliations.py:500` (`_fetch_all_txns`,
   stops on short page), `commands/reconcile_cmd.py:~632` (chain, total-vs-len)

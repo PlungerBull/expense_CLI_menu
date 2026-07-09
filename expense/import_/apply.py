@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from expense.commands._resource import fetch_all_pages
 from expense.dates import to_canonical_aware
 from expense.errors import EngineConnectionError, EngineError, format_error
 from expense.http import ExpenseClient
@@ -45,28 +46,14 @@ class ApplyResult:
     failures: list[tuple[int, str]] = field(default_factory=list)
 
 
-_PAGE = 200  # engine caps `limit` at 200
-
-
 def _list_all(client: ExpenseClient, resource: str) -> list[dict]:
     """GET every existing row for a resource (flat list, or paged at the engine cap)."""
-    out: list[dict] = []
-    offset = 0
-    while True:
-        body = client.get(
+    return fetch_all_pages(
+        lambda limit, offset: client.get(
             f"/{resource}",
-            params={"include_archived": "true", "limit": _PAGE, "offset": offset},
+            params={"include_archived": "true", "limit": limit, "offset": offset},
         )
-        if isinstance(body, list):  # accounts: flat, unpaginated
-            return body
-        if not isinstance(body, dict):
-            return out
-        items = body.get("items") or []
-        out.extend(items)
-        total = body.get("total")
-        if not items or len(items) < _PAGE or total is None or len(out) >= total:
-            return out
-        offset += _PAGE
+    )
 
 
 def resolve_or_create(client: ExpenseClient, plan: ImportPlan) -> ResolveResult:
