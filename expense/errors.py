@@ -66,6 +66,21 @@ def format_error(err: Exception) -> str:
     return str(err)
 
 
+# The shared-envelope error families: {ExcType: (envelope code, exit code)}.
+# EngineError stays a dedicated branch in render() — its --json output is the
+# engine's raw body passed through verbatim, not a client-composed envelope.
+_ENVELOPE_ERRORS: dict[type[Exception], tuple[str, int]] = {
+    EngineConnectionError: ("CONNECTION_ERROR", 2),
+    ConfigMissingError: ("CONFIG_MISSING", 3),
+    ConfigInvalidError: ("CONFIG_INVALID", 3),
+    CacheUnavailableError: ("CACHE_UNAVAILABLE", 4),
+}
+
+# Everything handle_errors catches — registering a type in _ENVELOPE_ERRORS
+# is the single step that makes it render cleanly.
+_HANDLED_ERRORS: tuple[type[Exception], ...] = (EngineError, *_ENVELOPE_ERRORS)
+
+
 def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
     """Render an error.
 
@@ -77,53 +92,12 @@ def render(err: Exception, *, json_mode: bool) -> tuple[str, int, bool]:
             return json.dumps(err.raw_body, indent=2), 1, False
         return "Error: " + format_error(err), 1, True
 
-    if isinstance(err, EngineConnectionError):
-        if json_mode:
-            envelope = {
-                "error": {
-                    "code": "CONNECTION_ERROR",
-                    "message": str(err),
-                    "fields": None,
-                }
-            }
-            return json.dumps(envelope, indent=2), 2, False
-        return "Error: " + format_error(err), 2, True
-
-    if isinstance(err, ConfigMissingError):
-        if json_mode:
-            envelope = {
-                "error": {
-                    "code": "CONFIG_MISSING",
-                    "message": str(err),
-                    "fields": None,
-                }
-            }
-            return json.dumps(envelope, indent=2), 3, False
-        return "Error: " + format_error(err), 3, True
-
-    if isinstance(err, ConfigInvalidError):
-        if json_mode:
-            envelope = {
-                "error": {
-                    "code": "CONFIG_INVALID",
-                    "message": str(err),
-                    "fields": None,
-                }
-            }
-            return json.dumps(envelope, indent=2), 3, False
-        return "Error: " + format_error(err), 3, True
-
-    if isinstance(err, CacheUnavailableError):
-        if json_mode:
-            envelope = {
-                "error": {
-                    "code": "CACHE_UNAVAILABLE",
-                    "message": str(err),
-                    "fields": None,
-                }
-            }
-            return json.dumps(envelope, indent=2), 4, False
-        return "Error: " + format_error(err), 4, True
+    for exc_type, (code, exit_code) in _ENVELOPE_ERRORS.items():
+        if isinstance(err, exc_type):
+            if json_mode:
+                envelope = {"error": {"code": code, "message": str(err), "fields": None}}
+                return json.dumps(envelope, indent=2), exit_code, False
+            return "Error: " + format_error(err), exit_code, True
 
     raise err
 
@@ -136,13 +110,7 @@ def handle_errors(fn):
         json_mode = bool(kwargs.get("json_output", False))
         try:
             return fn(*args, **kwargs)
-        except (
-            EngineError,
-            EngineConnectionError,
-            ConfigMissingError,
-            ConfigInvalidError,
-            CacheUnavailableError,
-        ) as err:
+        except _HANDLED_ERRORS as err:
             output, exit_code, use_stderr = render(err, json_mode=json_mode)
             typer.echo(output, err=use_stderr)
             raise typer.Exit(code=exit_code) from err
