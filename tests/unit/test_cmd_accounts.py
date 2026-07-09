@@ -552,3 +552,17 @@ def test_archive_triggers_post_write_sync_via_run_toggle(cache_populated):
     result = runner.invoke(cli_app, ["accounts", "archive", "abc", "--yes"])
     assert result.exit_code == 0, result.output
     assert sync_route.called
+
+
+@respx.mock
+def test_list_before_bootstrap_hints_instead_of_traceback(configured):
+    """Fresh PAT + never-bootstrapped account: the cold start can't derive a
+    user_id and must exit 5 with the auth-bootstrap hint, not a raw
+    RuntimeError traceback (backlog 6.1b)."""
+    respx.get("https://api.example.com/v1/sync").mock(
+        return_value=httpx.Response(200, json=sync_payload(settings=None))
+    )
+    result = runner.invoke(cli_app, ["accounts", "list"])
+    assert result.exit_code == 5, result.output
+    assert "auth bootstrap" in result.output
+    assert "Traceback" not in result.output

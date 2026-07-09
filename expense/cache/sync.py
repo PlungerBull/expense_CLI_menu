@@ -18,7 +18,7 @@ from typing import IO, Literal
 
 from expense.cache import db, state
 from expense.config import Config
-from expense.errors import EngineError
+from expense.errors import EngineError, SyncContractError
 from expense.http import ExpenseClient
 
 RESOURCE_TABLES: dict[str, tuple[str, ...]] = {
@@ -101,8 +101,10 @@ def _derive_user_id(response: dict) -> str:
         rows = response.get(key) or []
         if rows and isinstance(rows, list) and rows[0].get("user_id"):
             return str(rows[0]["user_id"])
-    raise RuntimeError(
-        "Cannot derive user_id from /sync response: settings is null and every resource is empty."
+    raise SyncContractError(
+        "Cannot derive user_id from /sync response: settings is null and every "
+        "resource is empty. If this account was never provisioned, run "
+        "'expense auth bootstrap' first."
     )
 
 
@@ -188,7 +190,9 @@ def _fetch(client: ExpenseClient, sync_token: str) -> dict:
         # A missing token would get stored as "" and the next delta would run
         # sync_token=* — a full fetch applied as a delta without wiping,
         # stranding rows deleted server-side. Broken contract: error out.
-        raise RuntimeError("Engine /sync response is missing sync_token; refusing to apply it.")
+        raise SyncContractError(
+            "Engine /sync response is missing sync_token; refusing to apply it."
+        )
     return response
 
 

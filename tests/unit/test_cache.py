@@ -12,7 +12,12 @@ from expense.cache import db as cache_db
 from expense.cache import state as cache_state
 from expense.cache import sync as cache_sync
 from expense.config import Config
-from expense.errors import CacheUnavailableError, EngineConnectionError, EngineError
+from expense.errors import (
+    CacheUnavailableError,
+    EngineConnectionError,
+    EngineError,
+    SyncContractError,
+)
 from expense.http import ExpenseClient
 
 SYNC_FULL_RESPONSE = {
@@ -590,7 +595,7 @@ def test_delta_missing_sync_token_errors_loudly(cache_path, cfg):
     )
     with _make_client(cfg) as client:
         cache.cold_start(client, cfg)
-        with pytest.raises(RuntimeError, match="sync_token"):
+        with pytest.raises(SyncContractError, match="sync_token"):
             cache.delta_sync(client, cfg)
 
     conn = cache.connect()
@@ -613,7 +618,7 @@ def test_cold_start_missing_sync_token_errors_before_wipe(cache_path, cfg):
     )
     with _make_client(cfg) as client:
         cache.cold_start(client, cfg)
-        with pytest.raises(RuntimeError, match="sync_token"):
+        with pytest.raises(SyncContractError, match="sync_token"):
             cache.cold_start(client, cfg)
 
     conn = cache.connect()

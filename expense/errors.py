@@ -41,6 +41,11 @@ class CacheUnavailableError(Exception):
     """The local replica can't be opened right now (locked/unopenable, not corrupt)."""
 
 
+class SyncContractError(Exception):
+    """The engine's /sync response violated its own contract (missing sync_token,
+    or no derivable user_id). Not retryable client-side."""
+
+
 def format_error(err: Exception) -> str:
     """Human-readable error text, without the leading 'Error: ' prefix.
 
@@ -74,6 +79,7 @@ _ENVELOPE_ERRORS: dict[type[Exception], tuple[str, int]] = {
     ConfigMissingError: ("CONFIG_MISSING", 3),
     ConfigInvalidError: ("CONFIG_INVALID", 3),
     CacheUnavailableError: ("CACHE_UNAVAILABLE", 4),
+    SyncContractError: ("SYNC_CONTRACT", 5),
 }
 
 # Everything handle_errors catches — registering a type in _ENVELOPE_ERRORS

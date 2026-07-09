@@ -25,6 +25,7 @@ Rules for this file:
 | polish-backlog.md holds only open work | 2026-07-06 | full entry below |
 | Manage detail: system categories are editable, not immutable | 2026-07-07 | full entry below |
 | Monthly report TUI is a sliding 4-month grid, not a single-month view | 2026-07-08 | full entry below |
+| `SyncContractError` + exit code 5 for /sync contract violations | 2026-07-08 | full entry below |
 
 ## Sign is always literal — no default-to-expense magic (2026-04-25)
 
@@ -81,3 +82,11 @@ Rules for this file:
 **Decision.** The screen is a **4-month grid** — categories as rows, the last four months as columns (window ends at the current month), home-currency cells, net-only footer; `[`/`]` slide the window one month older/newer, no clamp. Mockup **Option A** (picked 2026-07-08): rows expand `▼/▶` into their hashtag combos across all four columns, reusing the Outstanding tree keymap; collapsed by default so the grid first reads like the CLI range table. One engine call per window (`GET /v1/reports/monthly` with from/to via the shared `fetch_range`); the grid merge (`build_range_grid`) is shared with the flat range renderer. Mockup: [mockups/expense-world-monthly-report.html](mockups/expense-world-monthly-report.html).
 
 **Rejected.** (1) **Single-month view** — duplicates Outstanding Amounts; the report's value over the dashboard is the *time axis*, so the screen must show it. (2) **Single-month + a range-view toggle** — two layouts to build and maintain when the sliding window already covers the trend need with one. (3) **`←`/`→` for month navigation** — collides with the tree's expand/collapse bindings, hence `[`/`]`. (4) **Option B (flat, always-expanded grid)** — offered in the mockup, not picked; long months can't fold their hashtag noise.
+
+## `SyncContractError` + exit code 5 for /sync contract violations (2026-07-08)
+
+**Context.** Two cache-sync guards raised bare `RuntimeError` (backlog 6.1b): `_derive_user_id` when a /sync response has null settings and every resource empty (reachable by installing a PAT and running any list command before `auth bootstrap`), and `_fetch` when the engine omits `sync_token`. `handle_errors` catches only the domain errors, so both escaped as raw tracebacks — the exact freshman path the CLI exists to smooth.
+
+**Decision.** A new domain error, `SyncContractError` ("the engine responded but violated its own contract"), registered in the `_ENVELOPE_ERRORS` table in [expense/errors.py](../expense/errors.py) with envelope code `SYNC_CONTRACT` and **exit code 5** — a new family alongside 1 (engine rejected the request), 2 (connection), 3 (config), 4 (cache). The user-facing message carries the remedy ("run 'expense auth bootstrap' first"), so the TUI toast inherits the hint via `format_error`'s fallback.
+
+**Rejected.** Exit 1 (folding it into "engine error" hides that the *contract* broke, not a request — scripts couldn't tell a broken engine build from a validation error); exit 2 (already double-booked: connection errors share it with click's usage errors, an open §5 nit — adding a third meaning makes that worse); keeping `RuntimeError` and catching it broadly in `handle_errors` (would swallow genuine client bugs, which must keep crashing loudly).

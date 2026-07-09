@@ -8,6 +8,7 @@ from expense.errors import (
     ConfigMissingError,
     EngineConnectionError,
     EngineError,
+    SyncContractError,
     format_error,
     handle_errors,
     render,
@@ -143,6 +144,26 @@ def test_render_cache_unavailable_json_envelope():
     assert envelope["error"]["fields"] is None
 
 
+def test_render_sync_contract_human():
+    err = SyncContractError(
+        "Cannot derive user_id from /sync response. Run 'expense auth bootstrap' first."
+    )
+    output, exit_code, use_stderr = render(err, json_mode=False)
+    assert exit_code == 5
+    assert use_stderr is True
+    assert output.startswith("Error:")
+    assert "auth bootstrap" in output
+
+
+def test_render_sync_contract_json_envelope():
+    err = SyncContractError("Engine /sync response is missing sync_token; refusing to apply it.")
+    output, exit_code, _ = render(err, json_mode=True)
+    assert exit_code == 5
+    envelope = json.loads(output)
+    assert envelope["error"]["code"] == "SYNC_CONTRACT"
+    assert envelope["error"]["fields"] is None
+
+
 def test_format_error_engine_error_with_fields():
     err = EngineError(
         code="VALIDATION_ERROR",
@@ -236,6 +257,16 @@ def test_handle_errors_catches_config_missing():
     with pytest.raises(typer.Exit) as exc:
         cmd()
     assert exc.value.exit_code == 3
+
+
+def test_handle_errors_catches_sync_contract():
+    @handle_errors
+    def cmd(json_output: bool = False):
+        raise SyncContractError("broken contract")
+
+    with pytest.raises(typer.Exit) as exc:
+        cmd()
+    assert exc.value.exit_code == 5
 
 
 def test_handle_errors_propagates_unexpected():

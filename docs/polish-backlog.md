@@ -349,7 +349,7 @@ existing item are marked.
   (`.sqlite3`) is unaffected, which is why tests miss it. Fix:
   `path.parent / (path.name + "-wal")`.
 
-- [ ] **`cache/sync.py:104,191` — bare `RuntimeError` escapes `handle_errors`
+- [x] **`cache/sync.py:104,191` — bare `RuntimeError` escapes `handle_errors`
   as a raw traceback.** `_derive_user_id` (settings null + every resource
   empty) and `_fetch` (engine omits `sync_token`) raise `RuntimeError`, which
   `errors.handle_errors` does not catch (it catches only the five domain
