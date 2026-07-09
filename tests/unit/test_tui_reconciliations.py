@@ -8,12 +8,10 @@ from expense.tui.app import ExpenseApp
 from expense.tui.screens.reconciliations import (
     NewReconciliationScreen,
     ReconciliationsScreen,
-    reconciliation_rows,
 )
 from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for
 
-ACCOUNTS = {"acc1": "BCP PEN", "acc2": "Interbank USD"}
 ITEMS = [
     {
         "id": "r1",
@@ -38,18 +36,20 @@ ITEMS = [
 ]
 
 
-def test_reconciliation_rows_format():
-    rows = reconciliation_rows(ITEMS, ACCOUNTS)
+def test_batch_rows_format():
+    from expense.tui.screens.reconciliations import batch_rows
+
+    rows = batch_rows(ITEMS)
     assert rows[0][0] == "r1"
     cells = rows[0][1]
-    assert cells[0] == "BCP PEN" and cells[1] == "March 2026"
-    assert cells[2] == "2026-03-01 → 2026-03-31"
-    assert cells[3] == "12,000.00" and cells[4] == "9,580.00"
-    assert cells[5] == "chained" and cells[6] == "completed"
+    assert cells[0] == "March 2026"
+    assert cells[1] == "2026-03-01 → 2026-03-31"
+    assert cells[2] == "12,000.00" and cells[3] == "9,580.00"
+    assert cells[4] == "chained" and cells[5] == "completed"
     assert rows[0][2] == "dim"  # completed dimmed
     # draft, open-ended period, null end balance
-    assert reconciliation_rows([ITEMS[1]], ACCOUNTS)[0][1][6] == "draft"
-    assert reconciliation_rows([ITEMS[1]], ACCOUNTS)[0][1][2] == "—"
+    assert batch_rows([ITEMS[1]])[0][1][5] == "draft"
+    assert batch_rows([ITEMS[1]])[0][1][1] == "—"
 
 
 def _patch(monkeypatch):

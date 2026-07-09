@@ -72,6 +72,26 @@ TXN = {
 }
 
 
+def test_edit_with_null_hashtag_ref_renders_dash_not_crash(fake_client, monkeypatch):
+    """A record carrying a null reference id must render the shared em-dash
+    fallback instead of TypeError-ing on None[:8] (backlog 6.2e)."""
+    _patch(monkeypatch)
+    record = {**TXN, "hashtag_ids": ["h1", None]}
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen(record=record, resource="transactions")
+            await app.push_screen(screen)
+            await _wait_loaded(screen, pilot)
+            await pilot.pause(0.05)
+            assert app.is_running
+            assert "—" in screen._display["hashtags"]  # null id → em-dash
+            assert "—" in screen._tag_display_names()
+
+    asyncio.run(scenario())
+
+
 def test_quick_log_normal_flow_submits_payload(fake_client, monkeypatch):
     _patch(monkeypatch)
 

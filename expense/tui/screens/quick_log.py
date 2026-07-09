@@ -32,11 +32,13 @@ from textual.widgets import Input
 
 from expense.commands import accounts_cmd, categories_cmd, hashtags_cmd
 from expense.commands._resource import (
+    account_choices,
     format_cents,
     items_of,
     load_account_name_map,
     load_category_name_map,
     load_hashtag_name_map,
+    resolve_name,
 )
 from expense.dates import to_canonical_aware
 from expense.errors import format_error
@@ -151,7 +153,9 @@ class QuickAddLogScreen(FormScreen):
         tags = rec.get("hashtag_ids") or []
         if tags:
             self._values["hashtags"] = list(tags)
-            self._display["hashtags"] = " ".join("#" + t[:6] for t in tags)
+            # resolve_name: short-id placeholder until entities load, and a
+            # null id renders "—" instead of TypeError-ing (backlog 6.2e)
+            self._display["hashtags"] = " ".join("#" + resolve_name(t, {}) for t in tags)
         if rec.get("description"):
             self._values["note"] = self._display["note"] = rec["description"]
         # deep: _commit_hashtag appends to _values["hashtags"] in place — a shallow
@@ -207,11 +211,7 @@ class QuickAddLogScreen(FormScreen):
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
-        accounts = [
-            (a["id"], a.get("name") or "(unnamed)", a.get("currency_code") or "?")
-            for a in accts
-            if a.get("id")
-        ]
+        accounts = account_choices(accts)
         categories = [
             (c["id"], c.get("name") or "(unnamed)")
             for c in cats
@@ -224,20 +224,18 @@ class QuickAddLogScreen(FormScreen):
         self._accounts, self._categories, self._hashtags = accounts, categories, hashtags
         self._acc_names, self._cat_names, self._tag_names_map = maps
         if self._mode == "edit":  # resolve pre-filled ids → names
+            # resolve_name (shared) renders a null reference as "—" instead of
+            # crashing on None[:8] (backlog 6.2e)
             if "account" in self._values:
-                self._display["account"] = self._resolve(self._values["account"], self._acc_names)
+                self._display["account"] = resolve_name(self._values["account"], self._acc_names)
             if "category" in self._values:
-                self._display["category"] = self._resolve(self._values["category"], self._cat_names)
+                self._display["category"] = resolve_name(self._values["category"], self._cat_names)
             if self._values.get("hashtags"):
                 self._display["hashtags"] = " ".join(
-                    "#" + self._resolve(t, self._tag_names_map) for t in self._values["hashtags"]
+                    "#" + resolve_name(t, self._tag_names_map) for t in self._values["hashtags"]
                 )
         self._recompute(self.query_one("#bar", Input).value)
         self._refresh_view()
-
-    @staticmethod
-    def _resolve(id_: str, names: dict) -> str:
-        return names.get(id_, id_[:8])
 
     def _account_currency(self, account_id) -> str | None:
         return next((c for (i, n, c) in self._accounts if i == account_id), None)
@@ -424,7 +422,7 @@ class QuickAddLogScreen(FormScreen):
 
     def _tag_display_names(self) -> list[str]:
         names = getattr(self, "_tag_names_map", {}) or dict(self._hashtags)
-        return [names.get(i, i[:8]) for i in self._values.get("hashtags", [])]
+        return [resolve_name(i, names) for i in self._values.get("hashtags", [])]
 
     # ---- render ----------------------------------------------------------
     def _suggest_renderable(self) -> RenderableType:

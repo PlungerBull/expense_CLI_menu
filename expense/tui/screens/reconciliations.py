@@ -35,12 +35,14 @@ from textual.worker import get_current_worker
 
 from expense.commands import accounts_cmd, reconcile_cmd, transactions_cmd
 from expense.commands._resource import (
+    account_choices,
     fetch_all_pages,
     format_cents,
     items_of,
     load_account_name_map,
     load_category_name_map,
     load_hashtag_name_map,
+    resolve_name,
 )
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, format_error
@@ -57,28 +59,6 @@ from expense.tui.widgets.header import Breadcrumb
 # Status labels + period formatting are owned by the commands layer
 # (reconcile_cmd.format_status / format_period) — one copy, per the §5 rule.
 _period = reconcile_cmd.format_period
-_LIST_HEADERS = ["Account", "Name", "Period", "Begin", "End", "Source", "Status"]
-
-
-def reconciliation_rows(
-    items: list[dict], account_names: dict, palette: Palette | None = None
-) -> list:
-    """Pure (id, cells, base_style) rows for a CursorList. Unit-testable."""
-    rows = []
-    for it in items:
-        status = it.get("status")
-        cells = [
-            account_names.get(it.get("account_id"), (it.get("account_id") or "?")[:8]),
-            it.get("name") or "(unnamed)",
-            _period(it),
-            amount_cell(it.get("beginning_balance_cents"), palette, BALANCE_RULE),
-            amount_cell(it.get("ending_balance_cents"), palette, BALANCE_RULE),
-            it.get("beginning_balance_source") or "—",
-            reconcile_cmd.format_status(status),
-        ]
-        rows.append((it.get("id"), cells, "dim" if status == 2 else ""))
-    return rows
-
 
 _BATCH_HEADERS = ["Name", "Period", "Begin", "End", "Source", "Status"]
 
@@ -149,16 +129,7 @@ class ReconciliationsScreen(SectionScreen):
             )
         )
         accts = items_of(accounts_cmd.fetch_accounts(cfg, **kw))
-        accounts = [
-            (
-                a["id"],
-                a.get("name") or "(unnamed)",
-                a.get("currency_code") or "?",
-                a.get("current_balance_cents"),
-            )
-            for a in accts
-            if a.get("id") and not a.get("is_person")
-        ]
+        accounts = account_choices(accts, include_people=False, with_balance=True)
         return {"recons": recons, "accounts": accounts}
 
     def _selected_account(self):
@@ -387,12 +358,7 @@ class NewReconciliationScreen(FormScreen):
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
-        items = items_of(body)
-        accounts = [
-            (a["id"], a.get("name") or "(unnamed)", a.get("currency_code") or "?")
-            for a in items
-            if a.get("id") and not a.get("is_person")
-        ]
+        accounts = account_choices(items_of(body), include_people=False)
         self.app.call_from_thread(self._set_accounts, accounts)
 
     def _set_accounts(self, accounts: list) -> None:
@@ -582,7 +548,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
     def _render_header(self) -> None:
         r = self._record
         palette = resolve_palette(self.app)
-        acct = load_account_name_map().get(self._account_id, (self._account_id or "?")[:8])
+        acct = resolve_name(self._account_id, load_account_name_map())
         status = reconcile_cmd.format_status(r.get("status"))
         begin = amount_cell(r.get("beginning_balance_cents"), palette, BALANCE_RULE)
         end = amount_cell(r.get("ending_balance_cents"), palette, BALANCE_RULE)

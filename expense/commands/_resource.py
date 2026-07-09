@@ -288,6 +288,29 @@ def resolve_name(uuid_value: object, name_map: dict[str, str]) -> str:
     return name_map.get(uuid_value, uuid_value[:8])
 
 
+def account_choices(
+    items: list, *, include_people: bool = True, with_balance: bool = False
+) -> list[tuple]:
+    """Picker tuples from account rows: `(id, name-or-'(unnamed)', currency)`,
+    plus `current_balance_cents` when `with_balance`.
+
+    Skips id-less rows and (unless `include_people`) person accounts. One copy
+    of the build shared by the quick-log form, the new-reconciliation form,
+    and the reconciliations browse (backlog 6.4c).
+    """
+    out: list[tuple] = []
+    for a in items:
+        if not a.get("id"):
+            continue
+        if not include_people and a.get("is_person"):
+            continue
+        row: tuple = (a["id"], a.get("name") or "(unnamed)", a.get("currency_code") or "?")
+        if with_balance:
+            row = (*row, a.get("current_balance_cents"))
+        out.append(row)
+    return out
+
+
 def format_hashtag_cell(ids: object, name_map: dict[str, str], *, max_width: int) -> str:
     """Joined hashtag names for one table cell; unresolved ids show `xxxxxxxx…`.
 

@@ -397,7 +397,7 @@ existing item are marked.
   exception through Textual's message pump crashes the app. Promoting the
   helper to raise a neutral error the TUI can catch fixes both.
 
-- [ ] **`tui/screens/quick_log.py` name-resolution — `None[:8]` on a missing
+- [x] **`tui/screens/quick_log.py` name-resolution — `None[:8]` on a missing
   reference id.** The inline `names.get(id, id[:8])` copies (quick_log
   `_resolve`/`_tag_display_names`, `reconciliations.py:69,585`) raise
   `TypeError` on a null `account_id`/`category_id` where the shared
@@ -440,7 +440,7 @@ existing item are marked.
   unordered PUTs — the general form of the checklist-toggle race fixed
   screen-locally in 3.2. Centralize serialization in the mixin.
 
-- [ ] **Duplicated inline id→name resolution and account-picker builders.**
+- [x] **Duplicated inline id→name resolution and account-picker builders.**
   Four copies of `names.get(id, id[:8])` (see 6.2) and three copies of the
   `(id, name-or-'(unnamed)', currency)` account-choices build
   (`quick_log._load_entities`, `reconciliations._load_accounts`,

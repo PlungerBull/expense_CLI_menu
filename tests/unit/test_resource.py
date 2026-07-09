@@ -12,6 +12,7 @@ import typer
 from typer.testing import CliRunner
 
 from expense.commands._resource import (
+    account_choices,
     build_update_payload,
     fetch_all_pages,
     fetch_body,
@@ -534,6 +535,36 @@ def test_engine_error_attribute_access():
     assert err.status == 403
     assert err.code == "X"
     assert err.fields == {"a": "b"}
+
+
+# ---------------------------------------------------------------------------
+# account_choices (backlog 6.4c — the one picker-tuple build)
+# ---------------------------------------------------------------------------
+
+_ACCOUNT_ROWS = [
+    {"id": "a1", "name": "BCP", "currency_code": "PEN", "current_balance_cents": 100},
+    {"id": "a2", "name": None, "currency_code": None, "is_person": False},
+    {"id": "p1", "name": "Mom", "currency_code": "PEN", "is_person": True},
+    {"name": "no-id row is skipped"},
+]
+
+
+def test_account_choices_includes_people_by_default():
+    rows = account_choices(_ACCOUNT_ROWS)
+    assert [r[0] for r in rows] == ["a1", "a2", "p1"]
+    assert rows[0] == ("a1", "BCP", "PEN")
+    assert rows[1] == ("a2", "(unnamed)", "?")  # null name/currency fallbacks
+
+
+def test_account_choices_can_exclude_people():
+    rows = account_choices(_ACCOUNT_ROWS, include_people=False)
+    assert [r[0] for r in rows] == ["a1", "a2"]
+
+
+def test_account_choices_with_balance_appends_cents():
+    rows = account_choices(_ACCOUNT_ROWS, include_people=False, with_balance=True)
+    assert rows[0] == ("a1", "BCP", "PEN", 100)
+    assert rows[1][3] is None  # missing balance stays None
 
 
 # ---------------------------------------------------------------------------
