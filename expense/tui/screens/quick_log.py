@@ -20,7 +20,6 @@ derived from the account.
 """
 
 import copy
-import io
 import uuid
 from datetime import date as date_cls
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -42,6 +41,7 @@ from expense.commands._resource import (
 )
 from expense.dates import to_canonical_aware
 from expense.errors import format_error
+from expense.tui.screens._base import screen_fetch_kwargs
 from expense.tui.screens._form import FormScreen, form_bindings
 
 _LABELS = {
@@ -197,12 +197,7 @@ class QuickAddLogScreen(FormScreen):
 
         try:
             cfg = config_module.ensure_loaded()
-            kw = dict(
-                no_cache=self.app._no_cache,
-                verbose=self.app._verbose,
-                cold_start_notice=False,
-                notice_stream=io.StringIO(),
-            )
+            kw = screen_fetch_kwargs(self.app)
             accts = items_of(accounts_cmd.fetch_accounts(cfg, include_people=True, **kw))
             cats = items_of(categories_cmd.fetch_categories(cfg, **kw))
             tags = items_of(hashtags_cmd.fetch_hashtags(cfg, **kw))

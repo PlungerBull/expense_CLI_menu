@@ -7,8 +7,6 @@ rather than reimplementing it. `enter` opens a read-only detail modal; `f`
 cycles the filter. Writes (add/edit/promote/delete) land in Phase 2.
 """
 
-import io
-
 from rich.text import Text
 from textual.widget import Widget
 from textual.widgets import Static
@@ -22,7 +20,7 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
-from expense.tui.screens._base import SectionScreen
+from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
@@ -83,12 +81,7 @@ class InboxScreen(SectionScreen):
         from expense import config as config_module
 
         cfg = config_module.ensure_loaded()
-        kw = dict(
-            no_cache=self.app._no_cache,
-            verbose=self.app._verbose,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
-        )
+        kw = screen_fetch_kwargs(self.app)
         body = inbox_cmd.fetch_inbox(
             cfg, ready=self._filter == "ready", overdue=self._filter == "overdue", **kw
         )

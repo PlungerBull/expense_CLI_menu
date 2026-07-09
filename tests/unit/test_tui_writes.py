@@ -118,6 +118,18 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
     assert ("POST", "/inbox/i1/promote") in fake_client.requests
 
 
+def test_screen_fetch_kwargs_returns_fresh_stream_each_call():
+    """A shared StringIO across fetches would interleave notices (backlog 6.4d)."""
+    from types import SimpleNamespace
+
+    from expense.tui.screens._base import screen_fetch_kwargs
+
+    app = SimpleNamespace(_no_cache=True, _verbose=False)
+    first, second = screen_fetch_kwargs(app), screen_fetch_kwargs(app)
+    assert first["no_cache"] is True and first["cold_start_notice"] is False
+    assert first["notice_stream"] is not second["notice_stream"]
+
+
 def test_rapid_writes_serialize_in_order_and_refresh_each(fake_client, monkeypatch):
     """Two immediate run_writes on any screen send both, one at a time, in
     order, each with its own replica refresh (default refresh=True) — the

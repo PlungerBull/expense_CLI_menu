@@ -21,7 +21,6 @@ needs ≥1 transaction and locks amount/account/title/date on them; delete is
 draft-only and just detaches the transactions.
 """
 
-import io
 import uuid
 
 from rich.text import Text
@@ -46,7 +45,12 @@ from expense.commands._resource import (
 )
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, format_error
-from expense.tui.screens._base import ContentSwapLockMixin, EngineWriteMixin, SectionScreen
+from expense.tui.screens._base import (
+    ContentSwapLockMixin,
+    EngineWriteMixin,
+    SectionScreen,
+    screen_fetch_kwargs,
+)
 from expense.tui.screens._form import FormScreen
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
@@ -115,12 +119,7 @@ class ReconciliationsScreen(SectionScreen):
         from expense import config as config_module
 
         cfg = config_module.ensure_loaded()
-        kw = dict(
-            no_cache=self.app._no_cache,
-            verbose=self.app._verbose,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
-        )
+        kw = screen_fetch_kwargs(self.app)
         # page through everything: the default ~100-row page truncated the
         # chain, so ctrl+up/down reordered against wrong neighbors (6.2b)
         recons = fetch_all_pages(
@@ -348,13 +347,7 @@ class NewReconciliationScreen(FormScreen):
 
         try:
             cfg = config_module.ensure_loaded()
-            body = accounts_cmd.fetch_accounts(
-                cfg,
-                no_cache=self.app._no_cache,
-                verbose=self.app._verbose,
-                cold_start_notice=False,
-                notice_stream=io.StringIO(),
-            )
+            body = accounts_cmd.fetch_accounts(cfg, **screen_fetch_kwargs(self.app))
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
@@ -588,12 +581,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
         worker = get_current_worker()
         try:
             cfg = config_module.ensure_loaded()
-            kw = dict(
-                no_cache=self.app._no_cache,
-                verbose=self.app._verbose,
-                cold_start_notice=False,
-                notice_stream=io.StringIO(),
-            )
+            kw = screen_fetch_kwargs(self.app)
             if refresh_record:
                 # refetch the batch itself too — a stale header/status would
                 # misrepresent balances and the read-only gate. By id: scanning

@@ -10,7 +10,6 @@ just render empty). Mockup: docs/mockups/expense-world-monthly-report.html
 (Option A, picked 2026-07-08).
 """
 
-import io
 from datetime import date
 
 from rich.console import RenderableType
@@ -23,7 +22,7 @@ from textual.widgets import Static
 from expense.commands import reports_cmd
 from expense.commands._resource import load_hashtag_name_map
 from expense.commands.dashboard_cmd import hashtag_label
-from expense.tui.screens._base import SectionScreen
+from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
 
@@ -159,11 +158,8 @@ class MonthlyReportScreen(SectionScreen):
             cfg,
             from_ym=shift_month(*self._end, -(WINDOW_MONTHS - 1)),
             to_ym=self._end,
-            verbose=self.app._verbose,
-            no_cache=self.app._no_cache,
             warm=True,  # grid sub-rows show hashtag names; gated off in no_cache
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
+            **screen_fetch_kwargs(self.app),
         )
         return {
             "grid": reports_cmd.build_range_grid(body.get("months") or []),

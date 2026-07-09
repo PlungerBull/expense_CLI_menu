@@ -14,8 +14,6 @@ by `system_key`, not name, so rename/recolor is pipeline-safe and allowed
 the action reflects engine truth rather than inventing a client-side rule.
 """
 
-import io
-
 from rich import box
 from rich.console import Group, RenderableType
 from rich.table import Table
@@ -29,7 +27,7 @@ from textual.worker import get_current_worker
 
 from expense.commands._resource import items_of
 from expense.errors import format_error
-from expense.tui.screens._base import EngineWriteMixin
+from expense.tui.screens._base import EngineWriteMixin, screen_fetch_kwargs
 from expense.tui.screens.create_forms import (
     EditAccountScreen,
     EditCategoryScreen,
@@ -201,12 +199,7 @@ class ManageDetailScreen(EngineWriteMixin, Screen):
         raise NotImplementedError
 
     def _fetch_kw(self) -> dict:
-        return dict(
-            no_cache=self.app._no_cache,
-            verbose=self.app._verbose,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
-        )
+        return screen_fetch_kwargs(self.app)
 
 
 class AccountDetailScreen(ManageDetailScreen):

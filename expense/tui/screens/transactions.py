@@ -6,8 +6,6 @@ detail modal. No `cl` glyph column (dropped per request); interactive filters,
 search, and edit land in a later pass.
 """
 
-import io
-
 from rich.text import Text
 from textual.widget import Widget
 from textual.widgets import Static
@@ -23,7 +21,7 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
-from expense.tui.screens._base import SectionScreen
+from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
@@ -73,13 +71,7 @@ class TransactionsScreen(SectionScreen):
 
         cfg = config_module.ensure_loaded()
         body = transactions_cmd.fetch_transactions(
-            cfg,
-            limit=_PAGE,
-            offset=0,
-            no_cache=self.app._no_cache,
-            verbose=self.app._verbose,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
+            cfg, limit=_PAGE, offset=0, **screen_fetch_kwargs(self.app)
         )
         items = items_of(body)
         total = body.get("total") if isinstance(body, dict) else None

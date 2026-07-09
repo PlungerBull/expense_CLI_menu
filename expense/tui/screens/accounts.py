@@ -7,19 +7,11 @@ Outstanding Amounts). `n` creates; `enter` opens the record detail
 (AccountDetailScreen), where `e` edits and `a` archives.
 """
 
-import io
-
-from rich.text import Text
-from textual.widget import Widget
-from textual.widgets import Static
-
 from expense.commands import accounts_cmd
-from expense.commands._resource import items_of
-from expense.tui.screens._base import SectionScreen
+from expense.tui.screens._base import ResourceListScreen
 from expense.tui.screens.manage_detail import AccountDetailScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell, swatch
-from expense.tui.widgets.cursor_list import CursorList
 
 _HEADERS = ["Name", "Type", "Cur", "Color", "Balance", "Status"]
 
@@ -41,52 +33,25 @@ def account_rows(items: list[dict], palette: Palette | None = None) -> list:
     return rows
 
 
-class AccountsScreen(SectionScreen):
+class AccountsScreen(ResourceListScreen):
     crumb = ("Manage", "Accounts")
     CARD_WIDTH = 80
-    BINDINGS = [("n", "new", "New")]  # archive lives on the detail (enter), not the list
+    TITLE = "Accounts — banks & people"
+    HEADERS = _HEADERS
+    EMPTY = "(no accounts)"
+    LEGEND = "balances are native currency · home equivalents in Outstanding Amounts"
+    ALIGN_RIGHT = {4}
 
-    def __init__(self) -> None:
-        super().__init__()
-        self._by_id: dict = {}
+    def fetch_items(self, cfg, **kw):
+        return accounts_cmd.fetch_accounts(cfg, include_archived=True, include_people=True, **kw)
 
-    def action_new(self) -> None:
+    def rows(self, items: list) -> list:
+        return account_rows(items, palette=resolve_palette(self.app))
+
+    def detail_screen(self, item: dict):
+        return AccountDetailScreen(item)
+
+    def new_screen(self):
         from expense.tui.screens.create_forms import NewAccountScreen
 
-        self.app.push_screen(NewAccountScreen(), lambda _result: self._load())
-
-    def fetch(self) -> list:
-        from expense import config as config_module
-
-        cfg = config_module.ensure_loaded()
-        body = accounts_cmd.fetch_accounts(
-            cfg,
-            include_archived=True,
-            include_people=True,
-            no_cache=self.app._no_cache,
-            verbose=self.app._verbose,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
-        )
-        return items_of(body)
-
-    def build(self, items: list) -> list[Widget]:
-        self._by_id = {it.get("id"): it for it in items}
-        return [
-            Static(Text("Accounts — banks & people"), classes="section-title"),
-            CursorList(
-                _HEADERS,
-                account_rows(items, palette=resolve_palette(self.app)),
-                align_right={4},
-                empty="(no accounts)",
-            ),
-            Static(
-                Text("balances are native currency · home equivalents in Outstanding Amounts"),
-                classes="legend",
-            ),
-        ]
-
-    def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
-        item = self._by_id.get(event.key)
-        if item:
-            self.app.push_screen(AccountDetailScreen(item), lambda _result: self._load())
+        return NewAccountScreen()

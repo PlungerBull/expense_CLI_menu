@@ -9,8 +9,6 @@ expand/collapse per category. Render helpers and `CategoriesView._build` are
 pure (no event loop), so formatting + collapse are unit-testable directly.
 """
 
-import io
-
 from rich import box
 from rich.console import RenderableType
 from rich.table import Table
@@ -21,7 +19,7 @@ from textual.widgets import Static
 
 from expense.commands import dashboard_cmd
 from expense.commands._resource import format_month
-from expense.tui.screens._base import SectionScreen
+from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
 
@@ -152,13 +150,7 @@ class OutstandingScreen(SectionScreen):
         from expense import config as config_module
 
         cfg = config_module.ensure_loaded()
-        return dashboard_cmd.fetch_dashboard(
-            cfg,
-            verbose=self.app._verbose,
-            no_cache=self.app._no_cache,
-            cold_start_notice=False,
-            notice_stream=io.StringIO(),
-        )
+        return dashboard_cmd.fetch_dashboard(cfg, **screen_fetch_kwargs(self.app))
 
     def build(self, body: dict) -> list[Widget]:
         palette = resolve_palette(self.app)

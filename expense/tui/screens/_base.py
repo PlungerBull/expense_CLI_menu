@@ -29,6 +29,23 @@ from expense.errors import format_error
 from expense.tui.widgets.header import Breadcrumb
 
 
+def screen_fetch_kwargs(app) -> dict:
+    """The standard TUI read kwargs: replica mode + verbosity off the app,
+    cold-start notice silenced (screens render their own sync note).
+
+    Returns a fresh dict with a fresh StringIO each call — a shared stream
+    would interleave notices across concurrent fetches.
+    """
+    import io
+
+    return dict(
+        no_cache=app._no_cache,
+        verbose=app._verbose,
+        cold_start_notice=False,
+        notice_stream=io.StringIO(),
+    )
+
+
 @dataclass
 class _QueuedWrite:
     method: str
@@ -320,3 +337,71 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
     def build(self, data: object) -> list[Widget]:
         """Return the widgets to mount inside the card (runs on the UI thread)."""
         raise NotImplementedError
+
+
+class ResourceListScreen(SectionScreen):
+    """Scaffold for the simple manage lists (Accounts / Categories / Hashtags):
+    quiet fetch → title + CursorList of rows (+ optional legend); `n` pushes
+    the new-record form, `enter` the record detail — both reload on return.
+
+    Subclasses set the class attrs and four hooks. Row builders stay pure
+    module functions (they have direct unit tests).
+    """
+
+    TITLE: str = ""
+    HEADERS: list[str] = []
+    EMPTY: str = "(empty)"
+    LEGEND: str | None = None
+    ALIGN_RIGHT: set[int] = set()
+    BINDINGS = [("n", "new", "New")]  # archive lives on the detail (enter), not the list
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._by_id: dict = {}
+
+    # ---- hooks ------------------------------------------------------------
+    def fetch_items(self, cfg, **kw) -> object:
+        """Call the shared fetch_* for this resource (worker thread)."""
+        raise NotImplementedError
+
+    def rows(self, items: list) -> list:
+        """items → the pure row builder's (id, cells, style) rows."""
+        raise NotImplementedError
+
+    def detail_screen(self, item: dict):
+        """The record-detail screen for `enter` on a row."""
+        raise NotImplementedError
+
+    def new_screen(self):
+        """The create-form screen for `n`."""
+        raise NotImplementedError
+
+    # ---- scaffold ----------------------------------------------------------
+    def fetch(self) -> list:
+        from expense import config as config_module
+        from expense.commands._resource import items_of
+
+        cfg = config_module.ensure_loaded()
+        return items_of(self.fetch_items(cfg, **screen_fetch_kwargs(self.app)))
+
+    def build(self, items: list) -> list[Widget]:
+        from expense.tui.widgets.cursor_list import CursorList
+
+        self._by_id = {it.get("id"): it for it in items}
+        widgets: list[Widget] = [
+            Static(Text(self.TITLE), classes="section-title"),
+            CursorList(
+                self.HEADERS, self.rows(items), align_right=self.ALIGN_RIGHT, empty=self.EMPTY
+            ),
+        ]
+        if self.LEGEND:
+            widgets.append(Static(Text(self.LEGEND), classes="legend"))
+        return widgets
+
+    def action_new(self) -> None:
+        self.app.push_screen(self.new_screen(), lambda _result: self._load())
+
+    def on_cursor_list_selected(self, event) -> None:
+        item = self._by_id.get(event.key)
+        if item:
+            self.app.push_screen(self.detail_screen(item), lambda _result: self._load())
