@@ -214,15 +214,24 @@ class AuthScreen(SectionScreen):
         self.app.push_screen(PromptModal("Main currency", "USD or PEN"), cb)
 
     def _bootstrap(self, display_name: str) -> None:
-        from expense.commands import auth_cmd
+        from expense import dates
 
+        # Resolve before run_write: an undetectable timezone must notify, not
+        # crash the app through Textual's message pump (backlog 6.2d).
+        try:
+            timezone = dates.detect_timezone()
+        except dates.TimezoneDetectionError:
+            self.notify(
+                "Could not detect your timezone. Set the TZ environment variable and "
+                "relaunch, or run 'expense auth bootstrap --timezone <zone>' from the CLI.",
+                title="Bootstrap failed",
+                severity="error",
+            )
+            return
         self.run_write(
             "POST",
             "/auth/bootstrap",
-            json_body={
-                "display_name": display_name,
-                "timezone": auth_cmd._detect_timezone(),
-            },
+            json_body={"display_name": display_name, "timezone": timezone},
             on_success=lambda: self._done("Provisioned."),
             on_error=lambda m: self.notify(m, title="Bootstrap failed", severity="error"),
         )

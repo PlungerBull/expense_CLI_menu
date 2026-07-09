@@ -1,11 +1,10 @@
 import json
-import os
-import zoneinfo
 from pathlib import Path
 
 import typer
 
 from expense import config as config_module
+from expense import dates
 from expense.commands._resource import JSON_OPT, YES_OPT, cache_after_write, require_yes
 from expense.config import Config
 from expense.context import get_verbose
@@ -16,31 +15,16 @@ app = typer.Typer(help="Authentication, identity, and settings.", no_args_is_hel
 
 
 def _detect_timezone(localtime: Path = Path("/etc/localtime")) -> str:
-    tz_env = os.environ.get("TZ")
-    if tz_env:
-        try:
-            zoneinfo.ZoneInfo(tz_env)
-            return tz_env
-        except zoneinfo.ZoneInfoNotFoundError:
-            pass
-
-    if localtime.is_symlink():
-        target = str(localtime.resolve())
-        marker = "/zoneinfo/"
-        if marker in target:
-            zone = target.split(marker, 1)[1]
-            try:
-                zoneinfo.ZoneInfo(zone)
-                return zone
-            except zoneinfo.ZoneInfoNotFoundError:
-                pass
-
+    # Detection lives in expense.dates (shared with the TUI, backlog 6.2d);
     # BadParameter (a click UsageError) so the CLI renders "Error: ..." and
     # exits 2 instead of a raw traceback — the remedy is a flag the user holds.
-    raise typer.BadParameter(
-        "Could not detect system timezone. Pass --timezone explicitly.",
-        param_hint="--timezone",
-    )
+    try:
+        return dates.detect_timezone(localtime)
+    except dates.TimezoneDetectionError as exc:
+        raise typer.BadParameter(
+            "Could not detect system timezone. Pass --timezone explicitly.",
+            param_hint="--timezone",
+        ) from exc
 
 
 def _render_user_and_settings(body: dict, *, json_mode: bool) -> None:

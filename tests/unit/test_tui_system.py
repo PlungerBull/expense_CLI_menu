@@ -90,7 +90,7 @@ def test_auth_provisioned_shows_identity(fake_client, monkeypatch):
 
 def test_auth_not_provisioned_bootstraps(fake_client, monkeypatch):
     _patch_auth(fake_client, monkeypatch, me=None)  # 404 → not provisioned
-    monkeypatch.setattr("expense.commands.auth_cmd._detect_timezone", lambda: "America/Lima")
+    monkeypatch.setattr("expense.dates.detect_timezone", lambda *a, **k: "America/Lima")
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
@@ -106,6 +106,38 @@ def test_auth_not_provisioned_bootstraps(fake_client, monkeypatch):
             path, body = fake_client.posts[0]
             assert path == "/auth/bootstrap"
             assert body == {"display_name": "Alex", "timezone": "America/Lima"}
+
+    asyncio.run(scenario())
+
+
+def test_bootstrap_undetectable_timezone_notifies_not_crash(fake_client, monkeypatch):
+    """Timezone detection failure toasts a remedy instead of crashing the app
+    through Textual's message pump (backlog 6.2d)."""
+    from expense.dates import TimezoneDetectionError
+
+    _patch_auth(fake_client, monkeypatch, me=None)
+
+    def boom(*a, **k):
+        raise TimezoneDetectionError("no zone")
+
+    monkeypatch.setattr("expense.dates.detect_timezone", boom)
+    notices: list = []
+    monkeypatch.setattr(AuthScreen, "notify", lambda self, message, **kw: notices.append(message))
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = AuthScreen()
+            await app.push_screen(screen)
+            await wait_for(pilot, lambda: bool(app.screen.query(".legend")))
+            screen.action_bootstrap()
+            await pilot.pause(0.05)
+            app.screen.query_one("#prompt").value = "Alex"
+            await pilot.press("enter")  # submit display name → detection fails
+            await wait_for(pilot, lambda: notices)
+            assert any("TZ environment variable" in m for m in notices)
+            assert app.is_running
+            assert not fake_client.posts  # nothing was sent to the engine
 
     asyncio.run(scenario())
 

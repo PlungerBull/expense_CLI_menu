@@ -5,10 +5,15 @@ The engine accepts only RFC 3339 datetimes with an explicit timezone offset
 (YYYY-MM-DD, naive datetimes with T or space separator, etc.) and emits the
 engine-canonical form. Aware input passes through verbatim so the user's
 exact wire format is preserved.
+
+Also home to `detect_timezone` — the client-side IANA zone detection shared
+by `auth bootstrap` and the TUI Bootstrap action.
 """
 
+import os
 from datetime import date, datetime, time
-from zoneinfo import ZoneInfo
+from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 import tzlocal
@@ -21,6 +26,40 @@ def _local_tz() -> ZoneInfo:
 def now_local_iso() -> str:
     """Local wall-clock time with local timezone offset, ISO 8601."""
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+class TimezoneDetectionError(RuntimeError):
+    """System timezone could not be detected (no valid TZ env var, and
+    /etc/localtime is not a zoneinfo symlink — some containers/WSL)."""
+
+
+def detect_timezone(localtime: Path = Path("/etc/localtime")) -> str:
+    """Best-effort IANA zone detection: $TZ if valid, else /etc/localtime.
+
+    Neutral error on failure so each surface picks its own remedy: the CLI
+    wraps it into BadParameter ("pass --timezone"), the TUI notifies with the
+    TZ-env hint instead of crashing the app (backlog 6.2d).
+    """
+    tz_env = os.environ.get("TZ")
+    if tz_env:
+        try:
+            ZoneInfo(tz_env)
+            return tz_env
+        except ZoneInfoNotFoundError:
+            pass
+
+    if localtime.is_symlink():
+        target = str(localtime.resolve())
+        marker = "/zoneinfo/"
+        if marker in target:
+            zone = target.split(marker, 1)[1]
+            try:
+                ZoneInfo(zone)
+                return zone
+            except ZoneInfoNotFoundError:
+                pass
+
+    raise TimezoneDetectionError("Could not detect the system timezone from $TZ or /etc/localtime.")
 
 
 def to_canonical_aware(user_input: str) -> str:

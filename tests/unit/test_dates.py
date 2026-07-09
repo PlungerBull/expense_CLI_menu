@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 import typer
 
-from expense.dates import to_canonical_aware
+from expense.dates import TimezoneDetectionError, detect_timezone, to_canonical_aware
 
 
 @pytest.fixture(autouse=True)
@@ -62,3 +62,34 @@ def test_garbage_raises_bad_parameter():
 def test_invalid_time_raises_bad_parameter():
     with pytest.raises(typer.BadParameter):
         to_canonical_aware("2026-04-25T25:99:00")
+
+
+def test_detect_timezone_from_tz_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("TZ", "America/Lima")
+    assert detect_timezone(localtime=tmp_path / "missing") == "America/Lima"
+
+
+def test_detect_timezone_ignores_invalid_tz_env(monkeypatch, tmp_path):
+    """A garbage $TZ falls through to /etc/localtime, then errors neutrally."""
+    monkeypatch.setenv("TZ", "Not/AZone")
+    with pytest.raises(TimezoneDetectionError):
+        detect_timezone(localtime=tmp_path / "missing")
+
+
+def test_detect_timezone_from_localtime_symlink(monkeypatch, tmp_path):
+    monkeypatch.delenv("TZ", raising=False)
+    zoneinfo_dir = tmp_path / "zoneinfo" / "America"
+    zoneinfo_dir.mkdir(parents=True)
+    zone_file = zoneinfo_dir / "Lima"
+    zone_file.write_bytes(b"")
+    localtime = tmp_path / "localtime"
+    localtime.symlink_to(zone_file)
+    assert detect_timezone(localtime=localtime) == "America/Lima"
+
+
+def test_detect_timezone_failure_raises_neutral_error(monkeypatch, tmp_path):
+    """No $TZ and no symlink → TimezoneDetectionError (not typer/click), so the
+    TUI can catch it without importing the CLI layer (backlog 6.2d)."""
+    monkeypatch.delenv("TZ", raising=False)
+    with pytest.raises(TimezoneDetectionError):
+        detect_timezone(localtime=tmp_path / "missing")

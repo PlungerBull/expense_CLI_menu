@@ -300,8 +300,8 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   throwaway `StringIO` (`_base.py:74`) — surface it as a notify; System
   screens render replica corruption as "not synced yet" via bare
   `except Exception` (`system.py:68-69,306-307`) — add a verbose breadcrumb;
-  `system.py:221` imports the private `auth_cmd._detect_timezone` — promote
-  it; `Row = tuple` and bare `-> list` typing across widget plumbing
+  (~~promote `auth_cmd._detect_timezone`~~ — done 2026-07-08 with 6.2d, it
+  lives in `expense/dates.py` now); `Row = tuple` and bare `-> list` typing across widget plumbing
   (`cursor_list.py:23`, `checklist.py:25`) — a `NamedTuple`/`TypeAlias` for
   the `(id, cells[, style])` contract; HomeScreen's 13-branch `elif` chain
   with `f"{opt_id}:{label}"` round-tripping (`home.py:70-100`) — a dispatch
@@ -388,7 +388,7 @@ existing item are marked.
   wrong account. Fix: ignore events whose `event.control` isn't the accounts
   list.
 
-- [ ] **`tui/screens/system.py:224` — TUI Bootstrap crashes when timezone
+- [x] **`tui/screens/system.py:224` — TUI Bootstrap crashes when timezone
   detection fails** (*upgrades the §5 "promote `_detect_timezone`" nit from
   cleanup to crash*). `_bootstrap` calls `auth_cmd._detect_timezone()` on the
   UI thread with no guard; it raises `typer.BadParameter` (whose text even
