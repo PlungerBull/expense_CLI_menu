@@ -111,10 +111,20 @@ class ConfigScreen(SectionScreen):
 
     def _save(self, **updates) -> None:
         from expense import config as config_module
+        from expense.errors import ConfigInvalidError
 
         if not self._cfg:
             self.notify("No config loaded.", severity="error")
             return
+        if "engine_url" in updates:
+            # same save-time validation the CLI's `config set` got in backlog
+            # 3.4 — a scheme-less URL used to save fine and fail every later
+            # call with a generic connection error (backlog 6.3b)
+            try:
+                config_module.validate_engine_url(updates["engine_url"])
+            except ConfigInvalidError as exc:
+                self.notify(str(exc), title="Invalid URL", severity="error")
+                return
         try:
             config_module.save(self._cfg.model_copy(update=updates))
         except Exception as exc:

@@ -1,26 +1,22 @@
 import json
-from urllib.parse import urlsplit
 
 import typer
 
 from expense import config as config_module
 from expense.commands._resource import YES_OPT, redact_token, require_yes
 from expense.config import Config
-from expense.errors import handle_errors
+from expense.errors import ConfigInvalidError, handle_errors
 
 app = typer.Typer(help="Manage ~/.expense-config", no_args_is_help=True)
 
 
 def _validate_engine_url(url: str) -> None:
-    # httpx raises UnsupportedProtocol only at request time; reject a bad URL
-    # here so the mistake surfaces at `config set`, not on the next command.
-    parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.netloc:
-        raise typer.BadParameter(
-            "must be a full URL with scheme and host, "
-            "e.g. https://expense-world-engine.onrender.com",
-            param_hint="--engine-url",
-        )
+    # Validation lives in expense.config (shared with the TUI, backlog 6.3b);
+    # BadParameter keeps the CLI's usage-error rendering (exit 2, param hint).
+    try:
+        config_module.validate_engine_url(url)
+    except ConfigInvalidError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--engine-url") from exc
 
 
 @app.command("set")

@@ -414,7 +414,7 @@ existing item are marked.
   lossily" (the sanctioned `import --json` exception covers the summary shape,
   not lossy human errors). Fix: render failures through `format_error`.
 
-- [ ] **`tui/screens/system.py:112` — TUI ConfigScreen skips the engine-URL
+- [x] **`tui/screens/system.py:112` — TUI ConfigScreen skips the engine-URL
   validation the CLI got in backlog 3.4.** `_save` writes `engine_url`
   straight through `config.save()`, so a scheme-less/malformed URL entered via
   the TUI saves "Config saved." then fails every later call with a generic

@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -11,6 +12,23 @@ from expense.errors import ConfigInvalidError, ConfigMissingError
 
 def config_path() -> Path:
     return Path(os.environ.get("EXPENSE_CONFIG", "~/.expense-config")).expanduser()
+
+
+def validate_engine_url(url: str) -> None:
+    """Reject a URL without an http(s) scheme + host. Raises ConfigInvalidError.
+
+    httpx raises UnsupportedProtocol only at request time; both config entry
+    points (`config set --engine-url` and the TUI ConfigScreen) call this so
+    the mistake surfaces at save time, not on the next command (backlog 6.3b).
+    Deliberately not inside save(): saves that don't touch engine_url (e.g.
+    mirroring main_currency) must not brick on a legacy-invalid URL.
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise ConfigInvalidError(
+            "engine URL must be a full URL with scheme and host, "
+            "e.g. https://expense-world-engine.onrender.com"
+        )
 
 
 class Config(BaseModel):

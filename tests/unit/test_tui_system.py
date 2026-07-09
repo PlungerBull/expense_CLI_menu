@@ -53,6 +53,30 @@ def test_config_screen_reads_and_saves(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_config_screen_rejects_bad_engine_url(monkeypatch):
+    """A scheme-less URL must error at save time, not brick every later call
+    with a generic connection error (backlog 6.3b — the TUI half of 3.4)."""
+    saved = {}
+    monkeypatch.setattr("expense.config.load", lambda: CFG)
+    monkeypatch.setattr("expense.config.save", lambda c: saved.update(cfg=c))
+    notices: list = []
+    monkeypatch.setattr(ConfigScreen, "notify", lambda self, message, **kw: notices.append(message))
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ConfigScreen()
+            await app.push_screen(screen)
+            await wait_for(pilot, lambda: screen._cfg is not None)
+            screen._save(engine_url="engine.example")  # no scheme
+            await pilot.pause(0.05)
+            assert not saved  # nothing written
+            assert any("scheme and host" in m for m in notices)
+            assert not any("Config saved" in m for m in notices)
+
+    asyncio.run(scenario())
+
+
 def _patch_auth(fake_client, monkeypatch, *, me):
     """me=None leaves GET /auth/me unmocked → FakeClient raises 404 (not provisioned)."""
     if me is not None:

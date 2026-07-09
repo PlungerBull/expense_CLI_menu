@@ -18,6 +18,21 @@ def test_load_missing_file_returns_none(tmp_config):
     assert config.load() is None
 
 
+@pytest.mark.parametrize("url", ["https://example.com", "http://localhost:8000"])
+def test_validate_engine_url_accepts_http_https_with_host(url):
+    config.validate_engine_url(url)  # no raise
+
+
+@pytest.mark.parametrize(
+    "url", ["example.com", "ftp://example.com", "https://", "", "expense-world.onrender.com/v1"]
+)
+def test_validate_engine_url_rejects_scheme_or_host_less(url):
+    """Shared save-time guard for both `config set` and the TUI ConfigScreen
+    (backlog 6.3b) — httpx would only fail at request time."""
+    with pytest.raises(ConfigInvalidError, match="scheme and host"):
+        config.validate_engine_url(url)
+
+
 def test_save_and_load_round_trip(tmp_config):
     cfg = config.Config(
         engine_url="https://example.com",
