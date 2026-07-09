@@ -276,11 +276,11 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   verify engine semantics and match them.
 - [ ] `reconcile move --json` on the "No changes." early-return prints
   nothing at all (`reconcile_cmd.py:778-781`) — emit a JSON document.
-- [ ] Reports: `_render_range_table` hand-rolls ~60 lines the shared
-  `render_table` covers (`reports_cmd.py:75-142`), and
-  `run_single_month`/`run_range` claim "Shared by flat + TUI" but fetch +
-  `typer.echo` in one function with no TUI caller — split fetch/render
-  before the Reports TUI screen lands (`reports_cmd.py:145-193`).
+- [ ] Reports: `_render_range_table` hand-rolls the width/format loop the
+  shared `render_table` covers (`reports_cmd.py:131-186`). (The other half
+  of this item — the fetch/render split — shipped 2026-07-08 with the
+  Monthly-report TUI screen: `fetch_single_month`/`fetch_range`/
+  `build_range_grid`.)
 - [ ] `reconcile complete` inlines the hint-haystack scan that
   `transactions_cmd.py:104-117` wraps in `_update_hint_for`
   (`reconcile_cmd.py:571-583`) — hoist to `_resource.py`.

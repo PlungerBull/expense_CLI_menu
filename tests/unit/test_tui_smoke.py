@@ -90,7 +90,9 @@ def test_app_launches_home_with_outstanding_option():
                 if option_list.get_option_at_index(i).id
             ]
             assert any(i.startswith("outstanding:") for i in ids)
-            assert any(i.startswith("soon:") for i in ids)
+            assert any(i.startswith("report:") for i in ids)
+            # every entry is wired — the last "soon" stub shipped 2026-07-08
+            assert not any(i.startswith("soon:") for i in ids)
 
     asyncio.run(scenario())
 

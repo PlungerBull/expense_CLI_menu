@@ -1,7 +1,7 @@
 # Interactive TUI — Implementation Plan
 
-> Status: **in progress (Step 10)** — Phases 0 & 1 shipped, Phase 2 (write flows)
-> under way; Phase 3 partially delivered early via the 2026-07-02 quality-review backlog §4
+> Status: **in progress (Step 10)** — Phases 0–2 shipped (Phase 2 closed 2026-07-08
+> with the Monthly report screen); Phase 3 partially delivered early via the 2026-07-02 quality-review backlog §4
 > (2026-07-05/06, all eight items closed: keymap contract, theme-resolved semantic colors,
 > form-label width, q scoped to Home, unarchive prompt-free, Rates as a history table)
 > and §5 (2026-07-06, all six dedup refactors closed: `EngineWriteMixin.run_write` behind
@@ -19,10 +19,10 @@
 > arrow-key navigation. Theme = swappable token set, **neutral by default**.
 >
 > **What's wired (per [expense/tui/screens/home.py](../expense/tui/screens/home.py)):**
-> Outstanding Amounts, Log a transaction (quick-add + transfer), Inbox, Transactions,
-> Reconciliations, Accounts, Categories, Hashtags, Config, Auth & profile, and the
-> System reads (Sync · Activity · Rates).
-> **Still stubbed (`"soon"`):** Monthly report.
+> Outstanding Amounts, Monthly report, Log a transaction (quick-add + transfer), Inbox,
+> Transactions, Reconciliations, Accounts, Categories, Hashtags, Config, Auth & profile,
+> and the System reads (Sync · Activity · Rates). **Every menu entry is wired** — the
+> last `"soon"` stub (Monthly report) shipped 2026-07-08.
 
 ## 1. Goal & shape
 
@@ -72,6 +72,7 @@ expense/tui/
     _form.py        # FormScreen base — fields, validation, bar-cycle plumbing
     home.py         # banner + section menu
     outstanding.py  # balances + people + category ▼/▶ TREE + totals
+    reports.py      # Monthly report — sliding 4-month grid, ▼/▶ hashtag rows
     inbox.py        transactions.py  accounts.py  categories.py  hashtags.py
     reconciliations.py               # full lifecycle + $EDITOR reorder
     system.py       # Config / Auth / Sync / Activity / Rates screens
@@ -80,19 +81,19 @@ expense/tui/
     modals.py       # RecordModal, SnapshotModal, ConfirmModal, PromptModal
 ```
 
-*(A planned Reports screen — the one remaining Phase-2 stub — will land as `screens/reports.py`.)*
-
-**The one enabling refactor — "fetch / print" split.** Some commands fetch *and*
-print in one function (e.g. `reports_cmd.run_single_month` GETs then `typer.echo`s).
-We extract a pure `fetch_*(cfg, …) -> dict` from each, leaving the typer command and
-the TUI both calling it. `--json` mode already proves the data separates cleanly; this
-just formalizes it. **No logic is duplicated** — the TUI imports `fetch_*`, never
-reimplements it.
+**The one enabling refactor — "fetch / print" split.** Some commands fetched *and*
+printed in one function; each grew a pure `fetch_*(cfg, …) -> dict`, leaving the typer
+command and the TUI both calling it (`reports_cmd` was the last holdout —
+`fetch_single_month`/`fetch_range` landed 2026-07-08 with the Monthly report screen).
+`--json` mode already proved the data separates cleanly; this just formalized it.
+**No logic is duplicated** — the TUI imports `fetch_*`, never reimplements it.
 
 **Async / workers.** Textual runs on asyncio; the engine client is synchronous. We
-keep the client as-is and call it inside a Textual worker (`@work(thread=True)`) via a
-single helper so the UI never blocks. A standard pattern:
-`self.run_engine(lambda: reports_cmd.fetch_single_month(...), on_done=self.populate)`.
+keep the client as-is and call it inside a Textual worker (`@work(thread=True)`) so
+the UI never blocks. The shipped pattern: read screens subclass `SectionScreen`
+([_base.py](../expense/tui/screens/_base.py)) and override `fetch()` (runs in the
+worker, e.g. calls `reports_cmd.fetch_range(...)`) + `build(data)`; writes go through
+`EngineWriteMixin.run_write` in its own worker group.
 
 ## 4. Theming — neutral, swappable
 
@@ -122,8 +123,8 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 
 ### Phase 1 — Read views · **1–2 weeks** · ✅ shipped
 > Note: Reports, Activity log, and Exchange rates list screens slipped from Phase 1 to
-> Phase 2. Activity log and Exchange rates shipped there (as the System reads); only
-> the **Monthly report** screen remains a `"soon"` stub on the home menu.
+> Phase 2. Activity log and Exchange rates shipped there (as the System reads); the
+> **Monthly report** screen closed Phase 2 on 2026-07-08.
 - Apply the fetch/print split to the resources in scope.
 - List screens (Textual `DataTable`): **Inbox, Transactions, Accounts, Categories,
   Hashtags (chips), Reports (monthly), Activity log, Exchange rates** — filters,
@@ -133,13 +134,24 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - Record **detail modal** (view one row). Loading / empty / error states; status bar.
 - **Exit criteria:** every read surface is browsable in the TUI.
 
-### Phase 2 — Write flows · **1–2 weeks** · 🔨 in progress
+### Phase 2 — Write flows · **1–2 weeks** · ✅ shipped (closed 2026-07-08)
 > **Shipped:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms
 > (account/category/hashtag), the **Manage edit flow** (Option B — see below), full
 > Reconciliations screen (assign/complete/revert/delete + account-first browse + reorder),
-> Config, Auth & profile, and the **Sync · Activity · Rates** system-read screens.
-> **Remaining before parity:** the **Monthly report** screen (still a `"soon"` stub on the
-> home menu).
+> Config, Auth & profile, the **Sync · Activity · Rates** system-read screens, and the
+> **Monthly report** screen (below) — nothing remains before parity.
+>
+> **Monthly report — shipped 2026-07-08 (mockup Option A).** A sliding **4-month grid**
+> (categories × months, home-currency cells, net-only footer) in
+> [reports.py](../expense/tui/screens/reports.py), not a single-month view — one month
+> would duplicate Outstanding Amounts; why + rejected alternatives in
+> [decisions.md](decisions.md). `MonthGridView` reuses the Outstanding tree keymap
+> (`↑↓` move, `→/←` expand a category into its hashtag combos, collapsed by default);
+> **`[`/`]` slide the window one month older/newer** (no clamp — empty months render
+> `—` cells), an addition to the keymap contract scoped to this screen. Data via the
+> shared `reports_cmd.fetch_range` + `build_range_grid` (fetch/print split); the flat
+> `reports monthly --from/--to` table consumes the same grid merge. Mockup:
+> [mockups/expense-world-monthly-report.html](mockups/expense-world-monthly-report.html).
 >
 > **Manage edit flow — shipped 2026-07-07 (Option B).** `enter` on an Accounts/Categories/
 > Hashtags row opens a read detail (`manage_detail.py`, enter never mutates); there `e` edits

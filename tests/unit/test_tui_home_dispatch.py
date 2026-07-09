@@ -31,6 +31,7 @@ _CASES = [
     ("sync", home.SyncScreen),
     ("activity", home.ActivityScreen),
     ("rates", home.RatesScreen),
+    ("report", home.MonthlyReportScreen),
 ]
 
 
@@ -68,28 +69,10 @@ def test_menu_dispatch(monkeypatch, kind, screen_cls):
     asyncio.run(scenario())
 
 
-def test_soon_notifies_and_stays_home(monkeypatch):
-    _stub_loaders(monkeypatch)
-    seen: list = []
-    monkeypatch.setattr(
-        HomeScreen, "notify", lambda self, message, **kw: seen.append((message, kw))
-    )
-
-    async def scenario():
-        app = ExpenseApp(no_cache=True)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await _select(app, pilot, "soon")
-            await wait_for(pilot, lambda: seen)
-            assert isinstance(app.screen, HomeScreen)  # nothing pushed
-            assert seen[0][1].get("title") == "Not wired yet"
-
-    asyncio.run(scenario())
-
-
 def test_cases_cover_every_wired_menu_entry():
-    """Armor: a new _MENU entry must get a dispatch case here (and vice versa)."""
-    wired = {kind for kind, _ in home._MENU if kind not in (None, "soon")}
+    """Armor: a new _MENU entry must get a dispatch case here (and vice versa).
+    Every entry is wired — the last "soon" stub (Monthly report) shipped 2026-07-08."""
+    wired = {kind for kind, _ in home._MENU if kind is not None}
     assert wired == {kind for kind, _ in _CASES}
 
 

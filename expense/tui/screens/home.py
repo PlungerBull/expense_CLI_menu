@@ -1,7 +1,7 @@
 """Home screen — header banner + the section menu.
 
-The section list is the top-level entry point into every TUI screen; sections
-not yet wired render a placeholder that says they're coming.
+The section list is the top-level entry point into every TUI screen; every
+entry is wired (the last "soon" stub, Monthly report, shipped 2026-07-08).
 """
 
 from textual.app import ComposeResult
@@ -16,6 +16,7 @@ from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.screens.reconciliations import ReconciliationsScreen
+from expense.tui.screens.reports import MonthlyReportScreen
 from expense.tui.screens.system import (
     ActivityScreen,
     AuthScreen,
@@ -36,7 +37,7 @@ _MENU: list[tuple[str | None, str]] = [
     ("reconciliations", "Reconciliations"),
     (None, "Reports"),
     ("outstanding", "Outstanding Amounts"),
-    ("soon", "Monthly report"),
+    ("report", "Monthly report"),
     (None, "Manage"),
     ("accounts", "Accounts"),
     ("categories", "Categories"),
@@ -96,5 +97,5 @@ class HomeScreen(Screen):
             self.app.push_screen(ActivityScreen())
         elif kind == "rates":
             self.app.push_screen(RatesScreen())
-        elif kind == "soon":
-            self.notify("Coming in a later phase.", title="Not wired yet")
+        elif kind == "report":
+            self.app.push_screen(MonthlyReportScreen())

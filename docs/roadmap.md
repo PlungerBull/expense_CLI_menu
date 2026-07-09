@@ -509,12 +509,11 @@ The TUI is a new **client** of the same engine-integration layer (HTTP client, S
 ### Step 10.P1 — Read views (shipped)
 List screens for Inbox, Transactions, Accounts, Categories, Hashtags (chips); interactive `▼/▶` category tree on Outstanding Amounts; record detail modals; loading/empty/error states. Every read surface browsable.
 
-### Step 10.P2 — Write flows (in progress)
+### Step 10.P2 — Write flows (shipped — closed 2026-07-08)
 Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared, hashtag multi-select, conditional transfer sub-flow, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
 
 **Shipped so far:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile, and the **System reads (Sync · Activity · Rates)** screens ([expense/tui/screens/system.py](../expense/tui/screens/system.py) — wired as three direct System-group entries in [home.py](../expense/tui/screens/home.py); enabling refactor was the `fetch_activity` / `fetch_rate` extractions on the flat commands). Two bugs surfaced and were fixed while landing these: (1) the shared modal CSS only centered `RecordModal`, so `SnapshotModal` (Activity's before/after detail) collapsed invisibly in the top-left — the `align: center middle` rule now covers every modal screen; (2) activity name resolution matched plural `resource_type` strings (`expense_transactions`, …) but the engine writes them **singular** (`transaction`, `account`, …), so the Resource column always fell back to the UUID prefix — `_resolve_resource_name` now maps the engine's real strings (fixing the flat `expense activity list` too).
-**Remaining before parity:**
-- **Reports (Monthly report)** screen — single-month + range with hashtag tree (reuses the flat `reports` fetch/renderer). Currently stubbed as `"soon"` in [expense/tui/screens/home.py](../expense/tui/screens/home.py).
+**Closed 2026-07-08 with the final screen:** the **Monthly report** — a sliding **4-month grid** (categories × months, `▼/▶` hashtag rows, `[`/`]` slide the window), *not* the originally-sketched single-month view, which would have duplicated Outstanding Amounts (why + rejected alternatives: [decisions.md](decisions.md)). Enabling refactor was the `fetch_single_month`/`fetch_range`/`build_range_grid` extractions on the flat `reports` command. Every home-menu entry is now wired — no `"soon"` stubs remain. Detail: [tui-plan.md](tui-plan.md) Phase 2.
 
 **Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before code** (per [CLAUDE.md](../CLAUDE.md) "Mock every screen before building it").
 
