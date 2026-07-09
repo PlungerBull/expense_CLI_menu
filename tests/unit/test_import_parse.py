@@ -170,6 +170,18 @@ def test_tx_id_deterministic_and_line_sensitive():
     assert plan_mod.tx_id_for(a) != plan_mod.tx_id_for(other_line)
 
 
+def test_identical_content_on_two_lines_both_planned():
+    """Dedup is line-keyed, not content-based: identical rows on different
+    sheet lines both import — the unreachable content-skip that advertised
+    otherwise was deleted (backlog 6.4e)."""
+    a = ParsedRow(2, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None, None)
+    b = ParsedRow(3, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None, None)
+    plan = plan_mod.build_plan([a, b], [])
+    assert [r.line for r in plan.rows] == [2, 3]
+    assert plan.tx_ids[2] != plan.tx_ids[3]
+    assert plan.skipped == []
+
+
 def test_chunked_sizes():
     sizes = [len(c) for c in chunked(list(range(450)), 200)]
     assert sizes == [200, 200, 50]

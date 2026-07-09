@@ -406,7 +406,7 @@ existing item are marked.
 
 ### 6.3 Convention / error surfacing
 
-- [ ] **`import_/apply.py:192,234` — import error summary drops the engine
+- [x] **`import_/apply.py:192,234` — import error summary drops the engine
   envelope's `fields`.** Failure lines hand-roll `f"{err.code}: {err.message}"`
   instead of the shared `format_error` (already imported for connection errors
   in this file), so a 422 from `transactions batch` loses the per-row field
@@ -447,7 +447,7 @@ existing item are marked.
   `ReconciliationsScreen.fetch`) that already filter people differently —
   route through `_resource.resolve_name` and one shared account-choices helper.
 
-- [ ] **Duplicated row/branch builders**: `batch_rows` vs `reconciliation_rows`
+- [x] **Duplicated row/branch builders**: `batch_rows` vs `reconciliation_rows`
   (same file, differ only by the leading Account cell); `AccountsScreen` /
   `CategoriesScreen` / `HashtagsScreen` are the same ~80-line screen pasted
   three times; `errors.render` is four near-identical branches (two added
@@ -457,7 +457,7 @@ existing item are marked.
   (`cold_start_notice=False, notice_stream=StringIO()`) wants a
   `SectionScreen` helper. All one edit from silent drift.
 
-- [ ] **`import_/plan.py:67` — unreachable duplicate-row skip branch.**
+- [x] **`import_/plan.py:67` — unreachable duplicate-row skip branch.**
   `tx_id_for` hashes `stable_row_key`, which embeds the unique `row.line`, so
   `tid in seen_ids` can never be true; the branch is dead and advertises a
   content-dedup that doesn't exist (the misunderstanding behind 1.3). Delete

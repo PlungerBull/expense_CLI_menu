@@ -61,14 +61,11 @@ def build_plan(parsed: list[ParsedRow], skipped: list[SkippedRow]) -> ImportPlan
     skips = list(skipped)
     rows: list[ParsedRow] = []
     tx_ids: dict[int, str] = {}
-    seen_ids: set[str] = set()
+    # No content-dedup here, deliberately: stable_row_key embeds row.line, so
+    # ids are line-keyed and always unique — identical content on two lines
+    # imports twice (the old `tid in seen_ids` skip was unreachable, 6.4e).
     for row in parsed:
-        tid = tx_id_for(row)
-        if tid in seen_ids:
-            skips.append(SkippedRow(row.line, "duplicate-row"))
-            continue
-        seen_ids.add(tid)
-        tx_ids[row.line] = tid
+        tx_ids[row.line] = tx_id_for(row)
         rows.append(row)
 
     accounts: list[AccountSpec] = []

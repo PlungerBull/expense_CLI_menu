@@ -193,7 +193,8 @@ def test_per_row_fallback_reports_non_409_failure(configured):
     assert result.tx_skipped_existing == 1
     assert result.tx_failed == 1
     failed_id = plan.tx_ids[3]
-    assert result.failures == [(0, f"VALIDATION_ERROR: bad (sheet line 3, id {failed_id})")]
+    # sheet-line context prefixed, engine text via format_error (backlog 6.3a)
+    assert result.failures == [(0, f"sheet line 3, id {failed_id}: VALIDATION_ERROR — bad")]
 
 
 @respx.mock
@@ -263,6 +264,46 @@ def test_chunk_422_falls_back_to_per_row_isolating_bad_rows(configured):
 
 
 @respx.mock
+def test_row_failure_keeps_engine_fields_detail(configured):
+    """A 422's per-field detail must survive into the failure line — never
+    reformat lossily (backlog 6.3a)."""
+    plan = _plan([_prow(2), _prow(3, amount_cents=0)])
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    respx.post(f"{BASE}/v1/transactions/batch").mock(
+        side_effect=[
+            _conflict(),
+            _conflict(),
+            httpx.Response(
+                422,
+                json={
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Invalid input.",
+                        "fields": {"amount_cents": "Must not be zero."},
+                    }
+                },
+            ),
+        ]
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res)
+
+    assert result.tx_failed == 1
+    message = result.failures[0][1]
+    assert "sheet line 3" in message  # the row is findable in the workbook
+    assert "amount_cents: Must not be zero." in message  # fields preserved
+
+
+@respx.mock
 def test_chunk_level_auth_failure_reports_line_range_without_per_row_hammering(configured):
     """A non-409/422 chunk error fails once with the sheet line range (backlog 3.9)."""
     plan = _plan([_prow(2), _prow(3, amount_cents=-5500)])
@@ -286,7 +327,7 @@ def test_chunk_level_auth_failure_reports_line_range_without_per_row_hammering(c
 
     assert result.tx_failed == 2
     assert batch_route.call_count == 1  # every row would 403 identically — no fallback
-    assert result.failures == [(0, "FORBIDDEN: nope (sheet lines 2-3)")]
+    assert result.failures == [(0, "sheet lines 2-3: FORBIDDEN — nope")]
 
 
 @respx.mock

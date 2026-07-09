@@ -56,6 +56,38 @@ def _list_all(client: ExpenseClient, resource: str) -> list[dict]:
     )
 
 
+def _resolve_each(
+    client: ExpenseClient,
+    resource: str,
+    wanted,
+    *,
+    existing: dict,
+    key_of,
+    payload_of,
+) -> tuple[dict, int, int]:
+    """Resolve each wanted spec against `existing` (reuse) or POST it (create).
+
+    Returns (key → id, created, reused). One copy of the resolve-or-POST loop
+    the three resource blocks below used to paste (backlog 6.4d). `existing`
+    is mutated so a duplicate spec reuses the row created for the first one;
+    `payload_of(spec, i)` gets the enumerate index (categories' palette).
+    """
+    ids: dict = {}
+    created = reused = 0
+    for i, spec in enumerate(wanted):
+        key = key_of(spec)
+        if key in existing:
+            ids[key] = existing[key]
+            reused += 1
+        else:
+            nid = str(uuid4())
+            client.post(f"/{resource}", json_body={"id": nid, **payload_of(spec, i)})
+            existing[key] = nid
+            ids[key] = nid
+            created += 1
+    return ids, created, reused
+
+
 def resolve_or_create(client: ExpenseClient, plan: ImportPlan) -> ResolveResult:
     res = ResolveResult(account_ids={}, category_ids={}, hashtag_ids={})
 
@@ -65,20 +97,14 @@ def resolve_or_create(client: ExpenseClient, plan: ImportPlan) -> ResolveResult:
         name, cur, aid = acc.get("name"), acc.get("currency_code"), acc.get("id")
         if name and cur and aid:
             amap[(str(name).strip().casefold(), str(cur).upper())] = aid
-    for spec in plan.accounts:
-        key = (spec.name.strip().casefold(), spec.currency)
-        if key in amap:
-            res.account_ids[key] = amap[key]
-            res.accounts_reused += 1
-        else:
-            nid = str(uuid4())
-            client.post(
-                "/accounts",
-                json_body={"id": nid, "name": spec.name, "currency_code": spec.currency},
-            )
-            amap[key] = nid
-            res.account_ids[key] = nid
-            res.accounts_created += 1
+    res.account_ids, res.accounts_created, res.accounts_reused = _resolve_each(
+        client,
+        "accounts",
+        plan.accounts,
+        existing=amap,
+        key_of=lambda s: (s.name.strip().casefold(), s.currency),
+        payload_of=lambda s, _i: {"name": s.name, "currency_code": s.currency},
+    )
 
     # --- categories: case-insensitive, require a color ---
     cmap: dict[str, str] = {}
@@ -86,18 +112,17 @@ def resolve_or_create(client: ExpenseClient, plan: ImportPlan) -> ResolveResult:
         name, cid = cat.get("name"), cat.get("id")
         if name and cid:
             cmap[str(name).strip().casefold()] = cid
-    for i, name in enumerate(plan.categories):
-        key = name.strip().casefold()
-        if key in cmap:
-            res.category_ids[key] = cmap[key]
-            res.categories_reused += 1
-        else:
-            nid = str(uuid4())
-            color = mapping.CATEGORY_PALETTE[i % len(mapping.CATEGORY_PALETTE)]
-            client.post("/categories", json_body={"id": nid, "name": name, "color": color})
-            cmap[key] = nid
-            res.category_ids[key] = nid
-            res.categories_created += 1
+    res.category_ids, res.categories_created, res.categories_reused = _resolve_each(
+        client,
+        "categories",
+        plan.categories,
+        existing=cmap,
+        key_of=lambda n: n.strip().casefold(),
+        payload_of=lambda n, i: {
+            "name": n,
+            "color": mapping.CATEGORY_PALETTE[i % len(mapping.CATEGORY_PALETTE)],
+        },
+    )
 
     # --- hashtags: case-insensitive, no color ---
     hmap: dict[str, str] = {}
@@ -105,17 +130,14 @@ def resolve_or_create(client: ExpenseClient, plan: ImportPlan) -> ResolveResult:
         name, hid = tag.get("name"), tag.get("id")
         if name and hid:
             hmap[str(name).strip().casefold()] = hid
-    for name in plan.hashtags:
-        key = name.strip().casefold()
-        if key in hmap:
-            res.hashtag_ids[key] = hmap[key]
-            res.hashtags_reused += 1
-        else:
-            nid = str(uuid4())
-            client.post("/hashtags", json_body={"id": nid, "name": name})
-            hmap[key] = nid
-            res.hashtag_ids[key] = nid
-            res.hashtags_created += 1
+    res.hashtag_ids, res.hashtags_created, res.hashtags_reused = _resolve_each(
+        client,
+        "hashtags",
+        plan.hashtags,
+        existing=hmap,
+        key_of=lambda n: n.strip().casefold(),
+        payload_of=lambda n, _i: {"name": n},
+    )
 
     return res
 
@@ -173,11 +195,13 @@ def _apply_singletons(
                 result.tx_skipped_existing += 1
             else:
                 result.tx_failed += 1
+                # format_error keeps the envelope's fields + hints — sheet-line
+                # context is prefixed so it survives multi-line output (6.3a)
                 result.failures.append(
                     (
                         chunk_index,
-                        f"{err.code}: {err.message} "
-                        f"(sheet line {line_by_id[item['id']]}, id {item['id']})",
+                        f"sheet line {line_by_id[item['id']]}, id {item['id']}: "
+                        f"{format_error(err)}",
                     )
                 )
         except EngineConnectionError as err:
@@ -218,7 +242,7 @@ def apply_plan(
                 # 401/403/5xx would fail identically per row — don't hammer.
                 result.tx_failed += len(chunk)
                 result.failures.append(
-                    (chunk_index, f"{err.code}: {err.message} ({_line_range(chunk, line_by_id)})")
+                    (chunk_index, f"{_line_range(chunk, line_by_id)}: {format_error(err)}")
                 )
         except EngineConnectionError as err:
             # Stop sending, but return normally so the caller still renders the
