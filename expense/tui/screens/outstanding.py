@@ -150,9 +150,13 @@ class OutstandingScreen(SectionScreen):
         from expense import config as config_module
 
         cfg = config_module.ensure_loaded()
-        return dashboard_cmd.fetch_dashboard(cfg, **screen_fetch_kwargs(self.app))
+        body = dashboard_cmd.fetch_dashboard(cfg, **screen_fetch_kwargs(self.app))
+        # name map resolved worker-side — a full-table SQLite read on the
+        # render path blocked first paint (backlog 6.5c)
+        return {"body": body, "tag_names": dashboard_cmd.load_hashtag_name_map()}
 
-    def build(self, body: dict) -> list[Widget]:
+    def build(self, data: dict) -> list[Widget]:
+        body = data["body"]
         palette = resolve_palette(self.app)
         month = format_month(body.get("month"))
         title = Text(f"Outstanding Amounts  ·  {month}  (current month)")
@@ -167,11 +171,7 @@ class OutstandingScreen(SectionScreen):
             widgets.append(Static(_accounts_table(people, palette)))
         widgets.append(Static(Text("Categories — spent this month"), classes="sect"))
         widgets.append(
-            CategoriesView(
-                body.get("categories") or [],
-                dashboard_cmd.load_hashtag_name_map(),
-                palette=palette,
-            )
+            CategoriesView(body.get("categories") or [], data["tag_names"], palette=palette)
         )
         widgets.append(Static(Text("Totals"), classes="sect"))
         widgets.append(Static(_totals_table(body.get("totals"), palette)))

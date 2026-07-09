@@ -517,6 +517,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
         self._account_id = record.get("account_id")
         self._busy = False
         self._list: CheckList | None = None
+        self._acct_name: str | None = None  # resolved worker-side in _load_txns
 
     @property
     def _completed(self) -> bool:
@@ -541,7 +542,9 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
     def _render_header(self) -> None:
         r = self._record
         palette = resolve_palette(self.app)
-        acct = resolve_name(self._account_id, load_account_name_map())
+        # short-id placeholder until _load_txns resolves the name worker-side —
+        # a full-table SQLite read here blocked first paint (backlog 6.5c)
+        acct = self._acct_name or resolve_name(self._account_id, {})
         status = reconcile_cmd.format_status(r.get("status"))
         begin = amount_cell(r.get("beginning_balance_cents"), palette, BALANCE_RULE)
         end = amount_cell(r.get("ending_balance_cents"), palette, BALANCE_RULE)
@@ -617,6 +620,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
                 ]
             cat_names = load_category_name_map()
             tag_names = load_hashtag_name_map()
+            self._acct_name = resolve_name(self._account_id, load_account_name_map())
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             if not worker.is_cancelled:
                 self.app.call_from_thread(self.notify, format_error(exc), severity="error")
@@ -640,6 +644,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
             )
         if worker.is_cancelled:
             return
+        self.app.call_from_thread(self._render_header)  # picks up _acct_name
         self.app.call_from_thread(self._populate, rows, checked)
 
     async def _populate(self, rows: list, checked: list) -> None:

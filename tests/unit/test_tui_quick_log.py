@@ -38,15 +38,16 @@ def test_amount_to_text_roundtrips():
 
 
 def _patch(monkeypatch):
-    """Screen-specific patches; the client/config seams come from fake_client."""
+    """Screen-specific patches; the client/config seams come from fake_client.
+
+    Name maps derive from the same fetches since backlog 6.5b — no separate
+    load_*_name_map seams to patch.
+    """
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
     monkeypatch.setattr(
         "expense.commands.categories_cmd.fetch_categories", lambda *a, **k: CATEGORIES
     )
     monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", lambda *a, **k: HASHTAGS)
-    monkeypatch.setattr("expense.tui.screens.quick_log.load_account_name_map", lambda: {})
-    monkeypatch.setattr("expense.tui.screens.quick_log.load_category_name_map", lambda: {})
-    monkeypatch.setattr("expense.tui.screens.quick_log.load_hashtag_name_map", lambda: {})
 
 
 def _enter(screen, text):
@@ -70,6 +71,41 @@ TXN = {
     "hashtag_ids": ["h1"],
     "description": "receta",
 }
+
+
+def test_load_entities_three_superset_queries(fake_client, monkeypatch):
+    """The form loads each resource once (include_archived) and derives both
+    the active-only pools and the full name maps — three queries, not six
+    (backlog 6.5b)."""
+    calls: list[tuple[str, bool]] = []
+    archived = {"id": "accX", "name": "Old bank", "currency_code": "PEN", "is_archived": True}
+
+    def rec(name, payload):
+        def fetch(cfg, *a, **k):
+            calls.append((name, bool(k.get("include_archived"))))
+            return payload
+
+        return fetch
+
+    monkeypatch.setattr(
+        "expense.commands.accounts_cmd.fetch_accounts", rec("accounts", [*ACCOUNTS, archived])
+    )
+    monkeypatch.setattr(
+        "expense.commands.categories_cmd.fetch_categories", rec("categories", CATEGORIES)
+    )
+    monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", rec("hashtags", HASHTAGS))
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = QuickAddLogScreen()
+            await app.push_screen(screen)
+            await _wait_loaded(screen, pilot)
+            assert sorted(calls) == [("accounts", True), ("categories", True), ("hashtags", True)]
+            assert "accX" not in [a[0] for a in screen._accounts]  # archived out of the pool
+            assert screen._acc_names.get("accX") == "Old bank"  # but resolvable in the map
+
+    asyncio.run(scenario())
 
 
 def test_edit_with_null_hashtag_ref_renders_dash_not_crash(fake_client, monkeypatch):

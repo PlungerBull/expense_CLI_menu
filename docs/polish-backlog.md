@@ -471,11 +471,11 @@ existing item are marked.
   against Render. Add a skip-refresh flag for queued toggles and run one delta
   sync when the queue drains.
 
-- [ ] **`quick_log._load_entities` reads each table twice** — `fetch_*` for the
+- [x] **`quick_log._load_entities` reads each table twice** — `fetch_*` for the
   suggestion pools then `load_*_name_map()` again — six list queries per form
   open where three (with `include_archived`) would feed both.
 
-- [ ] **Name maps loaded on the UI thread** in `reconciliations._render_header`
+- [x] **Name maps loaded on the UI thread** in `reconciliations._render_header`
   and `outstanding.build` (`load_*_name_map()` = a full-table SQLite read on
   the render path) — blocks first paint and can stall on the cache busy-timeout
   if a concurrent `expense sync` holds the lock. Resolve names worker-side like
