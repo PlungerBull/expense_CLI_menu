@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Quick-add bar — Todoist-style states</title>
+<style>
+  :root {
+    --ink: #202024;
+    --muted: #a2a2aa;
+    --line: #e7e7ec;
+    --chip-bg: #f0f0f2;
+    --dark: #2b3038;
+    --td-red: #db4c3f;      /* Todoist accent red */
+    --green: #2f9e6f;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Inter, Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--sans); color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh; padding: 56px 24px 90px;
+    background:
+      radial-gradient(1100px 700px at 15% -5%, #dfe7f5 0%, transparent 55%),
+      radial-gradient(900px 600px at 105% 0%, #efe4f2 0%, transparent 50%),
+      #eef0f4;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .sub { color: #5b5b63; font-size: 14.5px; margin: 0 0 40px; max-width: 660px; }
+
+  .state { margin-bottom: 46px; }
+  .label {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.11em;
+    color: #7a7a82; font-weight: 600; margin: 0 0 14px;
+  }
+
+  /* ---- the bar ---- */
+  .bar {
+    background: #fff; border-radius: 18px; border: 1px solid #eeeef1;
+    box-shadow: 0 20px 54px rgba(28,32,58,0.22), 0 2px 6px rgba(28,32,58,0.07);
+    padding: 16px 18px;
+  }
+  .row { display: flex; align-items: center; gap: 15px; }
+
+  .plus {
+    width: 38px; height: 38px; border-radius: 10px; background: #f4f4f6;
+    display: grid; place-items: center; flex: none; color: #7c7c85; font-size: 24px; font-weight: 300;
+    line-height: 1;
+  }
+  .field { flex: 1; min-width: 0; display: flex; align-items: center; }
+  .caret { width: 1.5px; height: 26px; background: var(--ink); display: inline-block; margin-right: 3px; animation: blink 1.1s steps(1) infinite; }
+  .placeholder { color: var(--muted); font-size: 21px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .close {
+    width: 24px; height: 24px; flex: none; color: #c0c0c7; font-size: 19px;
+    display: grid; place-items: center; cursor: default;
+  }
+  .square {
+    width: 38px; height: 38px; border-radius: 11px; background: var(--dark);
+    display: grid; place-items: center; flex: none; color: #fff;
+  }
+  .square svg { width: 20px; height: 20px; }
+  .square .arrow { font-size: 18px; font-weight: 700; }
+
+  /* ---- typed line with recognised tokens (top of filling state) ---- */
+  .typed { font-size: 21px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .typed .word { color: var(--ink); }
+  .typed .token {
+    background: var(--chip-bg); border-radius: 8px; padding: 2px 9px; color: #3d3d43; font-size: 19px;
+  }
+
+  /* ---- resolved pills row (bottom of filling state) ---- */
+  .pills { display: flex; align-items: center; gap: 8px; margin-top: 15px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); border-radius: 9px; padding: 5px 10px;
+    font-size: 14px; background: #fff; color: #33333a; white-space: nowrap;
+  }
+  .pill .x { color: #c2c2c9; margin-left: 4px; font-size: 13px; }
+  .pill .ic { font-size: 13px; line-height: 1; }
+  .pill.amt { font-family: var(--mono); font-weight: 600; }
+  .pill.amt .neg { color: var(--td-red); }
+  .pill.cat .hash { color: var(--td-red); font-weight: 700; margin-right: 1px; }
+  .pill.date { color: var(--green); border-color: #d8ecdf; }
+  .pill.icon-only { padding: 6px 7px; color: #b4b4bc; }
+  .pills .spacer { flex: 1; }
+
+  .cap { font-size: 12.5px; color: #82828a; margin-top: 12px; }
+  .cap b { color: #4a4a52; }
+
+  .foot {
+    margin-top: 40px; font-size: 13px; color: #6a6a72; background: #ffffffcc;
+    border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; line-height: 1.55;
+  }
+  .foot b { color: var(--ink); }
+  .foot code { font-family: var(--mono); background: #f2f2f5; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Quick-add bar — Todoist-style, super simplistic</h1>
+  <p class="sub">
+    One floating bar drawn in HTML/CSS (exactly like Todoist’s own, which is React-in-Electron).
+    Empty it’s just a prompt; as you type, recognised tokens light up and resolved fields appear as pills.
+  </p>
+
+  <!-- STATE 1 — empty -->
+  <div class="state">
+    <p class="label">1 · Empty — you just hit the hotkey</p>
+    <div class="bar">
+      <div class="row">
+        <div class="plus">+</div>
+        <div class="field"><span class="caret"></span><span class="placeholder">Expense…</span></div>
+        <div class="close">✕</div>
+        <div class="square" title="app mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 13c2 0 2-6 4-6s2 12 4 12 2-9 4-9 2 3 4 3"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <p class="cap">Left: <b>+</b>. Right: <b>✕</b> to dismiss and the app mark. Nothing else — same restraint as Todoist’s empty bar.</p>
+  </div>
+
+  <!-- STATE 2 — filling -->
+  <div class="state">
+    <p class="label">2 · As you type — tokens recognised, fields resolved</p>
+    <div class="bar">
+      <div class="row">
+        <div class="plus">+</div>
+        <div class="field">
+          <div class="typed">
+            <span class="word">coffee</span>
+            <span class="token">-5</span>
+            <span class="token">today</span>
+            <span class="token">#food</span>
+            <span class="token">amex</span>
+            <span class="caret"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pills">
+        <div class="pill amt"><span class="neg">−5.00</span><span class="x">✕</span></div>
+        <div class="pill cat"><span class="hash">#</span>Food<span class="x">✕</span></div>
+        <div class="pill date"><span class="ic">📅</span> Today<span class="x">✕</span></div>
+        <div class="pill acct"><span class="ic">💳</span> Amex<span class="x">✕</span></div>
+        <div class="pill icon-only" title="add note">🏷️</div>
+        <div class="spacer"></div>
+        <div class="close">✕</div>
+        <div class="square"><span class="arrow">↑</span></div>
+      </div>
+    </div>
+    <p class="cap">
+      Top line = your <b>raw text</b>, recognised tokens highlighted. Bottom = <b>resolved pills</b> the parser
+      returned — each maps to one engine field (amount · category · date · account). Leftover <b>“coffee”</b> becomes the note.
+    </p>
+  </div>
+
+  <div class="foot">
+    <b>Why this is achievable:</b> Todoist’s desktop app is Electron (Chromium) rendering React — its bar is
+    HTML/CSS/JS, and the font is just the system UI font (SF Pro). So this exact drawing loads unchanged into
+    <b>Hammerspoon’s <code>hs.webview</code></b> (fastest, no app to ship) or <b>Tauri</b> (a real menu-bar app on the
+    system webview — no 100MB Electron runtime).<br><br>
+    <b>Keeping the pills honest:</b> each keystroke calls
+    <code>expense add --dry-run --json "coffee -5 today #food amex"</code>, which returns the parsed fields
+    <i>without writing</i>. The bar renders that JSON — parsing lives once in the CLI/engine, never re-implemented in the bar. Enter → the real write.
+  </div>
+</div>
+</body>
+</html>
