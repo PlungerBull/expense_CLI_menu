@@ -361,7 +361,7 @@ existing item are marked.
 
 ### 6.2 TUI correctness (verified / high-confidence)
 
-- [ ] **`tui/screens/reconciliations.py:682` — detail `_populate` does the
+- [x] **`tui/screens/reconciliations.py:682` — detail `_populate` does the
   unserialized `#rlist` swap that `SectionScreen._swap_lock` (just added in
   `0fc1513`) exists to prevent.** `_load_txns` never checks `is_cancelled`
   (cooperative cancellation), so pressing `r` while a toggle-failure resync is

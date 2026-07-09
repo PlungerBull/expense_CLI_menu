@@ -31,6 +31,7 @@ from textual.containers import Container
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Footer, Input, Static
+from textual.worker import get_current_worker
 
 from expense.commands import accounts_cmd, reconcile_cmd, transactions_cmd
 from expense.commands._resource import (
@@ -42,7 +43,7 @@ from expense.commands._resource import (
 )
 from expense.dates import to_canonical_aware
 from expense.errors import format_error
-from expense.tui.screens._base import EngineWriteMixin, SectionScreen
+from expense.tui.screens._base import ContentSwapLockMixin, EngineWriteMixin, SectionScreen
 from expense.tui.screens._form import FormScreen
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
@@ -535,7 +536,7 @@ def _txn_sub(it: dict, cat_names: dict, tag_names: dict) -> str:
     return "  ·  ".join(parts)
 
 
-class ReconciliationDetailScreen(EngineWriteMixin, Screen):
+class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
     """One batch: header + a transaction checklist (draft) or read-only list
     (completed). `space` toggles membership; `c`/`u`/`d` complete/revert/delete;
     `r` refetches the batch + checklist (r = refresh everywhere, never a write)."""
@@ -616,6 +617,10 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
     def _load_txns(self, refresh_record: bool = False) -> None:
         from expense import config as config_module
 
+        # Exclusive cancellation is cooperative: a superseded load keeps
+        # running, so it must stop painting or two _populate swaps interleave
+        # and stack duplicate checklists (backlog 6.2a).
+        worker = get_current_worker()
         try:
             cfg = config_module.ensure_loaded()
             kw = dict(
@@ -635,6 +640,8 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
                     ),
                     None,
                 )
+                if worker.is_cancelled:
+                    return
                 if fresh is None:
                     self.app.call_from_thread(self._record_gone)
                     return
@@ -658,7 +665,8 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
             cat_names = load_category_name_map()
             tag_names = load_hashtag_name_map()
         except Exception as exc:  # surface engine/config errors in-app, don't crash
-            self.app.call_from_thread(self.notify, format_error(exc), severity="error")
+            if not worker.is_cancelled:
+                self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
         rows, checked, seen = [], [], set()
         for it in [*assigned, *available]:
@@ -677,26 +685,29 @@ class ReconciliationDetailScreen(EngineWriteMixin, Screen):
                     _txn_sub(it, cat_names, tag_names),
                 )
             )
+        if worker.is_cancelled:
+            return
         self.app.call_from_thread(self._populate, rows, checked)
 
     async def _populate(self, rows: list, checked: list) -> None:
-        container = self.query_one("#rlist", Container)
-        await container.remove_children()
-        empty = (
-            "(no transactions in this batch)"
-            if self._completed
-            else "(no transactions for this account in range)"
-        )
-        self._list = CheckList(
-            rows,
-            checked,
-            read_only=self._completed,
-            empty=empty,
-            palette=resolve_palette(self.app),
-        )
-        await container.mount(self._list)
-        if not self._completed:
-            self._list.focus()
+        async with self._content_lock():
+            container = self.query_one("#rlist", Container)
+            await container.remove_children()
+            empty = (
+                "(no transactions in this batch)"
+                if self._completed
+                else "(no transactions for this account in range)"
+            )
+            self._list = CheckList(
+                rows,
+                checked,
+                read_only=self._completed,
+                empty=empty,
+                palette=resolve_palette(self.app),
+            )
+            await container.mount(self._list)
+            if not self._completed:
+                self._list.focus()
 
     # ---- assign / unassign ----------------------------------------------
     def on_check_list_toggled(self, event: CheckList.Toggled) -> None:

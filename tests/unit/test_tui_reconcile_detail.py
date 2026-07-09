@@ -227,6 +227,50 @@ def test_toggle_error_drops_queued_intents_and_resyncs(fake_client, monkeypatch)
     asyncio.run(scenario())
 
 
+def test_rapid_reloads_keep_one_fresh_checklist(fake_client, monkeypatch):
+    """A superseded load must not paint: no stacked or stale checklist (backlog 6.2a).
+
+    Exclusive-group cancellation is cooperative — the first worker keeps
+    running. Before the fix it painted its stale rows over (or under) the
+    fresh ones; now it checks is_cancelled and the swap is lock-serialized.
+    """
+    import time
+
+    completed = {**DRAFT, "status": 2}
+    _patch(monkeypatch)
+    calls = {"n": 0}
+    fresh_row = {
+        "id": "t9",
+        "title": "Fresh",
+        "amount_cents": -100,
+        "date": "2026-04-10",
+        "reconciliation_id": "r1",
+    }
+
+    def fake_fetch(cfg, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            time.sleep(0.15)  # the superseded first load finishes last
+            return {"items": ASSIGNED}
+        return {"items": [*ASSIGNED, fresh_row]}
+
+    monkeypatch.setattr("expense.commands.transactions_cmd.fetch_transactions", fake_fetch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(completed))
+            await app.push_screen(screen)
+            await wait_for(pilot, lambda: calls["n"] >= 1)
+            screen._load_txns()  # supersedes the slow mount-time load
+            await wait_for(pilot, lambda: screen._list is not None and len(screen._list._rows) == 2)
+            await pilot.pause(0.25)  # window for the cancelled worker to (not) paint
+            assert len(screen.query(CheckList)) == 1
+            assert [r[0] for r in screen._list._rows] == ["t1", "t9"]
+
+    asyncio.run(scenario())
+
+
 def test_fetch_all_txns_pages_at_engine_cap(monkeypatch):
     """The detail fetch never exceeds the engine's 200-row limit cap (backlog 3.3)."""
     from expense.tui.screens.reconciliations import _fetch_all_txns

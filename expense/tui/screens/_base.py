@@ -93,24 +93,31 @@ class EngineWriteMixin:
         self.notify(message)
 
 
-class SectionScreen(EngineWriteMixin, Screen):
-    BINDINGS = [
-        ("escape", "app.pop_screen", "Back"),
-        ("r", "reload", "Refresh"),
-    ]
-    crumb: tuple[str, ...] = ()
-    CARD_WIDTH: int | None = 64  # cap the content card; None = fill width
+class ContentSwapLockMixin:
+    """Serializes every remove/mount pair on a screen's content container.
 
-    # Serializes every remove/mount pair on #content. Two loads can land
-    # near-simultaneously (e.g. a manual refresh while a write's post-refresh
-    # reload is in flight); each swap suspends between remove and mount, and
-    # interleaved swaps would mount a second '#card' (DuplicateIds).
+    Two repaints can land near-simultaneously (e.g. a manual refresh while a
+    write's post-refresh reload is in flight); each swap suspends between
+    remove and mount, and interleaved swaps would mount duplicate content
+    (DuplicateIds on SectionScreen's '#card', stacked checklists on the
+    reconciliation detail screen).
+    """
+
     _swap_lock: asyncio.Lock | None = None
 
     def _content_lock(self) -> asyncio.Lock:
         if self._swap_lock is None:  # lazily created; only ever touched on the UI thread
             self._swap_lock = asyncio.Lock()
         return self._swap_lock
+
+
+class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
+    BINDINGS = [
+        ("escape", "app.pop_screen", "Back"),
+        ("r", "reload", "Refresh"),
+    ]
+    crumb: tuple[str, ...] = ()
+    CARD_WIDTH: int | None = 64  # cap the content card; None = fill width
 
     def compose(self) -> ComposeResult:
         yield Breadcrumb(self.crumb, id="crumb")
