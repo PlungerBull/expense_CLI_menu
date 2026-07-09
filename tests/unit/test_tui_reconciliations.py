@@ -125,7 +125,8 @@ def test_new_reconciliation_manual_includes_begin(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
-def test_reconciliations_browse_account_first(monkeypatch):
+def _patch_browse(monkeypatch):
+    """Two accounts, one batch each — the browse screen's standard fixture."""
     monkeypatch.setattr(
         "expense.commands.reconcile_cmd.fetch_reconciliations",
         lambda *a, **k: {"items": ITEMS, "total": 2},
@@ -139,24 +140,54 @@ def test_reconciliations_browse_account_first(monkeypatch):
     )
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
+
+async def _wait_browse(app, pilot):
+    await wait_for(
+        pilot,
+        lambda: app.screen.query(CursorList) and not app.screen.query("#content LoadingIndicator"),
+    )
+
+
+def test_reconciliations_browse_account_first(monkeypatch):
+    _patch_browse(monkeypatch)
+
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             screen = ReconciliationsScreen()
             await app.push_screen(screen)
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await _wait_browse(app, pilot)
             # account focus: first account (acc1) selected → its batch (r1) shown below
             assert screen._mode == "accts"
             assert set(screen._by_id) == {"r1"}
             # arrow to the second account → batch list follows to acc2's batch (r2)
             screen._accts_list.action_move(1)
             await pilot.pause(0.05)
+            assert screen._acct_idx == 1
+            assert set(screen._by_id) == {"r2"}
+
+    asyncio.run(scenario())
+
+
+def test_highlight_from_batches_pane_does_not_switch_account(monkeypatch):
+    """A Highlighted sourced from the batches pane (Tab/click focus, no select)
+    must not overwrite the selected account while in accounts mode — `n` would
+    then create the new batch under the wrong account (backlog 6.2c)."""
+    _patch_browse(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = ReconciliationsScreen()
+            await app.push_screen(screen)
+            await _wait_browse(app, pilot)
+            assert screen._mode == "accts" and screen._acct_idx == 0
+            # from the *batches* list → ignored
+            screen.on_cursor_list_highlighted(CursorList.Highlighted(screen._batch_list, "r1", 1))
+            assert screen._acct_idx == 0
+            assert set(screen._by_id) == {"r1"}
+            # the same event from the *accounts* list still drives the panes
+            screen.on_cursor_list_highlighted(CursorList.Highlighted(screen._accts_list, "acc2", 1))
             assert screen._acct_idx == 1
             assert set(screen._by_id) == {"r2"}
 

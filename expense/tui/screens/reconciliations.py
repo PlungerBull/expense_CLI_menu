@@ -216,7 +216,10 @@ class ReconciliationsScreen(SectionScreen):
 
     # ---- interaction -----------------------------------------------------
     def on_cursor_list_highlighted(self, event: CursorList.Highlighted) -> None:
-        if self._mode != "accts":
+        # Source guard (backlog 6.2c): a Highlighted from the batches pane
+        # (reachable by Tab/click focus without a select) must not overwrite
+        # the selected account — `n` would then create under the wrong one.
+        if self._mode != "accts" or event.control is not getattr(self, "_accts_list", None):
             return
         self._acct_idx = event.index
         self._rebuild_batches()

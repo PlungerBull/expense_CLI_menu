@@ -32,19 +32,33 @@ class CursorList(Static):
     ]
 
     class Selected(Message):
-        def __init__(self, key: object, index: int) -> None:
+        def __init__(self, control: "CursorList", key: object, index: int) -> None:
             super().__init__()
+            self._control = control
             self.key = key
             self.index = index
+
+        @property
+        def control(self) -> "CursorList":
+            """The list that posted this — handlers on screens with several
+            CursorLists must filter by source (backlog 6.2c)."""
+            return self._control
 
     class Highlighted(Message):
         """Posted when the row cursor moves (live), carrying the new row's key.
         Lets a parent react as you navigate (e.g. a master→detail two-pane)."""
 
-        def __init__(self, key: object, index: int) -> None:
+        def __init__(self, control: "CursorList", key: object, index: int) -> None:
             super().__init__()
+            self._control = control
             self.key = key
             self.index = index
+
+        @property
+        def control(self) -> "CursorList":
+            """The list that posted this — handlers on screens with several
+            CursorLists must filter by source (backlog 6.2c)."""
+            return self._control
 
     def __init__(
         self,
@@ -113,8 +127,8 @@ class CursorList(Static):
         if new != self._cursor:
             self._cursor = new
             self._refresh()
-            self.post_message(self.Highlighted(self.cursor_key, self._cursor))
+            self.post_message(self.Highlighted(self, self.cursor_key, self._cursor))
 
     def action_select(self) -> None:
         if self._rows:
-            self.post_message(self.Selected(self._rows[self._cursor][0], self._cursor))
+            self.post_message(self.Selected(self, self._rows[self._cursor][0], self._cursor))

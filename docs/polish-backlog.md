@@ -380,7 +380,7 @@ existing item are marked.
   by id (the `reconcile get` / `cache.get_reconciliation` path already
   exists) instead of scanning the collection.
 
-- [ ] **`tui/screens/reconciliations.py:217` — `on_cursor_list_highlighted`
+- [x] **`tui/screens/reconciliations.py:217` — `on_cursor_list_highlighted`
   guards on `_mode` but not on the event's source list.** While `_mode ==
   "accts"`, a `Highlighted` from the *batches* pane (reachable by Tab/click
   focus without a select) is written to `self._acct_idx`, silently switching
