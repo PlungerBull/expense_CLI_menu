@@ -1,6 +1,7 @@
 """respx-mocked apply tests + CLI dry-run for `expense import`."""
 
 import json
+from decimal import Decimal
 
 import httpx
 import respx
@@ -59,7 +60,7 @@ def test_apply_reuses_existing_and_creates_rest(configured):
             account="BCP USD",
             currency="USD",
             amount_cents=-10000,
-            exchange_rate=3.68,
+            exchange_rate=Decimal("3.68"),
             category="PERROS",
             hashtag="Viajes",
         ),
@@ -380,6 +381,53 @@ def test_batch_connection_failure_marks_remaining_failed_and_stops(configured):
     assert batch_route.call_count == 2  # loop broke; third chunk never sent
 
 
+@respx.mock
+def test_resolve_failure_collected_and_dependent_rows_skipped(configured):
+    """One resource that fails to create no longer aborts the whole import: it's
+    collected, its dependent rows are skipped pre-flight, and the rest still
+    land (backlog 6.4)."""
+    rows = [
+        _prow(2, category="WANTS", hashtag="Salidas"),
+        _prow(3, category="NEEDS", hashtag="Salidas", amount_cents=-5500),
+    ]
+    plan = _plan(rows)
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+
+    def cat_post(request: httpx.Request) -> httpx.Response:
+        if json.loads(request.content)["name"] == "WANTS":
+            return httpx.Response(
+                422,
+                json={"error": {"code": "VALIDATION_ERROR", "message": "bad color", "fields": {}}},
+            )
+        return httpx.Response(201, json={"id": "cat-ok"})
+
+    respx.post(f"{BASE}/v1/categories").mock(side_effect=cat_post)
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
+        return_value=httpx.Response(201, json={"created": []})
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)  # does NOT raise
+        result = apply_mod.apply_plan(client, plan, res)
+
+    assert res.categories_created == 1  # NEEDS still created after WANTS failed
+    assert len(res.resolve_failures) == 1
+    assert "WANTS" in res.resolve_failures[0] and "bad color" in res.resolve_failures[0]
+    # the WANTS row (line 2) is skipped pre-flight; the NEEDS row (line 3) lands
+    assert result.tx_created == 1
+    assert result.tx_failed == 1
+    assert any(c < 0 and "sheet line 2" in m for c, m in result.failures)
+    # only the NEEDS row (line 3) reached the batch; the WANTS row never did
+    sent = json.loads(batch_route.calls.last.request.content)["transactions"]
+    assert [i["id"] for i in sent] == [plan.tx_ids[3]]
+
+
 # --- CLI surface -----------------------------------------------------------
 
 _HEADERS = [
@@ -525,6 +573,45 @@ def test_apply_cli_reports_summary_on_connection_failure(configured, monkeypatch
     assert "Transactions: created 1" in result.output
     assert "failed 1" in result.output
     assert "chunk 1: CONNECTION_ERROR: could not reach engine" in result.output
+
+
+@respx.mock
+def test_apply_cli_exits_1_and_reports_resource_failure(configured, monkeypatch):
+    """A resource create failure is rendered and forces a non-zero exit (backlog 6.4)."""
+    second = list(_CELLS)
+    second[1] = "NEEDS"  # distinct category
+    second[4] = -55  # distinct amount → distinct row
+    monkeypatch.setattr(
+        import_cmd,
+        "read_workbook",
+        lambda path, **k: SheetData(
+            headers=_HEADERS, rows=[RawRow(2, list(_CELLS)), RawRow(3, second)]
+        ),
+    )
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+
+    def cat_post(request: httpx.Request) -> httpx.Response:
+        if json.loads(request.content)["name"] == "WANTS":
+            return httpx.Response(
+                422, json={"error": {"code": "VALIDATION_ERROR", "message": "bad", "fields": {}}}
+            )
+        return httpx.Response(201, json={"id": "cat-ok"})
+
+    respx.post(f"{BASE}/v1/categories").mock(side_effect=cat_post)
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    respx.post(f"{BASE}/v1/transactions/batch").mock(
+        return_value=httpx.Response(201, json={"created": []})
+    )
+
+    result = runner.invoke(cli_app, ["import", "whatever.xlsx", "--apply"])
+    assert result.exit_code == 1
+    assert "Resource failures" in result.output
+    assert "WANTS" in result.output
+    assert "pre-flight" in result.output  # the dependent row was skipped
 
 
 def test_missing_openpyxl_friendly_error(configured, monkeypatch):

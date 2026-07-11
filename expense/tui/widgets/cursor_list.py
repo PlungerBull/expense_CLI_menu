@@ -7,6 +7,7 @@ is pure, so formatting is unit-testable without an event loop.
 """
 
 from collections.abc import Iterable, Sequence
+from typing import NamedTuple
 
 from rich import box
 from rich.console import RenderableType
@@ -16,11 +17,29 @@ from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import Static
 
-# A row is (key, cells) or (key, cells, base_style). `key` identifies the row;
-# `cells` may be plain strings or Rich renderables (e.g. a colored swatch);
-# `base_style` is an optional Rich style applied when the row is not the cursor
-# (e.g. "dim" for archived rows).
-Row = tuple
+
+class Row(NamedTuple):
+    """One list row.
+
+    ``key`` identifies the row (carried on ``Selected``/``Highlighted``);
+    ``cells`` are the column values — plain strings or Rich renderables like a
+    colored swatch; ``base_style`` is the Rich style applied when the row is not
+    the cursor (e.g. ``"dim"`` for archived rows).
+    """
+
+    key: object
+    cells: Sequence[object]
+    base_style: str = ""
+
+    @classmethod
+    def coerce(cls, row: "RowInput") -> "Row":
+        """Accept a plain ``(key, cells[, base_style])`` tuple — what the pure row
+        builders return — or an existing Row; always return a Row."""
+        return row if isinstance(row, cls) else cls(*row)
+
+
+# Row builders return plain tuples; the widget coerces them at its boundary.
+RowInput = Row | tuple
 
 
 class CursorList(Static):
@@ -63,14 +82,14 @@ class CursorList(Static):
     def __init__(
         self,
         headers: Sequence[str],
-        rows: Iterable[Row],
+        rows: Iterable[RowInput],
         *,
         align_right: Iterable[int] = (),
         empty: str = "(empty)",
     ) -> None:
         super().__init__()
         self._headers = list(headers)
-        self._rows: list[Row] = list(rows)
+        self._rows: list[Row] = [Row.coerce(r) for r in rows]
         self._align = set(align_right)
         self._empty = empty
         self._cursor = 0
@@ -79,18 +98,18 @@ class CursorList(Static):
         self._refresh()
         self.focus()
 
-    def set_rows(self, rows: Iterable[Row]) -> None:
-        self._rows = list(rows)
+    def set_rows(self, rows: Iterable[RowInput]) -> None:
+        self._rows = [Row.coerce(r) for r in rows]
         self._cursor = min(self._cursor, max(0, len(self._rows) - 1))
         self._refresh()
 
     @property
     def cursor_key(self) -> object | None:
-        return self._rows[self._cursor][0] if self._rows else None
+        return self._rows[self._cursor].key if self._rows else None
 
     def index_of(self, key: object) -> int:
         for i, row in enumerate(self._rows):
-            if row[0] == key:
+            if row.key == key:
                 return i
         return 0
 
@@ -114,10 +133,8 @@ class CursorList(Static):
         for i, header in enumerate(self._headers):
             t.add_column(header, justify="right" if i in self._align else "left", no_wrap=True)
         for r, row in enumerate(self._rows):
-            cells = row[1]
-            base = row[2] if len(row) > 2 else ""
-            style = "reverse" if r == self._cursor else base
-            t.add_row(*[self._cell(c) for c in cells], style=style)
+            style = "reverse" if r == self._cursor else row.base_style
+            t.add_row(*[self._cell(c) for c in row.cells], style=style)
         return t
 
     def action_move(self, delta: int) -> None:
@@ -131,4 +148,4 @@ class CursorList(Static):
 
     def action_select(self) -> None:
         if self._rows:
-            self.post_message(self.Selected(self, self._rows[self._cursor][0], self._cursor))
+            self.post_message(self.Selected(self, self._rows[self._cursor].key, self._cursor))

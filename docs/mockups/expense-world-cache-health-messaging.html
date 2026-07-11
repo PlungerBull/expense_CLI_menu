@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — cache-health messaging (backlog §5: T1 stale-replica toast + T2 cache state)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     Gates two visible-text changes from the grab-bag backlog (§5):
+
+       T2 — Config / Sync screens today render ANY cache-read failure as
+            "not synced yet" (a bare except → ready=False). A locked or
+            unreadable replica is then indistinguishable from a fresh,
+            never-synced one. This adds a THIRD state so the wording tells
+            the truth.
+
+       T1 — After a TUI write, if the post-write sync fails, the success
+            toast fires over a silently-stale on-screen replica. The
+            warning is currently thrown into a throwaway StringIO. This
+            surfaces it as a warning toast (the CLI already prints it).
+
+     Hexes are the real theme tokens. Two wording options per change —
+     pick A or B (or edit). Nothing is implemented until you pick.
+     ---------------------------------------------------------------------- */
+  :root{
+    --chrome:#0e1014; --appbg:#0e0e11; --surface:#16161a;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9aa7b2; --sel:#2b303a;
+    --pos:#7fbf8f; --neg:#cf8d8d; --warn:#d6b878;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#050506}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px;
+       padding:36px 20px 90px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  .lbl{width:min(1000px,100%);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:12.5px}
+  .step{width:min(1000px,100%);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:22px}
+  .step small{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:12px;margin-left:8px}
+
+  .term{width:min(1000px,100%);background:var(--chrome);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:13.5px;line-height:1.55;position:relative}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#000}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:8px;color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .body{padding:16px 20px 20px}
+  .crumb{color:var(--dim);font-size:12px;letter-spacing:.02em;margin-bottom:12px}
+  .crumb b{color:var(--muted)}
+  .sectitle{color:var(--text);margin-bottom:12px}
+
+  table.kv{border-collapse:collapse;width:100%;max-width:640px}
+  table.kv td{padding:3px 0;vertical-align:top}
+  table.kv td.k{color:var(--muted);width:150px;white-space:nowrap}
+  table.kv td.v{color:var(--text)}
+  .pos{color:var(--pos)} .neg{color:var(--neg)} .warn{color:var(--warn)} .dimv{color:var(--dim)}
+  .legend{color:var(--dim);font-size:12px;margin-top:14px}
+
+  .note{width:min(1000px,100%);font-size:12.5px;color:var(--muted);line-height:1.6}
+  .note b{color:var(--text)}
+  .opt{width:min(1000px,100%);display:grid;grid-template-columns:34px 1fr;gap:10px 12px;
+       background:var(--surface);border:1px solid #23232a;border-radius:10px;padding:14px 16px;font-size:13px}
+  .opt .k{color:var(--accent);font-weight:bold}
+  .opt .row{color:var(--text)}
+  .opt .row .q{color:var(--dim)}
+  .rec{color:var(--pos);font-size:11px;letter-spacing:.06em}
+
+  /* toast */
+  .stage{position:relative;min-height:150px}
+  .faded{opacity:.5}
+  .toast{position:absolute;right:16px;bottom:16px;width:min(360px,72%);
+         background:#1a1710;border:1px solid #4a3f22;border-left:3px solid var(--warn);
+         border-radius:8px;padding:10px 13px;box-shadow:0 14px 34px -18px #000}
+  .toast .tt{color:var(--warn);font-size:12px;letter-spacing:.05em;margin-bottom:3px}
+  .toast .tm{color:var(--text);font-size:12.5px;line-height:1.5}
+  .toast.ok{background:#101a12;border-color:#2f4a34;border-left-color:var(--pos)}
+  .toast.ok .tt{color:var(--pos)}
+</style>
+</head>
+<body>
+
+  <div class="lbl">expense world — cache-health messaging <span>· backlog §5 (T1 stale-replica toast, T2 cache state) · real theme hexes</span></div>
+
+  <!-- =================== T2 : CONFIG CACHE STATE ==================== -->
+  <div class="step">T2 · Config screen — the <small>cache</small> status row, three honest states</div>
+
+  <div class="term">
+    <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="ttl">expense <b>world</b></span></div>
+    <div class="body">
+      <div class="crumb"><b>System</b> › <b>Config</b></div>
+      <div class="sectitle">Config — engine connection &amp; local state</div>
+      <table class="kv">
+        <tr><td class="k">engine url</td><td class="v">https://api.expenseworld.app</td></tr>
+        <tr><td class="k">token</td><td class="v">ewe_pat_••••••••3f9a</td></tr>
+        <tr><td class="k">client id</td><td class="v">4d2c…e1b7</td></tr>
+        <tr><td class="k">main currency</td><td class="v">PEN</td></tr>
+        <tr><td class="k">cache</td><td class="v"><span class="pos">ready (synced)</span> <span class="dimv">← healthy replica</span></td></tr>
+      </table>
+      <div class="legend">e set engine url · t set token · token is a secret — never logged</div>
+    </div>
+  </div>
+
+  <div class="note"><b>The three states for the <code>cache</code> value</b> (only the third is new; today the third is wrongly shown as the second):</div>
+  <div class="term">
+    <div class="body" style="padding-top:16px">
+      <table class="kv">
+        <tr><td class="k">synced</td><td class="v"><span class="pos">ready (synced)</span></td></tr>
+        <tr><td class="k">empty / never synced</td><td class="v"><span class="dimv">not synced yet</span></td></tr>
+        <tr><td class="k">read error (locked / corrupt)</td><td class="v"><span class="warn">unreadable — retry, or run with --no-cache</span> &nbsp;<span class="rec">◄ NEW · option A</span></td></tr>
+        <tr><td class="k"></td><td class="v"><span class="warn">unavailable — another process may hold it</span> &nbsp;<span class="dimv">◄ option B</span></td></tr>
+      </table>
+      <div class="legend">The exception class (e.g. <code>OperationalError</code>) is logged to stderr as a breadcrumb when running <code>-v</code>; the status row stays terse. Same treatment on the Sync screen's <code>state</code> row.</div>
+    </div>
+  </div>
+
+  <!-- =================== T1 : STALE-REPLICA TOAST ==================== -->
+  <div class="step">T1 · Post-write warning — the local copy didn’t refresh</div>
+
+  <div class="note">After a successful write, if the post-write sync fails, today you get a <b>success</b> toast over a silently-stale replica. This adds a <b>warning</b> toast (severity=warning, amber). The successful case (left) is unchanged; the new warning (right) only appears when the refresh fails.</div>
+
+  <div class="term">
+    <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="ttl">expense <b>world</b></span></div>
+    <div class="body faded">
+      <div class="crumb"><b>Transactions</b></div>
+      <div class="sectitle dimv">… the ledger you just edited …</div>
+      <table class="kv">
+        <tr><td class="k dimv">2026-07-11</td><td class="v dimv">Groceries · Wong &nbsp;&nbsp;<span class="neg">-142.30</span></td></tr>
+        <tr><td class="k dimv">2026-07-10</td><td class="v dimv">Salary &nbsp;&nbsp;<span class="pos">+4,800.00</span></td></tr>
+      </table>
+    </div>
+    <div class="stage">
+      <div class="toast">
+        <div class="tt">Saved — cache not refreshed</div>
+        <div class="tm">The change was written, but the local copy didn’t refresh and may be stale. Open Sync to refresh. <span class="rec">◄ option A</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="k">A</div>
+    <div class="row"><b>title</b> “Saved — cache not refreshed” &nbsp;·&nbsp; <b>body</b> “The change was written, but the local copy didn’t refresh and may be stale. Open Sync to refresh.” <span class="rec">recommended</span></div>
+    <div class="k">B</div>
+    <div class="row"><b>title</b> “Cache refresh failed” &nbsp;·&nbsp; <b>body</b> “Write saved. The local copy is stale until the next sync — run Sync now to refresh.”</div>
+  </div>
+
+  <div class="note" style="margin-top:6px">For reference, the flat CLI already prints on this failure: <span class="dimv">“Cache refresh failed after write: EngineError: …. Run 'expense sync' to refresh.”</span> — the toast is the TUI-native equivalent.</div>
+
+</body>
+</html>

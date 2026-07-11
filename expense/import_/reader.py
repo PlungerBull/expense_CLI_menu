@@ -58,6 +58,13 @@ def read_workbook(path: str, *, sheet_name: str = mapping.SHEET_NAME) -> SheetDa
             header = list(next(rows_iter))
         except StopIteration:
             raise ImportFileError(f"Sheet {sheet_name!r} is empty.") from None
+        # Deliberately materialized (not streamed). `read_only=True` already keeps
+        # openpyxl's cell cache lazy; the remaining win from yielding RawRows would
+        # require `wb` to stay open through parse — i.e. read_workbook becoming a
+        # context manager so the handle closes on every path (parse can raise
+        # ImportFormatError on bad headers). Bounded and cheap at personal scale;
+        # true streaming is deferred (polish-backlog §5) rather than left half-done
+        # with a handle that leaks on the error path.
         data = [RawRow(line=line, cells=list(values)) for line, values in enumerate(rows_iter, 2)]
     finally:
         wb.close()

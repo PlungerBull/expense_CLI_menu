@@ -26,7 +26,7 @@ class ParsedRow:
     currency: str
     account: str
     description: str | None
-    exchange_rate: float | None
+    exchange_rate: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -74,11 +74,29 @@ def serial_to_iso(serial: object) -> str:
 
 
 def to_iso_date(value: object) -> str | None:
-    """Coerce a date cell (datetime, date, or Excel serial) to ``YYYY-MM-DD``."""
+    """Coerce a date cell to ``YYYY-MM-DD``.
+
+    Handles datetime/date objects, Excel serial day-numbers (int, float, or a
+    numeric string), and ISO-formatted **text** cells (``2022-12-01`` or
+    ``2022-12-01 10:30``). The text branch is why a column typed as text still
+    imports instead of being dropped as ``bad-date``. Numeric-string serials
+    (e.g. ``"46170"``) fail ISO parsing and fall through to the serial path,
+    which preserves their existing handling.
+    """
     if isinstance(value, datetime):
         return value.date().isoformat()
     if isinstance(value, date):
         return value.isoformat()
+    if isinstance(value, str):
+        text = value.strip()
+        try:
+            return date.fromisoformat(text).isoformat()
+        except ValueError:
+            pass
+        try:
+            return datetime.fromisoformat(text).date().isoformat()
+        except ValueError:
+            pass
     try:
         return serial_to_iso(value)
     except (TypeError, ValueError):
@@ -94,15 +112,21 @@ def amount_to_cents(value: object) -> int:
     return int(cents.to_integral_value(rounding=ROUND_HALF_UP))
 
 
-def parse_rate(value: object) -> float | None:
-    """Parse the T.C. cell into a positive rate. None if absent/non-numeric.
+_RATE_QUANTUM = Decimal("0.000001")
 
-    A non-positive rate is returned as-is (0.0 or negative) so the caller can
-    reject it distinctly from a missing one.
+
+def parse_rate(value: object) -> Decimal | None:
+    """Parse the T.C. cell into a rate, quantized to 6 dp. None if absent/non-numeric.
+
+    Goes through ``Decimal`` (like ``amount_to_cents``) so the rate rounds the
+    money-correct way — ROUND_HALF_UP on the exact decimal, not banker's-rounded
+    float — rather than accumulating a binary-float artifact before it reaches
+    the payload. A non-positive rate is returned as-is (0 or negative) so the
+    caller can reject it distinctly from a missing one.
     """
     try:
-        return round(float(value), 6)
-    except (TypeError, ValueError):
+        return Decimal(str(value)).quantize(_RATE_QUANTUM, rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
         return None
 
 
@@ -145,7 +169,7 @@ def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | SkippedRow:
     if amount_cents == 0:
         return SkippedRow(raw.line, "zero-amount")
 
-    exchange_rate: float | None = None
+    exchange_rate: Decimal | None = None
     if currency == "USD":
         rate = parse_rate(cell("rate"))
         if rate is None:

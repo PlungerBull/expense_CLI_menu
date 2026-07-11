@@ -77,6 +77,7 @@ def _render_result(result: apply_mod.ApplyResult, *, json_output: bool) -> None:
                     "categories_reused": res.categories_reused,
                     "hashtags_created": res.hashtags_created,
                     "hashtags_reused": res.hashtags_reused,
+                    "resolve_failures": res.resolve_failures,
                     "tx_created": result.tx_created,
                     "tx_skipped_existing": result.tx_skipped_existing,
                     "tx_failed": result.tx_failed,
@@ -91,6 +92,10 @@ def _render_result(result: apply_mod.ApplyResult, *, json_output: bool) -> None:
     typer.echo(f"Accounts:   created {res.accounts_created}, reused {res.accounts_reused}")
     typer.echo(f"Categories: created {res.categories_created}, reused {res.categories_reused}")
     typer.echo(f"Hashtags:   created {res.hashtags_created}, reused {res.hashtags_reused}")
+    if res.resolve_failures:
+        typer.echo(f"Resource failures ({len(res.resolve_failures)}):")
+        for message in res.resolve_failures:
+            typer.echo(f"  {message}")
     typer.echo(
         f"Transactions: created {result.tx_created}, "
         f"already-present {result.tx_skipped_existing}, failed {result.tx_failed}"
@@ -98,7 +103,8 @@ def _render_result(result: apply_mod.ApplyResult, *, json_output: bool) -> None:
     if result.failures:
         typer.echo("Failures:")
         for chunk_index, message in result.failures:
-            typer.echo(f"  chunk {chunk_index}: {message}")
+            where = "pre-flight" if chunk_index < 0 else f"chunk {chunk_index}"
+            typer.echo(f"  {where}: {message}")
 
 
 @handle_errors
@@ -156,5 +162,5 @@ def run_import(
         cache_after_write(ctx, client, cfg)
 
     _render_result(result, json_output=json_output)
-    if result.tx_failed > 0:
+    if result.tx_failed > 0 or result.resolve.resolve_failures:
         raise typer.Exit(code=1)

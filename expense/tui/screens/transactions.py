@@ -1,9 +1,9 @@
-"""Transactions screen — the posted ledger (read-only browse for Phase 1).
+"""Transactions screen — the posted ledger.
 
 Built on SectionScreen + the shared CursorList. Loads the most recent page via
-the shared `transactions_cmd.fetch_transactions`; `enter` opens the read-only
-detail modal. No `cl` glyph column (dropped per request); interactive filters,
-search, and edit land in a later pass.
+the shared `transactions_cmd.fetch_transactions`; `enter` opens the record in
+the editable QuickAddLogScreen. No `cl` glyph column (dropped per request);
+interactive filters and search land in a later pass.
 """
 
 from rich.text import Text

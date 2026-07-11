@@ -1,8 +1,17 @@
 /* App-wide styling. Colors come from theme variables (see theme.py) so a
    theme swap recolors everything — no hardcoded hex here. */
 
+/* The app runs in ANSI mode (ExpenseApp passes ansi_color=True), so the base
+   fill is the terminal's OWN background — the app has no seam against the
+   terminal's window padding, and follows whatever dark terminal it runs in.
+   Textual's own Screen:ansi also flips text to the terminal's default fg; pin it
+   back to our theme foreground. The pin must be :ansi-specific to out-specify
+   that rule. See docs/decisions.md for the decision + dark-terminal-only scope. */
 Screen {
-    background: $background;
+    background: ansi_default;
+}
+Screen:ansi {
+    color: $foreground;
 }
 
 /* ---- home ---- */
@@ -12,14 +21,16 @@ Screen {
     text-style: bold;
     border-bottom: solid $surface;  /* thin rule dividing header from menu */
 }
-/* No box: the menu sits directly on the app background (two surfaces, not
-   three). `border: none` overrides OptionList's default `tall` border; group
-   headers, the inter-group separators, and the selection bar carry the
-   structure the box used to. */
+/* No box: the menu sits directly on the terminal-transparent background (one
+   surface with the screen, not a raised panel). This id rule out-specifies
+   Textual's Screen:ansi, so it must carry `ansi_default` itself — a hardcoded
+   fill here would relocate the seam to the menu edge. `border: none` overrides
+   OptionList's default `tall` border; group headers, the inter-group
+   separators, and the selection bar carry the structure the box used to. */
 #menu {
     height: 1fr;
     margin: 1 1 1 1;
-    background: $background;
+    background: ansi_default;
     border: none;
     padding: 0 1;
 }
@@ -85,6 +96,12 @@ Screen {
 /* modal screens — center the #modal box (else it collapses top-left) */
 RecordModal, SnapshotModal, ConfirmModal, PromptModal {
     align: center middle;
+}
+/* In ANSI mode Textual's ModalScreen:ansi drops the dim backdrop
+   (background: transparent); restore our scrim so a modal still reads as
+   sitting *on top* of the screen behind it (the #modal card stays $panel). */
+ModalScreen:ansi {
+    background: $background 60%;
 }
 /* width is DEFINITE, not `auto`: inside `align: center middle` on Textual 8.x,
    `width: auto` measures to 0, collapsing the box to an empty border (Enter's

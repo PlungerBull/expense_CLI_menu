@@ -292,41 +292,33 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   render no Deleted column (accounts/categories/hashtags/reconcile all have
   one) — needs a proposed-columns mockup first per the table rule; rides on
   the 1.4 decision.
-- [ ] TUI: theme change triggers a full re-*fetch* on every subscribed screen
-  when only a re-render is needed (`_base.py:108`); detail screen mutates
-  `self._record` from the worker thread (`reconciliations.py:617`) —
-  inconsistent with the `call_from_thread` discipline used elsewhere;
-  `run_write` discards `refresh_after_write`'s stale-replica warning into a
-  throwaway `StringIO` (`_base.py:74`) — surface it as a notify; System
-  screens render replica corruption as "not synced yet" via bare
-  `except Exception` (`system.py:68-69,306-307`) — add a verbose breadcrumb;
-  (~~promote `auth_cmd._detect_timezone`~~ — done 2026-07-08 with 6.2d, it
-  lives in `expense/dates.py` now); `Row = tuple` and bare `-> list` typing across widget plumbing
-  (`cursor_list.py:23`, `checklist.py:25`) — a `NamedTuple`/`TypeAlias` for
-  the `(id, cells[, style])` contract; HomeScreen's 13-branch `elif` chain
-  with `f"{opt_id}:{label}"` round-tripping (`home.py:70-100`) — a dispatch
-  dict; five screen docstrings still say "read-only … Phase 1" on screens
-  with writes (`accounts.py`, `categories.py`, `hashtags.py`, `inbox.py`,
-  `transactions.py` headers).
-- [ ] Import: reader materializes all rows despite the streaming workbook
-  (`reader.py:61`); text-formatted date cells skip as `bad-date` though
-  `expense/dates.py` parses them (`parse.py:76-85`); exchange rate goes
-  through `float` while amounts correctly use `Decimal` (`parse.py:97-104`);
-  `resolve_or_create` aborts wholesale on the first failing POST
-  (`apply.py:66-127`).
-- [ ] Cache file perms: created umask-default then chmod'd, `_set_perms`
-  swallows `OSError`, never re-checked (`db.py:20-25,46-49`) — re-assert 600
-  on connect; `refresh_after_write`'s bare `except Exception`
-  (`sync.py:271-277`) converts programming errors into the one-line sync
-  hint — narrow it or log the class; `_apply_resource` loads every table id
-  into a set per sync for insert/update counts (`sync.py:122`) — fine at
-  personal scale, note as a non-goal or use `ON CONFLICT`.
-- [ ] Tests: default-date test computes "today" after the CLI runs
-  (`test_cmd_log.py:114`, midnight-straddle flake); two fixed
-  `pilot.pause(0.05)` waits where `wait_for` is the file's own idiom
-  (`test_tui_writes.py:32`, `test_tui_section_errors.py:88`); no network-off
-  backstop for unit tests (pytest-socket or a global
-  `respx.mock(assert_all_mocked=True)`).
+- [ ] Import: the `.xlsx` reader still materializes all rows into a list
+  (`reader.py:61`) rather than streaming — the last open piece of the
+  2026-07-11 grab-bag (everything else below landed: text-date parsing,
+  `Decimal` FX rate, fault-tolerant `resolve_or_create`). Deferred
+  deliberately: true streaming needs `read_workbook` to become a context
+  manager so the workbook handle closes on every path (parse can raise
+  `ImportFormatError` on bad headers) — a generator that leaks the handle on
+  the error path isn't worth it at personal scale. Documented in a code
+  comment at the materialization site.
+- [ ] Tests: ~37 remaining `pilot.pause(0.05)` sites across the TUI suite
+  (`test_tui_system.py`, `test_tui_manage_detail.py`,
+  `test_tui_reconcile_detail.py`, …) should move to `wait_for` (a real
+  condition) or `pilot.pause()` (settle, no magic number) — a mechanical,
+  time-boxable sweep. The two glaring co-located ones
+  (`test_tui_writes.py`, `test_tui_section_errors.py`) were converted with the
+  2026-07-11 grab-bag; this is the residue.
+
+<!-- The rest of the 2026-07-06 grab-bag landed 2026-07-11 (removed per the
+     open-work-only rule; git history is the archive): TUI theme re-render
+     (not re-fetch), worker→main-thread `_record` marshal, stale-replica
+     warning toast, cache-unreadable vs not-synced state, `NamedTuple` row
+     widgets, HomeScreen dispatch dict, inbox/transactions docstrings (it was
+     2 stale docstrings, not 5); import text-date parsing + `Decimal` FX rate +
+     fault-tolerant resolve; cache perms re-assert on connect, `refresh_after_write`
+     exception-class breadcrumb, `_apply_resource` id-load note; default-date
+     midnight-flake freeze + network-off backstop. -->
+
 
 ## 6. Multi-agent review 2026-07-07 (since merged to `main`)
 

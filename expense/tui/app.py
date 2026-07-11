@@ -23,7 +23,14 @@ class ExpenseApp(App):
     # (letters bubble to the App). HomeScreen binds q; ctrl+q quits everywhere.
 
     def __init__(self, *, verbose: bool = False, no_cache: bool = False) -> None:
-        super().__init__()
+        # ansi_color=True makes Textual paint the terminal's OWN default
+        # background (SGR 49) instead of our fixed hex, so the app fill and the
+        # terminal's window padding are one continuous surface — no seam — and it
+        # follows whatever (dark) terminal it runs in. The theme stays non-ANSI,
+        # so every design token keeps its authored hex; only the base fill and
+        # inherited text color go through the terminal. app.tcss pins the
+        # foreground back to $foreground. Rationale + scope: docs/decisions.md.
+        super().__init__(ansi_color=True)
         self._verbose = verbose
         self._no_cache = no_cache
 

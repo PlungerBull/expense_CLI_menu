@@ -13,6 +13,8 @@ System reads (the last three sections before TUI parity):
   Rates    — reference FX lookup (conversion on writes is automatic engine-side).
 """
 
+import sys
+
 from rich import box
 from rich.table import Table
 from rich.text import Text
@@ -25,6 +27,7 @@ from expense.currencies import SUPPORTED_CURRENCIES
 from expense.errors import format_error
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
+from expense.tui.theme import Palette, resolve_palette
 from expense.tui.widgets.cursor_list import CursorList
 
 
@@ -37,8 +40,47 @@ def _kv_table(rows: list[tuple[str, object]]) -> Table:
     t.add_column("k", style="dim")
     t.add_column("v")
     for key, value in rows:
-        t.add_row(key, Text(str(value if value not in (None, "") else "—")))
+        # a pre-styled Text (e.g. the cache-status cell) passes through; the rest stringify
+        cell = (
+            value
+            if isinstance(value, Text)
+            else Text(str(value if value not in (None, "") else "—"))
+        )
+        t.add_row(key, cell)
     return t
+
+
+def _cache_status(state: str, palette: Palette) -> Text:
+    """Render the replica's health as a colored status cell.
+
+    Three honest states — a read error is NOT the same as a fresh, never-synced
+    replica, so it gets its own wording and color instead of masquerading as
+    "not synced yet" (backlog §5). Color goes through the theme palette.
+    """
+    if state == "ready":
+        return Text("ready (synced)", style=palette.success)
+    if state == "error":
+        return Text("unreadable — retry, or run with --no-cache", style=palette.warning)
+    return Text("not synced yet", style="dim")
+
+
+def _read_cache_state(app) -> str:
+    """'ready' | 'empty' | 'error' — the replica's health for the status row.
+
+    A locked/corrupt read (any exception from connect/read) yields 'error' with
+    a stderr breadcrumb under -v, never a silent 'empty' (backlog §5)."""
+    from expense.cache import db, state
+
+    try:
+        conn = db.connect()
+        try:
+            return "ready" if state.read(conn).sync_token is not None else "empty"
+        finally:
+            conn.close()
+    except Exception as exc:
+        if getattr(app, "_verbose", False):
+            print(f"cache unreadable: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return "error"
 
 
 class ConfigScreen(SectionScreen):
@@ -57,18 +99,7 @@ class ConfigScreen(SectionScreen):
         from expense import config as config_module
 
         cfg = config_module.load()
-        ready = False
-        try:
-            from expense.cache import db, state
-
-            conn = db.connect()
-            try:
-                ready = state.read(conn).sync_token is not None
-            finally:
-                conn.close()
-        except Exception:
-            ready = False
-        return {"cfg": cfg, "ready": ready}
+        return {"cfg": cfg, "cache_state": _read_cache_state(self.app)}
 
     def build(self, data: dict) -> list[Widget]:
         self._cfg = data["cfg"]
@@ -78,7 +109,7 @@ class ConfigScreen(SectionScreen):
             ("token", _redact_token(getattr(cfg, "token", None))),
             ("client id", getattr(cfg, "client_id", None)),
             ("main currency", getattr(cfg, "main_currency", None)),
-            ("cache", "ready (synced)" if data["ready"] else "not synced yet"),
+            ("cache", _cache_status(data["cache_state"], resolve_palette(self.app))),
         ]
         return [
             Static(Text("Config — engine connection & local state"), classes="section-title"),
@@ -308,7 +339,7 @@ class SyncScreen(SectionScreen):
     def fetch(self) -> dict:
         from expense.cache import cache_path, db, state
 
-        info: dict = {"sync_token": None, "last_synced_at": None, "ready": False}
+        info: dict = {"sync_token": None, "last_synced_at": None, "cache_state": "empty"}
         try:
             info["cache_path"] = str(cache_path())
         except Exception:
@@ -324,9 +355,12 @@ class SyncScreen(SectionScreen):
                 conn.close()
             info["sync_token"] = cur.sync_token
             info["last_synced_at"] = cur.last_synced_at
-            info["ready"] = cur.sync_token is not None
-        except Exception:
-            pass
+            info["cache_state"] = "ready" if cur.sync_token is not None else "empty"
+        except Exception as exc:
+            # A locked/corrupt read is distinct from a fresh replica (backlog §5).
+            info["cache_state"] = "error"
+            if getattr(self.app, "_verbose", False):
+                print(f"cache unreadable: {type(exc).__name__}: {exc}", file=sys.stderr)
         return info
 
     def build(self, data: dict) -> list[Widget]:
@@ -348,7 +382,7 @@ class SyncScreen(SectionScreen):
             ("last synced", data.get("last_synced_at") or "never"),
             ("sync token", _short_token(data.get("sync_token"))),
             ("cache file", data.get("cache_path")),
-            ("state", "ready (synced)" if data.get("ready") else "not synced yet"),
+            ("state", _cache_status(data.get("cache_state", "empty"), resolve_palette(self.app))),
         ]
         widgets.append(Static(_kv_table(rows)))
         if self._last is not None:

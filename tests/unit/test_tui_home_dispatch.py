@@ -45,13 +45,8 @@ def _stub_loaders(monkeypatch):
 
 async def _select(app, pilot, kind):
     menu = app.query_one("#menu", OptionList)
-    opt_id = next(
-        menu.get_option_at_index(i).id
-        for i in range(menu.option_count)
-        if (menu.get_option_at_index(i).id or "").startswith(f"{kind}:")
-    )
     app.set_focus(menu)
-    menu.highlighted = menu.get_option_index(opt_id)
+    menu.highlighted = menu.get_option_index(kind)  # option id is the kind itself
     await pilot.press("enter")
 
 
@@ -75,6 +70,13 @@ def test_cases_cover_every_wired_menu_entry():
     Every entry is wired — the last "soon" stub (Monthly report) shipped 2026-07-08."""
     wired = {kind for kind, _ in home._MENU if kind is not None}
     assert wired == {kind for kind, _ in _CASES}
+
+
+def test_screens_map_covers_every_wired_menu_entry():
+    """The dispatch dict must stay in lockstep with _MENU: no wired entry left
+    undispatched, no stale screen mapping (replaces the old elif's coverage)."""
+    wired = {kind for kind, _ in home._MENU if kind is not None}
+    assert set(home._SCREENS) == wired
 
 
 def test_q_quits_from_home(monkeypatch):
@@ -103,7 +105,7 @@ def test_q_inert_off_home(monkeypatch):
             await _select(app, pilot, "accounts")
             await wait_for(pilot, lambda: isinstance(app.screen, home.AccountsScreen))
             await pilot.press("q")
-            await pilot.pause(0.05)
+            await pilot.pause()  # let the (inert) keypress settle, then assert a non-event
             assert app.is_running
             assert isinstance(app.screen, home.AccountsScreen)
 

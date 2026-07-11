@@ -89,6 +89,9 @@ The TUI imports `fetch_*` and formatters from `expense/commands/*` — shared re
 **No literal colors in the TUI**
 All TUI color goes through theme tokens (`resolve_palette`), never hard-coded hex/ANSI in widgets. A guard test enforces this; see [docs/tui-plan.md](docs/tui-plan.md).
 
+**Themes recolor the foreground, never the base surface**
+The TUI runs in ANSI mode — the base fill is the terminal's *own* background (`ansi_default`, set structurally in [expense/tui/app.tcss](expense/tui/app.tcss)), so it's seamless on any terminal. A theme changes **foreground + semantic-span colors only** (text, accents, sign-colors, selection/diff highlights); it must **never** paint a full-screen/base background, which would bring back the terminal seam *and* break any light/dark/auto theme (one fixed surface can't match every terminal). Guard: `test_base_fills_are_terminal_transparent`; the principle + the Claude-Code parallel it's modeled on live in [docs/tui-plan.md](docs/tui-plan.md) §4.
+
 **Testing conventions**
 Every new command lands with at least one happy-path + one error-shape unit test. [tests/unit/test_command_surface.py](tests/unit/test_command_surface.py) is the surface armor — every command needs a docstring with an `Example:` block, `--json` on reads, `--yes` on destructive writes; a new command that skips these fails loudly.
 

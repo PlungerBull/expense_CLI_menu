@@ -10,6 +10,7 @@ unit-testable without an event loop.
 """
 
 from collections.abc import Iterable, Sequence
+from typing import NamedTuple
 
 from rich import box
 from rich.console import RenderableType
@@ -22,7 +23,26 @@ from textual.widgets import Static
 from expense.tui.theme import AMOUNT_RULE, FALLBACK, Palette
 from expense.tui.widgets.cells import amount_cell
 
-Row = tuple  # (key, title, amount_cents, date, sub)
+
+class Row(NamedTuple):
+    """One transaction row. ``key`` identifies it (carried on ``Toggled``); the
+    rest are display fields for the two-line render."""
+
+    key: object
+    title: object
+    amount_cents: object
+    date: object
+    sub: object
+
+    @classmethod
+    def coerce(cls, row: "RowInput") -> "Row":
+        """Accept a plain ``(key, title, amount_cents, date, sub)`` tuple — what
+        the pure row builders return — or an existing Row; always return a Row."""
+        return row if isinstance(row, cls) else cls(*row)
+
+
+# Row builders return plain tuples; the widget coerces them at its boundary.
+RowInput = Row | tuple
 
 
 class CheckList(Static):
@@ -41,7 +61,7 @@ class CheckList(Static):
 
     def __init__(
         self,
-        rows: Iterable[Row],
+        rows: Iterable[RowInput],
         checked: Sequence[object] = (),
         *,
         read_only: bool = False,
@@ -49,7 +69,7 @@ class CheckList(Static):
         palette: Palette = FALLBACK,  # value object: _build must stay app-less
     ) -> None:
         super().__init__()
-        self._rows: list[Row] = list(rows)
+        self._rows: list[Row] = [Row.coerce(r) for r in rows]
         self._checked: set = set(checked)
         self._read_only = read_only
         self._empty = empty
@@ -63,7 +83,7 @@ class CheckList(Static):
 
     @property
     def cursor_key(self) -> object | None:
-        return self._rows[self._cursor][0] if self._rows else None
+        return self._rows[self._cursor].key if self._rows else None
 
     @property
     def checked(self) -> set:

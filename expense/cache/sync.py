@@ -121,6 +121,10 @@ def _apply_resource(
     if not rows:
         return
 
+    # Loads every id for `table` into memory purely to split inserts from updates
+    # in the summary counts — the write itself is INSERT OR REPLACE (below) and
+    # doesn't need it. O(table) per sync; accepted at personal scale. If the data
+    # ever outgrows that, switch to ON CONFLICT-based counting (backlog §5).
     existing = {r[0] for r in conn.execute(f"SELECT id FROM {table}")}
 
     placeholders = ", ".join(["?"] * (len(cols) + 1))
@@ -286,8 +290,13 @@ def refresh_after_write(
     try:
         return delta_sync(client, cfg)
     except Exception as exc:
+        # Intentionally non-fatal: the write already succeeded, so a failed
+        # post-write sync must not surface as an error. But name the exception
+        # *class* so a genuine defect inside delta_sync (AttributeError,
+        # TypeError, …) isn't invisible behind the benign hint (backlog §5).
         print(
-            f"Cache refresh failed after write: {exc}. Run 'expense sync' to refresh.",
+            f"Cache refresh failed after write: {type(exc).__name__}: {exc}. "
+            "Run 'expense sync' to refresh.",
             file=stream,
         )
         return None

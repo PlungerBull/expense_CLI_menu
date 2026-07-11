@@ -7,6 +7,7 @@ import respx
 from typer.testing import CliRunner
 
 from expense import config as config_module
+from expense.commands import log_cmd
 from expense.commands.log_cmd import log as log_impl
 from tests.unit.helpers import make_cli_app
 
@@ -98,7 +99,12 @@ def test_log_json_mode(configured):
 
 
 @respx.mock
-def test_log_default_date_is_today(configured):
+def test_log_default_date_is_today(configured, monkeypatch):
+    # Freeze the CLI's clock so the sent date and the compared date are the same
+    # instant — recomputing "today" at assert time could straddle midnight and
+    # flake (backlog §5). Patch the seam the default flows through (log_cmd.py:88).
+    frozen = "2026-04-24T09:30:00-05:00"
+    monkeypatch.setattr(log_cmd, "now_local_iso", lambda: frozen)
     route = respx.post("https://api.example.com/v1/transactions").mock(
         return_value=httpx.Response(201, json=TRANSACTION_RESPONSE)
     )
@@ -109,9 +115,9 @@ def test_log_default_date_is_today(configured):
     assert result.exit_code == 0, result.output
 
     body = json.loads(route.calls.last.request.content)
+    assert body["date"] == frozen  # the default is now_local_iso(), used verbatim
     parsed = datetime.fromisoformat(body["date"])
     assert parsed.tzinfo is not None
-    assert parsed.date() == datetime.now().astimezone().date()
 
 
 @respx.mock

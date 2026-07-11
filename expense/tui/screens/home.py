@@ -64,6 +64,26 @@ _MENU: list[tuple[str | None, str]] = [
     ("rates", "Rates"),
 ]
 
+# kind → screen to push. One table instead of a 14-arm elif (backlog §5); the
+# `test_screens_map_covers_every_wired_menu_entry` guard keeps it in lockstep
+# with the wired _MENU entries, so a new menu row can't be left dead.
+_SCREENS: dict[str, type[Screen]] = {
+    "log": QuickAddLogScreen,
+    "inbox": InboxScreen,
+    "transactions": TransactionsScreen,
+    "reconciliations": ReconciliationsScreen,
+    "outstanding": OutstandingScreen,
+    "report": MonthlyReportScreen,
+    "accounts": AccountsScreen,
+    "categories": CategoriesScreen,
+    "hashtags": HashtagsScreen,
+    "config": ConfigScreen,
+    "auth": AuthScreen,
+    "sync": SyncScreen,
+    "activity": ActivityScreen,
+    "rates": RatesScreen,
+}
+
 
 def _signed(cents: object) -> str:
     """`format_cents` with a leading `+` for non-negative amounts (e.g. `+1,240.50`)."""
@@ -150,7 +170,7 @@ class HomeScreen(Screen):
                 options.append(None)  # separator rule
                 options.append(Option(label.upper(), disabled=True))
             else:
-                options.append(Option(label, id=f"{opt_id}:{label}"))
+                options.append(Option(label, id=opt_id))
         yield OptionList(*options, id="menu")
         yield Footer()
 
@@ -184,33 +204,6 @@ class HomeScreen(Screen):
         self.query_one("#brand", Static).update(_build_header(self._stats, palette))
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        opt_id = event.option.id or ""
-        kind = opt_id.split(":", 1)[0]
-        if kind == "outstanding":
-            self.app.push_screen(OutstandingScreen())
-        elif kind == "log":
-            self.app.push_screen(QuickAddLogScreen())
-        elif kind == "inbox":
-            self.app.push_screen(InboxScreen())
-        elif kind == "transactions":
-            self.app.push_screen(TransactionsScreen())
-        elif kind == "reconciliations":
-            self.app.push_screen(ReconciliationsScreen())
-        elif kind == "config":
-            self.app.push_screen(ConfigScreen())
-        elif kind == "auth":
-            self.app.push_screen(AuthScreen())
-        elif kind == "accounts":
-            self.app.push_screen(AccountsScreen())
-        elif kind == "categories":
-            self.app.push_screen(CategoriesScreen())
-        elif kind == "hashtags":
-            self.app.push_screen(HashtagsScreen())
-        elif kind == "sync":
-            self.app.push_screen(SyncScreen())
-        elif kind == "activity":
-            self.app.push_screen(ActivityScreen())
-        elif kind == "rates":
-            self.app.push_screen(RatesScreen())
-        elif kind == "report":
-            self.app.push_screen(MonthlyReportScreen())
+        screen_cls = _SCREENS.get(event.option.id or "")
+        if screen_cls is not None:
+            self.app.push_screen(screen_cls())

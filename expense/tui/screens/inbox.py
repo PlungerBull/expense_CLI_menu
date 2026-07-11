@@ -1,10 +1,11 @@
-"""Inbox screen — drafts awaiting promotion (read-only browse for Phase 1).
+"""Inbox screen — drafts awaiting promotion, with inline write actions.
 
 Built on SectionScreen (breadcrumb/card/worker) + the shared CursorList. Data
 comes from the shared `inbox_cmd.fetch_inbox`; the per-row `rdy` glyph reuses
 the cache's exact "ready" predicate (a second `fetch_inbox(ready=True)` query)
-rather than reimplementing it. `enter` opens a read-only detail modal; `f`
-cycles the filter. Writes (add/edit/promote/delete) land in Phase 2.
+rather than reimplementing it. `f` cycles the filter, `p` promotes and `d`
+deletes (each via a ConfirmModal), and `enter` opens the item in the editable
+QuickAddLogScreen.
 """
 
 from rich.text import Text

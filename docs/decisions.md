@@ -28,6 +28,7 @@ Rules for this file:
 | `SyncContractError` + exit code 5 for /sync contract violations | 2026-07-08 | full entry below |
 | TUI writes: FIFO queue in EngineWriteMixin, error drops the queue | 2026-07-08 | full entry below |
 | Connection errors → exit code 6, off the click-usage collision on 2 | 2026-07-10 | full entry below |
+| TUI paints the terminal's own background (ANSI mode) — one surface, no seam | 2026-07-11 | full entry below |
 
 ## Sign is always literal — no default-to-expense magic (2026-04-25)
 
@@ -108,3 +109,11 @@ Rules for this file:
 **Decision.** Move `EngineConnectionError` to **exit code 6** in the `_ENVELOPE_ERRORS` table ([expense/errors.py](../expense/errors.py)) — one row; `render()` and `handle_errors` inherit it automatically. The family is now 1 (engine rejected) · 3 (config) · 4 (cache) · 5 (sync contract) · **6 (connection)**, with **2 left to click alone**. Same principle as the exit-5 call: a new meaning gets a fresh code, never an overloaded one.
 
 **Rejected.** Reusing 2 with a distinguishing message (scripts branch on the code, not prose); renumbering the family so connection sits contiguous with 1–5 (churns four codes and their tests for cosmetics — appending 6 is the minimal, non-breaking move).
+
+## TUI paints the terminal's own background — ANSI mode (2026-07-11)
+
+**Context.** On the `expense world` home screen the user saw three stacked background shades. Investigation confirmed the app paints exactly one fill — `$background = #0e0e11` — plus the selection bar. The "third" shade is the terminal emulator's own **window padding**, drawn in the Terminal profile's background (near-black). Because `#0e0e11` is a hair lighter than the terminal's black, the app content reads as a lighter panel inside a darker frame — a seam the app can't paint over, only *match*. Mockup + rejected-alternatives render: [mockups/tui-ansi-transparent-background.html](mockups/tui-ansi-transparent-background.html).
+
+**Decision.** Run the TUI in **ANSI mode** — `ExpenseApp` passes `ansi_color=True` ([app.py](../expense/tui/app.py)). Textual then emits the terminal's default background (SGR 49) instead of a fixed hex, so the app fill and the window padding become one continuous surface that **follows whatever dark terminal it runs in**. Scope is deliberate: **adaptive background, pinned foreground.** The theme stays non-ANSI, so every design token keeps its authored hex (net/spent red, owed green, grey selection bar, `$surface` separators, footer); only the base fill and inherited text color go through the terminal, and [app.tcss](../expense/tui/app.tcss) pins the foreground back to `$foreground` under `Screen:ansi`. The base fills (`Screen`, `#menu`) carry `ansi_default` — the id-level `#menu` rule out-specifies Textual's `Screen:ansi`, so a hardcoded fill there would just relocate the seam to the menu edge (guarded by `test_base_fills_are_terminal_transparent`). `ModalScreen:ansi` is overridden to keep the dim scrim Textual otherwise drops. This is correct on any **dark** terminal and identical to before on a near-black one; it does **not** make the app readable on a **light** terminal — the fixed muted/semantic hexes assume a dark ground. That, plus a true light theme, remains the open [tui-plan.md](tui-plan.md) light/`NO_COLOR` backlog item.
+
+**Rejected.** *Match a fixed hex* (`background="#000000"`) — exact and one line, but pinned to a single Terminal profile; on any other terminal the frame comes back. *Do nothing / fix the terminal profile* — punts a code-owned problem onto every machine's config. *Full native-ANSI theme* (`theme.ansi=True`, semantic colors → `ansi_*`) — truly terminal-agnostic including light terminals, but throws away the tuned sign-color palette and restyles foreground/scrollbars/footer app-wide; that belongs to the dedicated light/`NO_COLOR` theme work, not a seam fix.

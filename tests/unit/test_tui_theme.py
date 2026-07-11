@@ -78,22 +78,48 @@ def test_no_literal_color_styles_in_tui():
 
 
 def test_theme_change_rebuilds_section_screens(monkeypatch):
-    """Switching themes at runtime (ctrl+p palette) must re-fetch/re-render."""
-    calls: list = []
+    """Switching themes at runtime (ctrl+p palette) must rebuild the card — Rich
+    bakes resolved hexes at build time — but must NOT re-fetch: it repaints from
+    the data already in memory (backlog §5)."""
+    fetches: list = []
+    builds: list = []
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
     monkeypatch.setattr(
         "expense.commands.accounts_cmd.fetch_accounts",
-        lambda cfg, **k: (calls.append(1), {"items": []})[1],
+        lambda cfg, **k: (fetches.append(1), {"items": []})[1],
     )
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             screen = AccountsScreen()
+            orig_build = screen.build
+            monkeypatch.setattr(
+                screen, "build", lambda data: (builds.append(1), orig_build(data))[1]
+            )
             await app.push_screen(screen)
-            await wait_for(pilot, lambda: calls)
-            seen = len(calls)
+            await wait_for(pilot, lambda: fetches and builds)
+            fetched, built = len(fetches), len(builds)
             app.theme = "textual-dark"  # builtin themes are pre-registered
-            await wait_for(pilot, lambda: len(calls) > seen)
+            await wait_for(pilot, lambda: len(builds) > built)  # re-rendered
+            assert len(fetches) == fetched  # ...but did NOT re-fetch
 
     asyncio.run(scenario())
+
+
+def test_tui_runs_in_ansi_mode():
+    """ansi_color=True is what makes the app paint the terminal's OWN background,
+    so the app fill and the terminal's window padding are one surface (no seam).
+    A refactor that drops the flag silently re-introduces the seam."""
+    assert ExpenseApp(no_cache=True).ansi_color is True
+
+
+def test_base_fills_are_terminal_transparent():
+    """The base fills (Screen, #menu) must stay `ansi_default`, never an opaque
+    hex. A hardcoded `background: $background` would paint over the terminal and
+    bring back the frame (on the menu edge, if only #menu regressed). The modal
+    dim scrim `background: $background 60%` is alpha-blended, not an opaque fill,
+    so it deliberately doesn't match the forbidden exact string."""
+    tcss = (Path(tui_pkg.__file__).parent / "app.tcss").read_text()
+    assert tcss.count("background: ansi_default;") >= 2, "Screen + #menu base fills"
+    assert "background: $background;" not in tcss, "opaque base fill re-seams the app"

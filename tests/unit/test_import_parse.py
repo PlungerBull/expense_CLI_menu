@@ -1,5 +1,7 @@
 """Pure parse/plan unit tests for `expense import` — no network, no xlsx file."""
 
+from decimal import Decimal
+
 import pytest
 
 from expense.import_ import plan as plan_mod
@@ -9,8 +11,10 @@ from expense.import_.parse import (
     ParsedRow,
     amount_to_cents,
     build_column_index,
+    parse_rate,
     parse_sheet,
     serial_to_iso,
+    to_iso_date,
 )
 from expense.import_.reader import RawRow, SheetData
 
@@ -102,7 +106,37 @@ def test_parse_usd_row_uses_tc_column():
     assert skipped == []
     (row,) = parsed
     assert row.currency == "USD"
-    assert row.exchange_rate == 3.68
+    assert row.exchange_rate == Decimal("3.68")  # Decimal now, not float
+
+
+def test_text_iso_date_cell_imports_not_skipped():
+    """A date column typed as text (not an Excel serial) must import (backlog 6.4)."""
+    parsed, skipped = parse_sheet(_sheet([_row(2, Fecha="2022-12-01")]))
+    assert skipped == []
+    assert parsed[0].date_iso == "2022-12-01"
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("2022-12-01", "2022-12-01"),  # ISO text date
+        ("2022-12-01 10:30:00", "2022-12-01"),  # ISO text datetime → date part
+        ("46170", "2026-05-28"),  # numeric-string serial still handled
+        (44896, "2022-12-01"),  # int serial
+        ("not-a-date", None),  # genuinely unparseable
+        ("2022/12/01", None),  # non-ISO separator is not silently accepted
+    ],
+)
+def test_to_iso_date_shapes(value, expected):
+    assert to_iso_date(value) == expected
+
+
+def test_parse_rate_is_decimal_half_up():
+    """Rate goes through Decimal with ROUND_HALF_UP, quantized to 6 dp (backlog 6.4)."""
+    assert parse_rate("3.6295005") == Decimal("3.629501")  # half-up, not banker's
+    assert parse_rate(3.68) == Decimal("3.680000")
+    assert parse_rate("None") is None
+    assert parse_rate(None) is None
 
 
 def test_literal_none_notas_is_empty_description():

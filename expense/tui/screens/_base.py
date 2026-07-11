@@ -116,6 +116,7 @@ class EngineWriteMixin:
         from expense.http import ExpenseClient
 
         error: str | None = None
+        stale = False
         try:
             cfg = config_module.ensure_loaded()
             with ExpenseClient(cfg, verbose=self.app._verbose) as client:
@@ -128,18 +129,23 @@ class EngineWriteMixin:
                 else:
                     raise ValueError(f"unsupported write method: {item.method}")
                 if item.refresh:
+                    # Capture (don't discard) the refresh notice: content in the
+                    # stream means the post-write sync failed and the on-screen
+                    # replica is now stale — surface it, don't swallow (backlog §5).
+                    notice = io.StringIO()
                     refresh_after_write(
                         client,
                         cfg,
                         no_cache=self.app._no_cache,
                         no_sync_after=False,
-                        notice_stream=io.StringIO(),
+                        notice_stream=notice,
                     )
+                    stale = bool(notice.getvalue().strip())
         except Exception as exc:
             error = format_error(exc)
-        self.app.call_from_thread(self._write_finished, item, error)
+        self.app.call_from_thread(self._write_finished, item, error, stale)
 
-    def _write_finished(self, item: _QueuedWrite, error: str | None) -> None:
+    def _write_finished(self, item: _QueuedWrite, error: str | None, stale: bool = False) -> None:
         # UI thread: report the outcome, then pump the next write or, on a
         # drained queue, run the coalesced refresh.
         self._write_inflight = False
@@ -157,11 +163,22 @@ class EngineWriteMixin:
                 item.on_success()
             else:
                 self._after_write(item.success)
+            if stale:
+                self._notify_stale_replica()
         if self._write_queue:
             self._pump_writes()
         elif self._refresh_on_drain:
             self._refresh_on_drain = False
             self._drain_refresh()
+
+    def _notify_stale_replica(self) -> None:
+        """Warn that the write landed but the local copy didn't refresh (backlog §5)."""
+        self.notify(
+            "The change was written, but the local copy didn't refresh and may "
+            "be stale. Open Sync to refresh.",
+            title="Saved — cache not refreshed",
+            severity="warning",
+        )
 
     @work(thread=True, group="engine-write")
     def _drain_refresh(self) -> None:
@@ -171,20 +188,26 @@ class EngineWriteMixin:
         from expense.cache import refresh_after_write
         from expense.http import ExpenseClient
 
+        stale = False
         try:
             cfg = config_module.ensure_loaded()
             with ExpenseClient(cfg, verbose=self.app._verbose) as client:
+                notice = io.StringIO()
                 refresh_after_write(
                     client,
                     cfg,
                     no_cache=self.app._no_cache,
                     no_sync_after=False,
-                    notice_stream=io.StringIO(),
+                    notice_stream=notice,
                 )
+                stale = bool(notice.getvalue().strip())
         except Exception:
-            # Best-effort: write outcomes were already reported, and a stale
-            # replica self-heals on the next read's sync.
-            pass
+            # config/client setup failed before the refresh ran — the replica
+            # may be stale. (A stale replica also self-heals on the next read's
+            # sync, but the user should know now.)
+            stale = True
+        if stale:
+            self.app.call_from_thread(self._notify_stale_replica)
 
     def _after_write(self, message: str) -> None:
         self.notify(message)
@@ -215,6 +238,9 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
     ]
     crumb: tuple[str, ...] = ()
     CARD_WIDTH: int | None = 64  # cap the content card; None = fill width
+    # Last fetched payload, cached so a theme swap re-renders from memory instead
+    # of re-fetching. None = nothing loaded yet (an empty list/dict is still cached).
+    _data: object = None
 
     def compose(self) -> ComposeResult:
         yield Breadcrumb(self.crumb, id="crumb")
@@ -222,10 +248,17 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
         yield Footer()
 
     def on_mount(self) -> None:
-        # re-render on theme swap: Rich content bakes resolved hexes at build
-        # time, so a live theme change must rebuild (exclusive worker → cheap)
-        self.app.theme_changed_signal.subscribe(self, lambda _theme: self._load())
+        self.app.theme_changed_signal.subscribe(self, self._on_theme_change)
         self._load()
+
+    def _on_theme_change(self, _theme: object) -> None:
+        # Rich content bakes resolved hexes at build time, so a live theme change
+        # must rebuild the card — but from data already in memory, not a fresh
+        # engine/cache fetch (backlog §5). Only load if nothing's cached yet.
+        if self._data is not None:
+            self.run_worker(self._show(self._data), exclusive=False, group="section-render")
+        else:
+            self._load()
 
     async def action_reload(self) -> None:
         async with self._content_lock():
@@ -287,6 +320,7 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
             )
 
     async def _show(self, data: object) -> None:
+        self._data = data  # cache for theme re-render (see _on_theme_change)
         content = self.query_one("#content", VerticalScroll)
         async with self._content_lock():
             await content.remove_children()

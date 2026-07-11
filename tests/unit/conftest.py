@@ -5,6 +5,7 @@ one at a time by deleting their local copy — never leave a diverged local
 fixture named `configured` behind.
 """
 
+import socket
 from uuid import uuid4
 
 import pytest
@@ -13,6 +14,44 @@ from expense import config as config_module
 from expense.cache import db as cache_db
 from expense.cache import state as cache_state
 from tests.unit import helpers
+
+# Loopback stays reachable so a locally-bound helper never trips the guard;
+# every engine URL in the suite is a real hostname, which does not.
+_ALLOWED_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+@pytest.fixture(autouse=True)
+def _block_real_network(monkeypatch):
+    """Backstop: fail loudly if a unit test reaches the real network.
+
+    respx intercepts at the httpcore layer, so a *mocked* request never opens a
+    socket — only a request that no respx route matched (a forgotten
+    ``@respx.mock``, a URL typo) falls through to a real DNS lookup / connect and
+    trips this guard. The suite's hermeticity used to rest on the tmp-path
+    redirect plus per-test convention alone (backlog §5); this makes a leak a
+    hard failure instead of a silent production ping.
+    """
+    real_getaddrinfo = socket.getaddrinfo
+    real_connect = socket.socket.connect
+
+    def _guard(host: object) -> None:
+        if str(host) not in _ALLOWED_HOSTS:
+            raise RuntimeError(
+                f"Real network blocked in unit tests: attempted to reach {host!r}. "
+                "Mock it with @respx.mock (or use the fake_client fixture)."
+            )
+
+    def _fake_getaddrinfo(host, *args, **kwargs):
+        _guard(host)
+        return real_getaddrinfo(host, *args, **kwargs)
+
+    def _fake_connect(self, address):
+        _guard(address[0] if isinstance(address, tuple) else address)
+        return real_connect(self, address)
+
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
+    monkeypatch.setattr(socket.socket, "connect", _fake_connect)
+    yield
 
 
 @pytest.fixture(autouse=True)

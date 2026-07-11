@@ -518,6 +518,10 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
         self._busy = False
         self._list: CheckList | None = None
         self._acct_name: str | None = None  # resolved worker-side in _load_txns
+        # last painted rows, cached so a theme change repaints from memory
+        # instead of re-fetching (backlog §5)
+        self._last_rows: list | None = None
+        self._last_checked: list | None = None
 
     @property
     def _completed(self) -> bool:
@@ -536,8 +540,28 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
         self._load_txns()
 
     def _on_theme_change(self, _theme: object) -> None:
+        # Repaint with the new palette; rebuild the checklist from cached rows
+        # rather than re-fetching (Rich bakes hexes at build time, so a rebuild
+        # is required — but not a network/cache read). Fall back to a load only
+        # if the first fetch hasn't landed yet (backlog §5).
         self._render_header()
-        self._load_txns()
+        if self._last_rows is not None:
+            self.run_worker(
+                self._populate(self._last_rows, self._last_checked or []), exclusive=False
+            )
+        else:
+            self._load_txns()
+
+    def _apply_fresh_record(self, fresh: dict) -> None:
+        """Main-thread: rebind _record from a refreshed batch, then repaint the
+        header. Called via call_from_thread so the worker never mutates screen
+        state directly, and a cancelled stale load can't clobber _record (backlog §5)."""
+        # keep _record list-row-shaped: drop the embedded window keys
+        self._record = {k: v for k, v in fresh.items() if not k.startswith("transactions")}
+        self._render_header()
+
+    def _set_acct_name(self, name: str | None) -> None:
+        self._acct_name = name
 
     def _render_header(self) -> None:
         r = self._record
@@ -600,9 +624,8 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
                     raise
                 if worker.is_cancelled:
                     return
-                # keep _record list-row-shaped: drop the embedded window keys
-                self._record = {k: v for k, v in fresh.items() if not k.startswith("transactions")}
-                self.app.call_from_thread(self._render_header)
+                # Marshal onto the main thread — worker mustn't mutate screen state.
+                self.app.call_from_thread(self._apply_fresh_record, fresh)
             # assigned-to-this-batch transactions (always; any date)
             assigned = _fetch_all_txns(cfg, reconciliation=self._id, **kw)
             available = []
@@ -620,7 +643,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
                 ]
             cat_names = load_category_name_map()
             tag_names = load_hashtag_name_map()
-            self._acct_name = resolve_name(self._account_id, load_account_name_map())
+            acct_name = resolve_name(self._account_id, load_account_name_map())
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             if not worker.is_cancelled:
                 self.app.call_from_thread(self.notify, format_error(exc), severity="error")
@@ -644,10 +667,12 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
             )
         if worker.is_cancelled:
             return
+        self.app.call_from_thread(self._set_acct_name, acct_name)
         self.app.call_from_thread(self._render_header)  # picks up _acct_name
         self.app.call_from_thread(self._populate, rows, checked)
 
     async def _populate(self, rows: list, checked: list) -> None:
+        self._last_rows, self._last_checked = rows, checked
         async with self._content_lock():
             container = self.query_one("#rlist", Container)
             await container.remove_children()

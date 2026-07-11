@@ -105,6 +105,35 @@ auto-degrades on `NO_COLOR` / non-truecolor terminals.
 
 Tokens: `$surface $panel $text $text-muted $accent $selection $border $positive $negative`.
 
+**Theming principle — theme the foreground, never the base surface (2026-07-11).**
+The app runs in ANSI mode (`ExpenseApp(ansi_color=True)`): the base fill is
+`ansi_default` — the terminal's *own* background — set **structurally** in
+`app.tcss` (`Screen`, `#menu`), **not** per theme. So there's no seam against the
+terminal's window padding and it follows whatever terminal it runs in. **The rule
+for every present and future theme:** recolor the **foreground and semantic spans
+only** (text, accents, sign-colors, and deliberately-filled highlights like the
+selection bar or a future diff/badge span) — **never** paint a full-screen or
+base-surface background. A painted ground reintroduces the seam *and* breaks
+dark/light/auto themes, because one fixed surface can't match every terminal.
+
+This is exactly how Claude Code keeps a full theme menu (dark / light / ANSI-only /
+"auto — match terminal") while staying seamless: the surface is always the
+terminal's own; only the **foreground** palette changes with the theme, and "auto"
+detects the terminal's background (via the `OSC 11` query / `COLORFGBG`) to pick the
+palette that reads on it. Ink apps (like Claude Code) get the transparent surface by
+default; Textual paints opaque cells, so we opt in via `ansi_color=True`.
+
+**Current state:** one *dark-tuned* foreground palette → correct on any *dark*
+terminal, identical to before on a near-black one, but not legible on a *light*
+terminal (the muted/semantic hexes assume a dark ground). The seam work is the
+foundation, not the finish: a real **light + auto** theme = add a light-tuned
+`Theme` object (widgets already read tokens via `resolve_palette`, so no widget
+changes) + terminal-background detection, all on the same `ansi_default` surface —
+tracked as the light/`NO_COLOR` item in Phase 3 below. Guard:
+`tests/unit/test_tui_theme.py::test_base_fills_are_terminal_transparent`. Decision +
+rejected alternatives: [decisions.md](decisions.md); mockup
+`mockups/tui-ansi-transparent-background.html`.
+
 ## 5. Phased delivery
 
 Estimates assume one dev comfortable with Python; **add ~1 week if new to Textual**.
@@ -181,7 +210,8 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 ### Phase 3 — Polish & hardening · **~1 week** · ◐ slices shipped (backlog §4 2026-07-05/06, §5 2026-07-06)
 - Designer's theme tokens dropped in; light/dark; `NO_COLOR` paths.
   *(Semantic colors now theme-resolve via `resolve_palette`/`amount_cell` — §4.2;
-  light theme + NO_COLOR still open.)*
+  the background is now terminal-transparent (ANSI mode, 2026-07-11 — see §4);
+  a true light theme + NO_COLOR palette still open.)*
 - Keybinding consistency ✅ (§4.1/§4.5 keymap contract: r always refreshes, y alone
   confirms, enter never mutates; **standing constraint:** any future rename action on
   Manage screens ships as `e`, never `r` — two older mockups showing `r rename` are

@@ -33,6 +33,26 @@ def test_redact_token():
     assert _redact_token("ewe_pat_abcd1234wxyz") == "ewe_pat_****wxyz"
 
 
+def test_cache_status_wording():
+    """Three honest states — a read error is NOT 'not synced yet' (backlog §5)."""
+    from expense.tui.screens.system import _cache_status
+    from expense.tui.theme import FALLBACK
+
+    assert _cache_status("ready", FALLBACK).plain == "ready (synced)"
+    assert _cache_status("empty", FALLBACK).plain == "not synced yet"
+    assert _cache_status("error", FALLBACK).plain == "unreadable — retry, or run with --no-cache"
+
+
+def test_read_cache_state_flags_error_on_unreadable(monkeypatch):
+    """A locked/corrupt replica reads as 'error', never a benign 'empty' (backlog §5)."""
+    from expense.tui.screens.system import _read_cache_state
+
+    monkeypatch.setattr(
+        "expense.cache.db.connect", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("locked"))
+    )
+    assert _read_cache_state(object()) == "error"
+
+
 def test_config_screen_reads_and_saves(monkeypatch):
     saved = {}
     monkeypatch.setattr("expense.config.load", lambda: CFG)

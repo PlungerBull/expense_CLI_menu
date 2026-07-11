@@ -87,10 +87,9 @@ def test_run_write_failure_notifies_and_skips_after_write(fake_client, monkeypat
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
             await app.push_screen(AccountDetailScreen(account))
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: isinstance(app.screen, AccountDetailScreen))
             await pilot.press("a")  # archive → ConfirmModal
-            await pilot.pause(0.05)
-            assert isinstance(app.screen, ConfirmModal)
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
             await pilot.press("y")  # confirm → run_write → POST raises
             await wait_for(pilot, lambda: seen)
             message, kw = seen[0]

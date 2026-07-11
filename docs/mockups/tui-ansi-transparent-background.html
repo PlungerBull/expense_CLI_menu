@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — ANSI-transparent background</title>
+<style>
+  /* ----------------------------------------------------------------------
+     Full ANSI mode: the app paints the terminal's OWN default background
+     (ansi_color=True → `background: ansi_default`), so the app fill and the
+     terminal's window padding become one continuous surface — no seam — and
+     it follows whatever (dark) terminal it runs in. Foreground is PINNED:
+     text/#accent/amounts/selection keep their authored hexes, only the ground
+     goes transparent. Hexes below are the real theme tokens (theme.py).
+
+     Reading the mockup: --pad is the terminal's window padding (the emulator
+     draws it, not us). BEFORE, the app fill (--appbg #0e0e11) differs from it
+     → frame. AFTER, the fill == the padding → one surface. The "adapts" block
+     is the SAME build on a dark-grey profile.
+     ---------------------------------------------------------------------- */
+  :root{
+    --page:#050506;
+    --appbg:#0e0e11;          /* app fill today (a hair lighter than black) */
+    --pad-black:#000000;      /* a near-black terminal profile's padding */
+    --pad-grey:#26272d;       /* a dark-grey terminal profile's padding */
+    --surface:#16161a;        /* header rule + group separators */
+    --panel:#1d1d22;          /* modal card */
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9aa7b2; --sel:#9aa7b2; --seltext:#0e0e11;
+    --pos:#7fbf8f; --neg:#cf8d8d; --warn:#d6b878;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--page)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px;
+       padding:36px 20px 90px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+
+  .lbl{width:min(1160px,100%);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:12.5px}
+  .step{width:min(1160px,100%);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:26px}
+  .step small{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:12px;margin-left:8px}
+  .step b.now{color:var(--neg)} .step b.fix{color:var(--pos)}
+
+  /* terminal window. --pad = the emulator's own padding colour. */
+  .term{width:min(1160px,100%);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:13.5px;line-height:1.5;
+        background:var(--pad,var(--pad-black))}
+  .term.grey{--pad:var(--pad-grey)}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#000}
+  .term.grey .bar{background:#17181c}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:8px;color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .tag{margin-left:auto;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+       padding:2px 9px;border-radius:999px;border:1px solid var(--dimmer);color:var(--accent)}
+  .tag.now{color:var(--neg);border-color:#4a2c2c}
+  .tag.fix{color:var(--pos);border-color:#2f4636}
+
+  /* the padding shows as an inset ring around .app. Exaggerated so the seam is
+     visible on screen — the colours are exact. */
+  .pad{padding:11px}
+  .app{padding:14px 18px 16px;min-height:340px;position:relative}
+  .app.seam{background:var(--appbg)}                 /* today: fill != padding */
+  .app.flush{background:var(--pad,var(--pad-black))}  /* fixed: fill == padding  */
+
+  .hdr{display:flex;align-items:baseline;gap:16px;white-space:nowrap;overflow:hidden}
+  .glyph{color:var(--accent)}
+  .brand{font-size:15px;letter-spacing:.16em;color:var(--text);font-weight:700;flex:none}
+  .stats{margin-left:auto;flex:none;color:var(--muted);font-size:13px}
+  .stats b{font-weight:700}
+  .stats .neg{color:var(--neg)} .stats .sep{color:var(--dimmer);margin:0 8px}
+
+  hr.rule{border:none;border-top:1px solid var(--surface);margin:12px 0 10px}
+
+  .menu{padding:2px 2px;margin-top:2px;max-width:560px}
+  .grp{color:var(--dim);font-size:10.5px;letter-spacing:.17em;text-transform:uppercase;padding:8px 10px 3px}
+  .grp:first-child{padding-top:3px}
+  .mrow{padding:2px 10px;border-radius:4px;color:var(--text)}
+  .mrow.on{background:var(--sel);color:var(--seltext);font-weight:700}
+  .msep{border-top:1px solid var(--surface);margin:6px 6px 2px}
+
+  .foot{display:flex;justify-content:space-between;color:var(--text);font-size:12.5px;
+        border-top:1px solid var(--surface);margin:14px -18px -16px;padding:6px 18px}
+  .foot .muted{color:var(--muted)}
+
+  /* seam annotation */
+  .seamtag{position:absolute;right:14px;top:50%;transform:translateY(-50%);
+           font-size:11px;color:var(--neg);letter-spacing:.04em;
+           border:1px dashed #4a2c2c;border-radius:6px;padding:3px 8px;background:#140f10}
+
+  /* command palette overlay */
+  .palette{position:absolute;left:50%;top:22px;transform:translateX(-50%);width:min(560px,92%);
+           background:var(--panel);border:1px solid #2b2b31;border-radius:8px;overflow:hidden;
+           box-shadow:0 18px 46px -20px #000}
+  .pinput{padding:9px 12px;border-bottom:1px solid #26262c;color:var(--text)}
+  .pinput .car{color:var(--accent)}
+  .prow{padding:5px 12px;color:var(--text)}
+  .prow.on{background:var(--sel);color:var(--seltext);font-weight:700}
+  .prow .k{color:var(--dim);float:right;font-size:12px}
+  .prow.on .k{color:var(--seltext)}
+
+  /* modal + dim scrim */
+  .scrim{position:absolute;inset:0;background:rgba(14,14,17,.6)}
+  .modal{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(430px,86%);
+         background:var(--panel);border:1px solid #2b2b31;border-radius:8px;padding:16px 18px;
+         box-shadow:0 22px 56px -22px #000}
+  .modal .mt{color:var(--accent);font-weight:700;letter-spacing:.04em;margin-bottom:8px}
+  .modal .mb{color:var(--text);font-size:13px;line-height:1.55}
+  .modal .mb b{color:var(--warn)}
+  .modal .mact{display:flex;gap:10px;margin-top:16px;font-size:12.5px}
+  .modal .btn{padding:4px 12px;border-radius:5px;border:1px solid #33333a;color:var(--text)}
+  .modal .btn.danger{border-color:#4a2c2c;color:var(--neg)}
+  .modal .btn.on{background:var(--sel);color:var(--seltext);border-color:transparent;font-weight:700}
+
+  .two{width:min(1160px,100%);display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:820px){.two{grid-template-columns:1fr}}
+  .cap{color:var(--dim);font-size:12px;margin:8px 2px 0}
+  .cap b{color:var(--muted)}
+
+  .note{width:min(1160px,100%);color:var(--dim);font-size:12.5px;line-height:1.65;margin-top:10px}
+  .note b{color:var(--muted)} .note code{color:var(--accent)}
+  .note .hd{color:var(--accent);letter-spacing:.1em;text-transform:uppercase;font-size:11.5px;display:block;margin:16px 0 4px}
+  .swatches{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px}
+  .sw{border:1px solid #23232a;border-radius:8px;overflow:hidden;width:150px}
+  .sw .chip{height:52px} .sw .m{padding:6px 10px;font-size:12px}
+  .sw .m .h{color:var(--text)} .sw .m .s{color:var(--dim)}
+</style>
+</head>
+<body>
+
+<div class="lbl">expense world — ANSI-transparent background
+  <span><br/>Full ANSI mode (<code style="color:var(--accent)">ansi_color=True</code>): the app fill becomes the terminal's own default background,
+  so app + window-padding read as one surface and follow the terminal. Foreground pinned — only the ground goes transparent.</span>
+</div>
+
+<!-- ============================ BEFORE ============================ -->
+<div class="step">Today — <b class="now">three shades</b> <small>app #0e0e11 fill sits on the terminal's #000000 padding → a frame</small></div>
+<div class="term">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl"><b>ternero — expense world — 120×30</b></span><span class="tag now">now</span></div>
+  <div class="pad">
+    <div class="app seam">
+      <div class="hdr">
+        <span class="brand"><span class="glyph">◈</span>&nbsp; EXPENSE WORLD</span>
+        <span class="stats">net <b class="neg">−189.00</b><span class="sep">·</span>spent <b class="neg">189.00</b></span>
+      </div>
+      <hr class="rule"/>
+      <div class="menu">
+        <div class="grp">Capture &amp; ledger</div>
+        <div class="mrow on">Log a transaction</div>
+        <div class="mrow">Inbox</div>
+        <div class="mrow">Transactions</div>
+        <div class="mrow">Reconciliations</div>
+        <div class="msep"></div>
+        <div class="grp">Reports</div>
+        <div class="mrow">Outstanding Amounts</div>
+        <div class="mrow">Monthly report</div>
+      </div>
+      <span class="seamtag">← app fill is lighter than the padding: the frame</span>
+      <div class="foot"><span>q <span class="muted">Quit</span></span><span>^p <span class="muted">palette</span></span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ AFTER ============================ -->
+<div class="step">After — <b class="fix">one surface</b> <small>app fill == the terminal's own background; the frame is gone</small></div>
+<div class="term">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl"><b>ternero — expense world — 120×30</b></span><span class="tag fix">fixed</span></div>
+  <div class="pad">
+    <div class="app flush">
+      <div class="hdr">
+        <span class="brand"><span class="glyph">◈</span>&nbsp; EXPENSE WORLD</span>
+        <span class="stats">net <b class="neg">−189.00</b><span class="sep">·</span>spent <b class="neg">189.00</b></span>
+      </div>
+      <hr class="rule"/>
+      <div class="menu">
+        <div class="grp">Capture &amp; ledger</div>
+        <div class="mrow on">Log a transaction</div>
+        <div class="mrow">Inbox</div>
+        <div class="mrow">Transactions</div>
+        <div class="mrow">Reconciliations</div>
+        <div class="msep"></div>
+        <div class="grp">Reports</div>
+        <div class="mrow">Outstanding Amounts</div>
+        <div class="mrow">Monthly report</div>
+      </div>
+      <div class="foot"><span>q <span class="muted">Quit</span></span><span>^p <span class="muted">palette</span></span></div>
+    </div>
+  </div>
+</div>
+<div class="cap">Nothing else moves: <b>net/spent</b> stay red, the <b>selection bar</b> stays grey, group separators + footer stay — only the fill changed.</div>
+
+<!-- ============================ ADAPTS ============================ -->
+<div class="step">Adapts to the terminal <small>the SAME build on a dark-grey profile — still one surface, no re-seam (this is what match-a-hex couldn't do)</small></div>
+<div class="term grey">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl"><b>ternero — expense world — 120×30</b></span><span class="tag fix">fixed · grey profile</span></div>
+  <div class="pad">
+    <div class="app flush">
+      <div class="hdr">
+        <span class="brand"><span class="glyph">◈</span>&nbsp; EXPENSE WORLD</span>
+        <span class="stats">net <b class="neg">−189.00</b><span class="sep">·</span>spent <b class="neg">189.00</b></span>
+      </div>
+      <hr class="rule"/>
+      <div class="menu">
+        <div class="grp">Capture &amp; ledger</div>
+        <div class="mrow on">Log a transaction</div>
+        <div class="mrow">Inbox</div>
+        <div class="mrow">Transactions</div>
+      </div>
+      <div class="foot"><span>q <span class="muted">Quit</span></span><span>^p <span class="muted">palette</span></span></div>
+    </div>
+  </div>
+</div>
+<div class="cap">Text stays <b>#d6d6da</b>, amounts stay red, selection stays grey — foreground is pinned; only the ground follows the terminal. (Legible on any <b>dark</b> terminal; light terminals are the separate NO_COLOR/light-theme work.)</div>
+
+<!-- ============================ PALETTE + MODAL ============================ -->
+<div class="step">Surfaces ANSI mode also touches <small>command palette + confirm modal — both stay on our look</small></div>
+<div class="two">
+
+  <div>
+    <div class="term"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="ttl"><b>ctrl+p</b></span></div>
+      <div class="pad"><div class="app flush" style="min-height:220px">
+        <div class="hdr"><span class="brand" style="font-size:13px"><span class="glyph">◈</span>&nbsp; EXPENSE WORLD</span></div>
+        <div class="palette">
+          <div class="pinput"><span class="car">›</span> theme<span style="color:var(--dim)">▏</span></div>
+          <div class="prow on">Change theme<span class="k">theme</span></div>
+          <div class="prow">Toggle light / dark<span class="k">theme</span></div>
+          <div class="prow">Quit the application<span class="k">app</span></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="cap"><b>Command palette.</b> Card on <code style="color:var(--accent)">$panel</code>, selection grey — floats over the transparent screen.</div>
+  </div>
+
+  <div>
+    <div class="term"><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="ttl"><b>confirm</b></span></div>
+      <div class="pad"><div class="app flush" style="min-height:220px">
+        <div class="hdr"><span class="brand" style="font-size:13px"><span class="glyph">◈</span>&nbsp; EXPENSE WORLD</span></div>
+        <div class="menu"><div class="grp">Manage</div><div class="mrow">Accounts</div><div class="mrow">Categories</div></div>
+        <div class="scrim"></div>
+        <div class="modal">
+          <div class="mt">Archive account?</div>
+          <div class="mb">Archive <b>Cash · PEN</b>? It's hidden from pickers but its history stays. You can unarchive it later.</div>
+          <div class="mact"><span class="btn danger on">Archive</span><span class="btn">Cancel</span></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="cap"><b>Confirm modal.</b> We keep the dim scrim (override <code style="color:var(--accent)">ModalScreen:ansi</code>, which otherwise drops it) so the modal still reads as "on top".</div>
+  </div>
+
+</div>
+
+<!-- ============================ NOTE ============================ -->
+<div class="note">
+  <span class="hd">What actually changes</span>
+  One constructor flag — <code>ExpenseApp(ansi_color=True)</code> — makes Textual emit the terminal's default
+  background (SGR 49) instead of our <code>#0e0e11</code>, so the fill and the window padding are literally the same
+  pixels. In <code>app.tcss</code> the base fills (<code>Screen</code>, <code>#menu</code>) move to <code>ansi_default</code>,
+  and a <code>Screen:ansi { color: $foreground }</code> rule keeps body text at <code>#d6d6da</code> rather than letting it
+  follow the terminal's own text colour.
+
+  <span class="hd">What does NOT change</span>
+  The theme stays non-ANSI, so every design token keeps its authored hex: <b>net/spent red</b>, <b>owed green</b>, the
+  <b>grey selection bar</b>, the <code>$surface</code> header rule + group separators, the footer. Scrollbars and footer
+  keys are <b>not</b> restyled — Textual's ansi-blue/ansi-magenta overrides are scoped to the ctrl+p key panel only.
+
+  <span class="hd">The two backgrounds, exactly</span>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#000"></div><div class="m"><div class="h">#000000</div><div class="s">terminal padding</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0e0e11"></div><div class="m"><div class="h">#0e0e11</div><div class="s">app fill — today</div></div></div>
+    <div class="sw"><div class="chip" style="background:#26272d"></div><div class="m"><div class="h">follows term</div><div class="s">app fill — after</div></div></div>
+  </div>
+
+  <span class="hd">Honest scope</span>
+  Adaptive <b>background</b>, pinned <b>foreground</b> — correct on any <b>dark</b> terminal, identical to today on yours.
+  It does <b>not</b> make the app readable on a light terminal (the fixed muted/semantic hexes assume a dark ground);
+  that's the separate light/<code>NO_COLOR</code> theme backlog item, deliberately not attempted here.
+
+  <span class="hd">Pick before I build</span>
+  This is the approval gate — no <code>.py</code>/<code>.tcss</code> touched yet. Approve this direction, or tell me what to change
+  (e.g. embrace the terminal's foreground too, or drop the pinned-fg override).
+</div>
+
+</body>
+</html>

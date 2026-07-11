@@ -31,8 +31,7 @@ async def _drive(app, screen, key, fake_client):
             ),
         )
         await pilot.press(key)  # action → ConfirmModal
-        await pilot.pause(0.05)
-        assert isinstance(app.screen, ConfirmModal)
+        await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
         await pilot.press("y")  # confirm → run_write
         await wait_for(pilot, lambda: fake_client.calls)
 
@@ -44,6 +43,49 @@ def test_inbox_promote_calls_engine(fake_client, monkeypatch):
 
     asyncio.run(_drive(ExpenseApp(no_cache=True), InboxScreen(), "p", fake_client))
     assert ("POST", "/inbox/i1/promote") in fake_client.requests
+
+
+def test_write_warns_when_post_write_refresh_fails(fake_client, monkeypatch):
+    """A write whose post-write sync fails must surface a stale-replica warning
+    toast, not swallow it under the success toast (backlog §5)."""
+    monkeypatch.setattr("expense.commands.inbox_cmd.fetch_inbox", lambda *a, **k: {"items": INBOX})
+    monkeypatch.setattr("expense.tui.screens.inbox.load_account_name_map", lambda: {})
+    monkeypatch.setattr("expense.tui.screens.inbox.load_category_name_map", lambda: {})
+
+    def _failing_refresh(*a, notice_stream=None, **k):
+        # mimic refresh_after_write's failure path: a line lands in the stream
+        if notice_stream is not None:
+            notice_stream.write("Cache refresh failed after write: EngineError: boom.")
+        return None
+
+    monkeypatch.setattr("expense.cache.refresh_after_write", _failing_refresh)
+    seen: list = []
+    monkeypatch.setattr(InboxScreen, "notify", lambda self, msg, **kw: seen.append((msg, kw)))
+
+    async def scenario():
+        app = ExpenseApp(no_cache=False)  # refresh only runs with the cache enabled
+        async with app.run_test() as pilot:
+            await app.push_screen(InboxScreen())
+            from expense.tui.widgets.cursor_list import CursorList
+
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            await pilot.press("p")  # promote → ConfirmModal
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
+            await pilot.press("y")  # confirm → run_write → refresh fails
+            await wait_for(pilot, lambda: any(kw.get("severity") == "warning" for _, kw in seen))
+
+    asyncio.run(scenario())
+    warnings = [(m, kw) for m, kw in seen if kw.get("severity") == "warning"]
+    assert warnings, seen
+    msg, kw = warnings[0]
+    assert kw.get("title") == "Saved — cache not refreshed"
+    assert "stale" in msg and "Sync" in msg
 
 
 def test_inbox_delete_calls_engine(fake_client, monkeypatch):
@@ -94,7 +136,7 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
                 ),
             )
             await pilot.press("p")  # promote → ConfirmModal
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
             await pilot.press("y")  # confirm → gated run_write
             # Poll (don't snapshot) until the write worker registers — it's
             # blocked in gated_post, so this state is stable, not fleeting.
@@ -105,7 +147,7 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
             )
             write_worker = next(w for w in app.workers if w.group == "engine-write")
             await pilot.press("r")  # refresh while the write is in flight
-            await pilot.pause(0.05)
+            await pilot.pause()  # let the refresh keypress settle, then assert a non-event
             assert not write_worker.is_cancelled, "refresh cancelled the in-flight write"
             release.set()  # let the gated write complete
             await wait_for(pilot, lambda: fake_client.calls)

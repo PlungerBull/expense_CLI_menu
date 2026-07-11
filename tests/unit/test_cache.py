@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import sqlite3
 from uuid import uuid4
 
@@ -129,6 +130,18 @@ def test_connect_creates_schema_and_meta(cache_path):
         assert wal.lower() == "wal"
     finally:
         conn.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes only")
+def test_connect_reasserts_600_perms_on_existing_file(cache_path):
+    """A cache whose mode was loosened out-of-band self-heals on the next
+    connect — perms are re-asserted every open, not just at creation (backlog §5)."""
+    cache.connect().close()  # create it
+    os.chmod(cache_path, 0o644)  # loosen it, as if tampered/umask-created
+    assert cache_path.stat().st_mode & 0o777 == 0o644
+
+    cache.connect().close()  # reconnect must re-tighten
+    assert cache_path.stat().st_mode & 0o777 == 0o600
 
 
 @respx.mock

@@ -57,11 +57,13 @@ def connect() -> sqlite3.Connection:
 def _open() -> sqlite3.Connection:
     path = cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fresh = not path.exists()
     conn = sqlite3.connect(str(path), isolation_level=None)
     conn.row_factory = sqlite3.Row
-    if fresh:
-        _set_perms(path)
+    # Re-assert 600 on every open, not just first creation: a replica whose mode
+    # was loosened out-of-band (or whose initial chmod silently failed via the
+    # swallowed OSError) self-heals instead of staying readable. Cheap and
+    # idempotent (backlog §5).
+    _set_perms(path)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
