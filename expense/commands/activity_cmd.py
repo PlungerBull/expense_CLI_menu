@@ -7,6 +7,7 @@ from expense.commands._resource import (
     JSON_OPT,
     LIMIT_OPT,
     OFFSET_OPT,
+    effective_limit,
     items_of,
     render_pagination_hint,
     render_table,
@@ -229,6 +230,7 @@ def list_(
     Example: expense activity list --resource-type transaction --limit 5
     """
     cfg = config_module.ensure_loaded()
+    limit = effective_limit(limit, json_mode=json_output)
     body = fetch_activity(
         cfg,
         resource_type=resource_type,

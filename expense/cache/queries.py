@@ -34,8 +34,22 @@ def _row_to_dict(body_text: str) -> dict:
     return json.loads(body_text)
 
 
-def list_accounts(*, include_archived: bool = False, include_people: bool = False) -> list[dict]:
-    """GET /v1/accounts equivalent. Engine returns a flat list (no pagination)."""
+def list_accounts(
+    *,
+    include_archived: bool = False,
+    include_people: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+) -> list[dict] | dict:
+    """GET /v1/accounts equivalent — dual shape.
+
+    With neither limit nor offset: the flat list the spec documents for
+    /accounts (internal consumers — name maps, account choices, recon browse —
+    rely on it). With either set: the standard {items,total,limit,offset}
+    envelope, mirroring what the engine actually serves (it pages /accounts at
+    default 50 despite the spec; gap noted at commit 4ef5c55). Added for the
+    20-row human default (2026-07-11).
+    """
     where: list[str] = []
     if not include_archived:
         where.append("is_archived = 0")
@@ -43,8 +57,18 @@ def list_accounts(*, include_archived: bool = False, include_people: bool = Fals
     where.append("deleted_at IS NULL")
     if not include_people:
         where.append("(is_person = 0 OR is_person IS NULL)")
+    order_by = "ORDER BY COALESCE(sort_order, 999999) ASC, id ASC"
+    if limit is not None or offset is not None:
+        return _list_paginated(
+            "accounts",
+            where_clauses=where,
+            params=(),
+            order_by=order_by,
+            limit=limit,
+            offset=offset,
+        )
     clause = ("WHERE " + " AND ".join(where)) if where else ""
-    sql = f"SELECT body FROM accounts {clause} ORDER BY COALESCE(sort_order, 999999) ASC, id ASC"
+    sql = f"SELECT body FROM accounts {clause} {order_by}"
     conn = db.connect()
     try:
         return [_row_to_dict(row["body"]) for row in conn.execute(sql)]

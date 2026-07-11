@@ -158,13 +158,31 @@ def test_list_pagination_hint_engine_path(configured):
 
 
 @respx.mock
+def test_list_human_default_sends_limit_20(configured):
+    """Bare human list → the 20-row default (2026-07-11); explicit flags win."""
+    route = respx.get("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(200, json=LIST_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "list"])
+    assert result.exit_code == 0, result.output
+    assert route.calls.last.request.url.params.get("limit") == "20"
+    assert route.calls.last.request.url.params.get("offset") is None
+
+    result = runner.invoke(cli_app, ["--no-cache", "accounts", "list", "--limit", "5"])
+    assert result.exit_code == 0, result.output
+    assert route.calls.last.request.url.params.get("limit") == "5"
+
+
+@respx.mock
 def test_list_json_mode_engine_path(configured):
-    respx.get("https://api.example.com/v1/accounts").mock(
+    route = respx.get("https://api.example.com/v1/accounts").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
     result = runner.invoke(cli_app, ["--no-cache", "accounts", "list", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.output) == LIST_RESPONSE
+    # --json keeps the raw request: no human-mode default limit (2026-07-11)
+    assert route.calls.last.request.url.params.get("limit") is None
 
 
 @respx.mock

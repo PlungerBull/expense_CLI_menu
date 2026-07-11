@@ -16,6 +16,7 @@ from expense.commands._resource import (
     cache_after_write,
     color_supported,
     color_swatch,
+    effective_limit,
     fetch_body,
     format_bool,
     items_of,
@@ -127,6 +128,7 @@ def list_(
     Example: expense categories list --include-archived
     """
     cfg = config_module.ensure_loaded()
+    limit = effective_limit(limit, json_mode=json_output)
     body = fetch_categories(
         cfg,
         include_archived=include_archived,

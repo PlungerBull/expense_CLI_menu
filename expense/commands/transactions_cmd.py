@@ -14,6 +14,7 @@ from expense.commands._resource import (
     YES_OPT,
     build_update_payload,
     cache_after_write,
+    effective_limit,
     fetch_body,
     format_cents,
     format_hashtag_cell,
@@ -238,6 +239,7 @@ def list_(
     Example: expense transactions list --account-id <id> --from 2026-04-01 --to 2026-04-30
     """
     cfg = config_module.ensure_loaded()
+    limit = effective_limit(limit, json_mode=json_output)
     body = fetch_transactions(
         cfg,
         account=account,

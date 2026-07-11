@@ -13,6 +13,7 @@ from expense.commands._resource import (
     YES_OPT,
     build_update_payload,
     cache_after_write,
+    effective_limit,
     fetch_body,
     format_cents,
     format_short_date,
@@ -157,6 +158,7 @@ def list_(
     Example: expense inbox list --ready
     """
     cfg = config_module.ensure_loaded()
+    limit = effective_limit(limit, json_mode=json_output)
     body = fetch_inbox(
         cfg,
         ready=ready,

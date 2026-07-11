@@ -843,6 +843,27 @@ def test_list_accounts_sort_order(cache_path):
     assert [r["name"] for r in cache.list_accounts()] == ["First", "Second", "Third"]
 
 
+def test_list_accounts_paginated_envelope(cache_path):
+    """limit/offset switch list_accounts to the standard envelope (2026-07-11);
+    the flag-less call keeps the flat-list contract internal consumers rely on."""
+    conn = cache.connect()
+    try:
+        _seed_accounts(
+            conn,
+            [
+                {"id": "a1", "user_id": "u1", "name": "Third", "sort_order": 3, "version": 1},
+                {"id": "a2", "user_id": "u1", "name": "First", "sort_order": 1, "version": 1},
+                {"id": "a3", "user_id": "u1", "name": "Second", "sort_order": 2, "version": 1},
+            ],
+        )
+    finally:
+        conn.close()
+    body = cache.list_accounts(limit=2, offset=1)
+    assert body["total"] == 3 and body["limit"] == 2 and body["offset"] == 1
+    assert [r["name"] for r in body["items"]] == ["Second", "Third"]
+    assert isinstance(cache.list_accounts(), list)  # no flags → flat, as before
+
+
 def test_get_account_hits_and_miss(cache_path):
     conn = cache.connect()
     try:

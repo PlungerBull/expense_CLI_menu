@@ -120,8 +120,11 @@ def test_list_happy(configured):
     # Amount renders as grouped major units, not raw cents.
     assert "5.00" in result.output
     assert "500" not in result.output
-    # Signed output is not opt-in: the only param on a bare list is the sign convention.
-    assert dict(route.calls.last.request.url.params) == {"debit_as_negative": "true"}
+    # Signed output is not opt-in; human mode adds the 20-row default (2026-07-11).
+    assert dict(route.calls.last.request.url.params) == {
+        "debit_as_negative": "true",
+        "limit": "20",
+    }
 
 
 @respx.mock
@@ -205,12 +208,14 @@ def test_list_pagination_hint_when_truncated(configured):
 
 @respx.mock
 def test_list_json_pass_through(configured):
-    respx.get("https://api.example.com/v1/transactions").mock(
+    route = respx.get("https://api.example.com/v1/transactions").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
     result = runner.invoke(cli_app, ["--no-cache", "transactions", "list", "--json"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.output) == LIST_RESPONSE
+    # --json keeps the raw request: no human-mode default limit (2026-07-11)
+    assert route.calls.last.request.url.params.get("limit") is None
 
 
 # ---------------------------------------------------------------------------

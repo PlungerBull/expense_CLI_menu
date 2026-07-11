@@ -15,6 +15,7 @@ from expense.commands._resource import (
     YES_OPT,
     build_update_payload,
     cache_after_write,
+    effective_limit,
     fetch_all_pages,
     fetch_body,
     format_bool,
@@ -311,6 +312,7 @@ def list_(
     Example: expense reconcile list --account-id <account-id>
     """
     cfg = config_module.ensure_loaded()
+    limit = effective_limit(limit, json_mode=json_output)
     body = fetch_reconciliations(
         cfg,
         account_id=account,

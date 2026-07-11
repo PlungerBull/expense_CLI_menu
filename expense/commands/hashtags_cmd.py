@@ -14,6 +14,7 @@ from expense.commands._resource import (
     YES_OPT,
     build_update_payload,
     cache_after_write,
+    effective_limit,
     fetch_body,
     format_bool,
     items_of,
@@ -119,6 +120,7 @@ def list_(
     Example: expense hashtags list --include-archived
     """
     cfg = config_module.ensure_loaded()
+    limit = effective_limit(limit, json_mode=json_output)
     body = fetch_hashtags(
         cfg,
         include_archived=include_archived,

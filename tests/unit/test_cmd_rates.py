@@ -131,10 +131,10 @@ def test_list_renders_table_newest_first(configured):
     assert result.exit_code == 0, result.output
     assert "3.6000" in result.output and "4.6000" in result.output  # 4-decimal display
     assert "showing 3 of 3" in result.output
-    # all params omitted → engine defaults apply
+    # bare human list → the 20-row default limit (2026-07-11); nothing else sent
     request = route.calls.last.request
     assert request.url.params.get("date") is None
-    assert request.url.params.get("limit") is None
+    assert request.url.params.get("limit") == "20"
     assert request.url.params.get("offset") is None
 
 

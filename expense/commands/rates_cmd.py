@@ -3,7 +3,14 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import JSON_OPT, LIMIT_OPT, OFFSET_OPT, items_of, render_table
+from expense.commands._resource import (
+    JSON_OPT,
+    LIMIT_OPT,
+    OFFSET_OPT,
+    effective_limit,
+    items_of,
+    render_table,
+)
 from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -101,6 +108,7 @@ def list_(
     Example: expense rates list --date 2026-07-04
     """
     cfg = config_module.ensure_loaded()
+    limit = effective_limit(limit, json_mode=json_output)
     body = fetch_rates_history(cfg, date=date, limit=limit, offset=offset, verbose=get_verbose(ctx))
     if json_output:
         typer.echo(json.dumps(body, indent=2))
