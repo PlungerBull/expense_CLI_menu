@@ -99,6 +99,31 @@ def test_archive_toggle_keeps_cursor_on_row(fake_client, monkeypatch):
     assert ("POST", "/accounts/a2/archive") in fake_client.requests
 
 
+def test_archive_toggle_restores_cursor_across_pages(fake_client, monkeypatch):
+    """25 accounts: act on row 22 — beyond the 20-row window (2026-07-11
+    pagination). The reload must land the cursor back on that row, on its page."""
+    accounts = [{**ACCOUNT, "id": f"a{i}", "name": f"Acct {i:02d}"} for i in range(25)]
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: accounts)
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = AccountsScreen()
+            await app.push_screen(screen)
+            await _wait_loaded(app, pilot)
+            cursor_list = screen.query(CursorList).first()
+            cursor_list.set_cursor(cursor_list.index_of("a22"))
+            await pilot.press("a")
+            await wait_for(pilot, lambda: fake_client.calls)
+            await wait_for(pilot, lambda: not screen._toggle_busy)  # reload landed
+            cursor_list = screen.query(CursorList).first()
+            assert cursor_list.cursor_key == "a22"
+            assert cursor_list.page_status == "rows 21-25 of 25 · page 2 of 2"
+
+    asyncio.run(scenario())
+    assert ("POST", "/accounts/a22/archive") in fake_client.requests
+
+
 def test_edit_prefills_and_puts(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: [ACCOUNT])
 

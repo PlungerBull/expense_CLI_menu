@@ -480,7 +480,11 @@ class ResourceListScreen(SectionScreen):
 
         self._by_id = {it.get("id"): it for it in items}
         cursor_list = CursorList(
-            self.HEADERS, self.rows(items), align_right=self.ALIGN_RIGHT, empty=self.EMPTY
+            self.HEADERS,
+            self.rows(items),
+            align_right=self.ALIGN_RIGHT,
+            empty=self.EMPTY,
+            title=self.TITLE,  # panel border title (L2, 2026-07-11) — no title row
         )
         # Re-select the acted-on row: _show mounts a fresh CursorList each load,
         # so without this an archive toggle would snap the cursor back to row 0
@@ -490,10 +494,7 @@ class ResourceListScreen(SectionScreen):
             self._restore_key = None
         self._toggle_busy = False
         self.call_after_refresh(self.refresh_bindings)
-        widgets: list[Widget] = [
-            Static(Text(self.TITLE), classes="section-title"),
-            cursor_list,
-        ]
+        widgets: list[Widget] = [cursor_list]
         if self.LEGEND:
             widgets.append(Static(Text(self.LEGEND), classes="legend"))
         return widgets

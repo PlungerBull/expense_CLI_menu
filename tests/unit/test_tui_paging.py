@@ -193,6 +193,34 @@ def test_checklist_single_page_hides_page_keys():
     assert _checklist(25).check_action("page", ()) is True
 
 
+# ---- manage-list fetch: all pages, not the source default -------------------
+
+
+def test_categories_manage_fetches_all_pages(monkeypatch):
+    """The manage screens window locally, so the fetch must exhaust the
+    envelope — 150 categories were silently cut at the replica's 100 before."""
+
+    def fake_fetch(cfg, *, include_archived, limit, offset, **kw):
+        items = [{"id": f"c{i}"} for i in range(offset, min(offset + limit, 150))]
+        return {"items": items, "total": 150, "limit": limit, "offset": offset}
+
+    monkeypatch.setattr("expense.commands.categories_cmd.fetch_categories", fake_fetch)
+    from expense.tui.screens.categories import CategoriesScreen
+
+    assert len(CategoriesScreen().fetch_items(None)) == 150
+
+
+def test_hashtags_manage_fetches_all_pages(monkeypatch):
+    def fake_fetch(cfg, *, include_archived, limit, offset, **kw):
+        items = [{"id": f"h{i}"} for i in range(offset, min(offset + limit, 130))]
+        return {"items": items, "total": 130, "limit": limit, "offset": offset}
+
+    monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", fake_fetch)
+    from expense.tui.screens.hashtags import HashtagsScreen
+
+    assert len(HashtagsScreen().fetch_items(None)) == 130
+
+
 # ---- PagedListMixin (tier-E screen plumbing) ---------------------------------
 
 

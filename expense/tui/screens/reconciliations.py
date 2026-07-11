@@ -158,7 +158,11 @@ class ReconciliationsScreen(SectionScreen):
             for (aid, name, cur, bal) in self._accounts
         ]
         self._accts_list = CursorList(
-            ["Account", "Cur", "Balance"], acct_rows, align_right={2}, empty="(no bank accounts)"
+            ["Account", "Cur", "Balance"],
+            acct_rows,
+            align_right={2},
+            empty="(no bank accounts)",
+            title="Accounts",
         )
         self._accts_list.id = "accts"
         self._batch_list = CursorList(
@@ -166,14 +170,13 @@ class ReconciliationsScreen(SectionScreen):
             batch_rows(self._batches, palette=palette),
             align_right={2, 3},
             empty="(no batches — press n to create one)",
+            title=self._batch_caption(),  # panel title; updated as the account cursor moves
         )
         self._batch_list.id = "batches"
         title = "Reconciliations — pick an account, then a batch"
         return [
             Static(Text(title), classes="section-title"),
-            Static(Text("Account", style="dim")),
             self._accts_list,
-            Static(Text(self._batch_caption(), style="dim"), id="batchcap"),
             self._batch_list,
         ]
 
@@ -201,7 +204,7 @@ class ReconciliationsScreen(SectionScreen):
         self._acct_idx = event.index
         self._rebuild_batches()
         self._batch_list.set_rows(batch_rows(self._batches, palette=resolve_palette(self.app)))
-        self.query_one("#batchcap", Static).update(Text(self._batch_caption(), style="dim"))
+        self._batch_list.border_title = self._batch_caption()
 
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
         if self._mode == "accts":
@@ -688,6 +691,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
                 empty=empty,
                 palette=resolve_palette(self.app),
             )
+            self._list.border_title = "Transactions"
             await container.mount(self._list)
             if not self._completed:
                 self._list.focus()

@@ -33,7 +33,15 @@ class HashtagsScreen(ResourceListScreen):
     RESOURCE = "hashtags"
 
     def fetch_items(self, cfg, **kw):
-        return hashtags_cmd.fetch_hashtags(cfg, include_archived=True, **kw)
+        # All pages, not the cache/engine default page: the 20-row window needs
+        # the full set for an honest "page 2 of N" (2026-07-11 pagination).
+        from expense.commands._resource import fetch_all_pages
+
+        return fetch_all_pages(
+            lambda limit, offset: hashtags_cmd.fetch_hashtags(
+                cfg, include_archived=True, limit=limit, offset=offset, **kw
+            )
+        )
 
     def rows(self, items: list) -> list:
         return hashtag_rows(items)
