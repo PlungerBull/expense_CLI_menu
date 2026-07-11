@@ -264,14 +264,14 @@ def restore(
 def archive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = YES_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/hashtags/{id}/archive. Junction rows left intact.
 
-    Example: expense hashtags archive <hashtag-id> --yes
+    Prompt-free: archive is a reversible toggle (unarchive undoes it).
+
+    Example: expense hashtags archive <hashtag-id>
     """
-    require_yes(yes, f"Archive hashtag {id_}? Junction rows are left intact.")
     run_toggle(
         ctx,
         resource=_RESOURCE,

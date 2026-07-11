@@ -288,14 +288,14 @@ def restore(
 def archive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = YES_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/categories/{id}/archive.
 
-    Example: expense categories archive <category-id> --yes
+    Prompt-free: archive is a reversible toggle (unarchive undoes it).
+
+    Example: expense categories archive <category-id>
     """
-    require_yes(yes, f"Archive category {id_}? It will be hidden from pickers.")
     run_toggle(
         ctx,
         resource=_RESOURCE,

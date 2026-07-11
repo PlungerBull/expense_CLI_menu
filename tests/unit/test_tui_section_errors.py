@@ -12,8 +12,7 @@ from textual.widgets import Static
 from expense.errors import EngineError
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen
-from expense.tui.screens.manage_detail import AccountDetailScreen, ManageDetailScreen
-from expense.tui.screens.modals import ConfirmModal
+from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for
 
 ACCOUNTS = [{"id": "a1", "name": "BCP", "is_person": False, "is_archived": False, "color": None}]
@@ -73,29 +72,33 @@ def test_action_reload_recovers_after_error(fake_client, monkeypatch):
 def test_run_write_failure_notifies_and_skips_after_write(fake_client, monkeypatch):
     """A failing write toasts title='Failed' and never fires success/refresh/reload.
 
-    Archive now lives on the record detail (ManageDetailScreen), which shares
-    EngineWriteMixin.run_write with SectionScreen — same failure path.
+    Archive lives on the Manage list itself (`a` on the cursor row, immediate),
+    which shares EngineWriteMixin.run_write with every screen — same failure path.
     """
     fake_client.errors["POST"] = EngineError("CONFLICT", "cannot archive", None, 409, {})
     seen: list = []
     monkeypatch.setattr(
-        ManageDetailScreen, "notify", lambda self, message, **kw: seen.append((message, kw))
+        AccountsScreen, "notify", lambda self, message, **kw: seen.append((message, kw))
     )
-    account = {"id": "a1", "name": "BCP", "is_person": False, "is_archived": False, "color": None}
+    monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
         async with app.run_test() as pilot:
-            await app.push_screen(AccountDetailScreen(account))
-            await wait_for(pilot, lambda: isinstance(app.screen, AccountDetailScreen))
-            await pilot.press("a")  # archive → ConfirmModal
-            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
-            await pilot.press("y")  # confirm → run_write → POST raises
+            await app.push_screen(AccountsScreen())
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(CursorList)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            await pilot.press("a")  # immediate archive → run_write → POST raises
             await wait_for(pilot, lambda: seen)
             message, kw = seen[0]
             assert "CONFLICT — cannot archive" in message
             assert kw.get("title") == "Failed" and kw.get("severity") == "error"
-            assert len(seen) == 1  # no success toast, no reload (_written skipped)
+            assert len(seen) == 1  # no success toast, no reload (_after_write skipped)
             assert fake_client.refreshes == 0  # refresh_after_write never reached
 
     asyncio.run(scenario())

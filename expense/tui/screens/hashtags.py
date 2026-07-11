@@ -2,13 +2,13 @@
 
 A plain list (Name / Status), consistent with the other list screens, rather
 than the chip mockup — usage counts would need engine support the list endpoint
-doesn't provide. Archived rows dimmed. `n` creates; `enter` opens the record
-detail (HashtagDetailScreen), where `e` renames and `a` archives.
+doesn't provide. Archived rows dimmed. `n` creates; `e` renames the cursor row
+(prefilled EditHashtagScreen); `a` toggles archive immediately — a second `a`
+undoes. `enter` does nothing.
 """
 
 from expense.commands import hashtags_cmd
 from expense.tui.screens._base import ResourceListScreen
-from expense.tui.screens.manage_detail import HashtagDetailScreen
 
 _HEADERS = ["Name", "Status"]
 
@@ -30,6 +30,7 @@ class HashtagsScreen(ResourceListScreen):
     TITLE = "Hashtags — tag across categories & accounts"
     HEADERS = _HEADERS
     EMPTY = "(no hashtags)"
+    RESOURCE = "hashtags"
 
     def fetch_items(self, cfg, **kw):
         return hashtags_cmd.fetch_hashtags(cfg, include_archived=True, **kw)
@@ -37,8 +38,10 @@ class HashtagsScreen(ResourceListScreen):
     def rows(self, items: list) -> list:
         return hashtag_rows(items)
 
-    def detail_screen(self, item: dict):
-        return HashtagDetailScreen(item)
+    def edit_screen(self, item: dict):
+        from expense.tui.screens.create_forms import EditHashtagScreen
+
+        return EditHashtagScreen(item)
 
     def new_screen(self):
         from expense.tui.screens.create_forms import NewHashtagScreen

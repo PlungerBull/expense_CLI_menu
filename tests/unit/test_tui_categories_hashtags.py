@@ -6,8 +6,8 @@ from rich.text import Text
 
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.categories import CategoriesScreen, category_rows
+from expense.tui.screens.create_forms import EditCategoryScreen, EditHashtagScreen
 from expense.tui.screens.hashtags import HashtagsScreen, hashtag_rows
-from expense.tui.screens.manage_detail import CategoryDetailScreen, HashtagDetailScreen
 from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for
 
@@ -39,7 +39,7 @@ def test_hashtag_rows_hash_prefix_and_status():
     assert by_id["h3"][1][1] == "archived" and by_id["h3"][2] == "dim"
 
 
-def _run_list_screen(monkeypatch, screen_cls, fetch_mod, fetch_name, items, detail_cls):
+def _run_list_screen(monkeypatch, screen_cls, fetch_mod, fetch_name, items, edit_cls):
     monkeypatch.setattr(fetch_mod, fetch_name, lambda *a, **k: {"items": items})
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
@@ -54,22 +54,22 @@ def _run_list_screen(monkeypatch, screen_cls, fetch_mod, fetch_name, items, deta
                     and not app.screen.query("#content LoadingIndicator")
                 ),
             )
-            await pilot.press("enter")
+            await pilot.press("e")  # edit the cursor row — no detail hop
             await pilot.pause(0.05)
-            assert isinstance(app.screen, detail_cls)
+            assert isinstance(app.screen, edit_cls)
 
     asyncio.run(scenario())
 
 
-def test_categories_screen_lists_and_opens_detail(monkeypatch):
+def test_categories_screen_lists_and_edits(monkeypatch):
     import expense.commands.categories_cmd as cc
 
     _run_list_screen(
-        monkeypatch, CategoriesScreen, cc, "fetch_categories", CATS, CategoryDetailScreen
+        monkeypatch, CategoriesScreen, cc, "fetch_categories", CATS, EditCategoryScreen
     )
 
 
-def test_hashtags_screen_lists_and_opens_detail(monkeypatch):
+def test_hashtags_screen_lists_and_edits(monkeypatch):
     import expense.commands.hashtags_cmd as hc
 
-    _run_list_screen(monkeypatch, HashtagsScreen, hc, "fetch_hashtags", TAGS, HashtagDetailScreen)
+    _run_list_screen(monkeypatch, HashtagsScreen, hc, "fetch_hashtags", TAGS, EditHashtagScreen)

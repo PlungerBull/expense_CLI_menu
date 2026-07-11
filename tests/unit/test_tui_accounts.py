@@ -6,7 +6,7 @@ from rich.text import Text
 
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen, account_rows
-from expense.tui.screens.manage_detail import AccountDetailScreen
+from expense.tui.screens.create_forms import EditAccountScreen
 from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for
 
@@ -55,7 +55,7 @@ def test_account_rows_type_balance_status_and_swatch():
     assert cells3[5] == "archived" and style3 == "dim"
 
 
-def test_accounts_screen_lists_and_opens_detail(monkeypatch):
+def test_accounts_screen_lists_and_edits(monkeypatch):
     import expense.commands.accounts_cmd as ac
 
     monkeypatch.setattr(ac, "fetch_accounts", lambda *a, **k: ITEMS)
@@ -74,8 +74,8 @@ def test_accounts_screen_lists_and_opens_detail(monkeypatch):
             )
             cl = app.screen.query(CursorList).first()
             assert cl is not None
-            await pilot.press("enter")
+            await pilot.press("e")  # edit the cursor row — no detail hop
             await pilot.pause(0.05)
-            assert isinstance(app.screen, AccountDetailScreen)
+            assert isinstance(app.screen, EditAccountScreen)
 
     asyncio.run(scenario())

@@ -305,14 +305,14 @@ def restore(
 def archive(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
-    yes: bool = YES_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/accounts/{id}/archive. Hides from pickers; transactions remain.
 
-    Example: expense accounts archive <account-id> --yes
+    Prompt-free: archive is a reversible toggle (unarchive undoes it).
+
+    Example: expense accounts archive <account-id>
     """
-    require_yes(yes, f"Archive account {id_}? It will be hidden from pickers; transactions remain.")
     run_toggle(
         ctx,
         resource=_RESOURCE,

@@ -75,7 +75,7 @@ The HTTP client mints a UUID per logical write and sets `X-Idempotency-Key`; tim
 The engine's standard error shape (`{ error: { code, message, fields } }`) is rendered to the user. Never swallow, never reformat lossily.
 
 **Confirm destructive operations**
-Deletes, reverts, archives prompt for confirmation unless `--yes` is passed. (Unarchive and restore are prompt-free — they undo, not destroy.)
+Deletes and reverts prompt for confirmation unless `--yes` is passed. Archive, unarchive, and restore are prompt-free — reversible toggles, not destruction (archive reclassified 2026-07-11; rationale in [docs/decisions.md](docs/decisions.md)).
 
 **Config isolation**
 Auth token + engine URL live in `~/.expense-config`. Never checked in, never shared across machines. The GitHub repo (`PlungerBull/expense_CLI_menu`) is **public** by deliberate choice — which makes this rule non-negotiable: any secret committed is immediately public and permanent in git history. GitHub push protection is enabled as defense-in-depth, but the primary safeguard is that credentials never enter the repo in the first place.

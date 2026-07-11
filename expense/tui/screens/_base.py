@@ -375,8 +375,10 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
 
 class ResourceListScreen(SectionScreen):
     """Scaffold for the simple manage lists (Accounts / Categories / Hashtags):
-    quiet fetch → title + CursorList of rows (+ optional legend); `n` pushes
-    the new-record form, `enter` the record detail — both reload on return.
+    quiet fetch → title + CursorList of rows (+ optional legend). `n` pushes
+    the new-record form; `e` the prefilled edit form for the cursor row; `a`
+    archives/unarchives the cursor row immediately — no confirm, a second `a`
+    undoes (decision 2026-07-11 in decisions.md). `enter` is a no-op here.
 
     Subclasses set the class attrs and four hooks. Row builders stay pure
     module functions (they have direct unit tests).
@@ -387,11 +389,18 @@ class ResourceListScreen(SectionScreen):
     EMPTY: str = "(empty)"
     LEGEND: str | None = None
     ALIGN_RIGHT: set[int] = set()
-    BINDINGS = [("n", "new", "New")]  # archive lives on the detail (enter), not the list
+    RESOURCE: str = ""  # engine collection for the archive toggle, e.g. "accounts"
+    BINDINGS = [
+        ("n", "new", "New"),
+        ("e", "edit", "Edit"),
+        ("a", "archive", "Archive"),
+    ]
 
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
+        self._restore_key: object | None = None  # cursor row to re-select after a reload
+        self._toggle_busy = False  # one archive toggle at a time until the reload lands
 
     # ---- hooks ------------------------------------------------------------
     def fetch_items(self, cfg, **kw) -> object:
@@ -402,13 +411,24 @@ class ResourceListScreen(SectionScreen):
         """items → the pure row builder's (id, cells, style) rows."""
         raise NotImplementedError
 
-    def detail_screen(self, item: dict):
-        """The record-detail screen for `enter` on a row."""
+    def edit_screen(self, item: dict):
+        """The prefilled edit form for `e` on a row."""
         raise NotImplementedError
 
     def new_screen(self):
         """The create-form screen for `n`."""
         raise NotImplementedError
+
+    # ---- binding availability ----------------------------------------------
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if action in ("edit", "archive") and self.selected_record() is None:
+            return None  # empty list → nothing to act on
+        if action == "archive" and (self.selected_record() or {}).get("is_system"):
+            return None  # system categories: archive deterministically 403s — hide, don't offer
+        return True
+
+    def on_cursor_list_highlighted(self, event) -> None:
+        self.refresh_bindings()  # re-check e/a for the row the cursor just landed on
 
     # ---- scaffold ----------------------------------------------------------
     def fetch(self) -> list:
@@ -422,11 +442,20 @@ class ResourceListScreen(SectionScreen):
         from expense.tui.widgets.cursor_list import CursorList
 
         self._by_id = {it.get("id"): it for it in items}
+        cursor_list = CursorList(
+            self.HEADERS, self.rows(items), align_right=self.ALIGN_RIGHT, empty=self.EMPTY
+        )
+        # Re-select the acted-on row: _show mounts a fresh CursorList each load,
+        # so without this an archive toggle would snap the cursor back to row 0
+        # and "press `a` again to undo" would hit the wrong record.
+        if self._restore_key is not None:
+            cursor_list.set_cursor(cursor_list.index_of(self._restore_key))
+            self._restore_key = None
+        self._toggle_busy = False
+        self.call_after_refresh(self.refresh_bindings)
         widgets: list[Widget] = [
             Static(Text(self.TITLE), classes="section-title"),
-            CursorList(
-                self.HEADERS, self.rows(items), align_right=self.ALIGN_RIGHT, empty=self.EMPTY
-            ),
+            cursor_list,
         ]
         if self.LEGEND:
             widgets.append(Static(Text(self.LEGEND), classes="legend"))
@@ -435,7 +464,31 @@ class ResourceListScreen(SectionScreen):
     def action_new(self) -> None:
         self.app.push_screen(self.new_screen(), lambda _result: self._load())
 
-    def on_cursor_list_selected(self, event) -> None:
-        item = self._by_id.get(event.key)
-        if item:
-            self.app.push_screen(self.detail_screen(item), lambda _result: self._load())
+    def action_edit(self) -> None:
+        item = self.selected_record()
+        if not item:
+            return
+        self._restore_key = item.get("id")
+        self.app.push_screen(self.edit_screen(item), lambda _result: self._load())
+
+    def action_archive(self) -> None:
+        if self._toggle_busy:
+            return
+        item = self.selected_record()
+        if not item or item.get("is_system"):
+            return
+        verb, msg = (
+            ("unarchive", "Unarchived.") if item.get("is_archived") else ("archive", "Archived.")
+        )
+        self._toggle_busy = True
+        self._restore_key = item.get("id")
+        self.run_write(
+            "POST",
+            f"/{self.RESOURCE}/{item['id']}/{verb}",
+            success=msg,
+            on_error=self._toggle_failed,
+        )
+
+    def _toggle_failed(self, message: str) -> None:
+        self._toggle_busy = False
+        self.notify(message, title="Failed", severity="error")

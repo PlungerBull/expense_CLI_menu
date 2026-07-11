@@ -446,15 +446,23 @@ def test_archive_happy(configured):
     respx.post("https://api.example.com/v1/accounts/abc/archive").mock(
         return_value=httpx.Response(200, json=archived)
     )
-    result = runner.invoke(cli_app, ["accounts", "archive", "abc", "--yes"])
+    result = runner.invoke(cli_app, ["accounts", "archive", "abc"])
     assert result.exit_code == 0, result.output
     assert "is_archived: True" in result.output
 
 
-def test_archive_requires_yes_in_non_tty(configured):
+@respx.mock
+def test_archive_is_prompt_free(configured):
+    # Archive is a reversible toggle (2026-07-11): no confirmation, no --yes —
+    # it succeeds bare even in non-TTY mode (CliRunner is non-TTY), where the
+    # old confirm gate used to exit 1 with a "non-interactive" error.
+    archived = {**ACCOUNT_RESPONSE, "is_archived": True}
+    respx.post("https://api.example.com/v1/accounts/abc/archive").mock(
+        return_value=httpx.Response(200, json=archived)
+    )
     result = runner.invoke(cli_app, ["accounts", "archive", "abc"])
-    assert result.exit_code == 1
-    assert "non-interactive" in result.output
+    assert result.exit_code == 0, result.output
+    assert "non-interactive" not in result.output
 
 
 @respx.mock
@@ -549,7 +557,7 @@ def test_archive_triggers_post_write_sync_via_run_toggle(cache_populated):
     sync_route = respx.get("https://api.example.com/v1/sync").mock(
         return_value=httpx.Response(200, json=sync_payload(accounts=[ACCOUNT_RESPONSE]))
     )
-    result = runner.invoke(cli_app, ["accounts", "archive", "abc", "--yes"])
+    result = runner.invoke(cli_app, ["accounts", "archive", "abc"])
     assert result.exit_code == 0, result.output
     assert sync_route.called
 

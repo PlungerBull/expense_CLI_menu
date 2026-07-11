@@ -185,23 +185,29 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 > `reports monthly --from/--to` table consumes the same grid merge. Mockup:
 > [mockups/expense-world-monthly-report.html](mockups/expense-world-monthly-report.html).
 >
-> **Manage edit flow — shipped 2026-07-07 (Option B).** `enter` on an Accounts/Categories/
-> Hashtags row opens a read detail (`manage_detail.py`, enter never mutates); there `e` edits
-> (rename/recolor via the prefilled create bar-form — `Edit*Screen` in `create_forms.py`,
-> PUT), `a` archives/unarchives, `esc` back. The bare `a` was **removed from the lists** so
-> archive is contextual to the opened record. **System categories:** `e` is offered (engine
-> keys them by `system_key`, so rename/recolor is pipeline-safe — engine-spec §Categories),
-> `a` is hidden (`check_action` → archive/delete `403` them). Delete is not surfaced
-> (archive-only): the engine `409`s deletion of any category with transactions. Rationale +
-> rejected alternatives in [decisions.md](decisions.md); mockup:
-> [mockups/expense-world-manage-edit.html](mockups/expense-world-manage-edit.html).
-- **Confirm modal** (one component) for promote / delete / archive / restore /
-  complete / revert / sync — reuses idempotency + error envelope.
+> **Manage edit flow — reworked 2026-07-11 (list-only).** The 2026-07-07 record detail
+> (Option B, `manage_detail.py`) was **deleted**: it only repeated the list's columns. The
+> Accounts/Categories/Hashtags lists are now the whole surface (`ResourceListScreen` in
+> `_base.py`): `e` on the cursor row pushes the prefilled edit bar-form (`Edit*Screen` in
+> `create_forms.py`, PUT); `a` archives/unarchives **immediately — no confirm modal**
+> (archive is a reversible toggle; a second `a` undoes, and the cursor is preserved on the
+> acted-on row across the reload); `enter` is a no-op. **System categories:** `e` is offered
+> (engine keys them by `system_key`, so rename/recolor is pipeline-safe — engine-spec
+> §Categories), `a` is hidden (`ResourceListScreen.check_action` + `refresh_bindings` on
+> cursor move → archive/delete `403` them). Delete is not surfaced (archive-only): the
+> engine `409`s deletion of any category with transactions. Rationale + rejected
+> alternatives in [decisions.md](decisions.md); chosen sketch:
+> [mockups/expense-world-manage-merge.html](mockups/expense-world-manage-merge.html)
+> (Alt A minus the confirm; supersedes
+> [mockups/expense-world-manage-edit.html](mockups/expense-world-manage-edit.html)).
+- **Confirm modal** (one component) for promote / delete / restore /
+  complete / revert / sync — reuses idempotency + error envelope. (Archive is
+  deliberately **not** confirm-gated — reversible toggle, 2026-07-11.)
 - **The transaction form** (Log / Inbox-add / Transaction-edit — same fields): required
   fields, signed-amount validation, **tri-state cleared**, hashtag multi-select,
   **conditional transfer sub-flow** (opposite-sign rule), inline 422 surfacing.
 - **Small forms** (reuse the form component): account, category, hashtag create ✅ /
-  edit ✅ (`enter`→detail→`e`, the Manage edit flow above).
+  edit ✅ (`e` on the list row, the Manage edit flow above).
 - **Reconciliation** create/edit form; reorder — shell out to the existing `$EDITOR`
   flow first, native reorder later.
 - **Config / Auth & profile** forms. Post-write refresh reuses `refresh_after_write`.
@@ -213,9 +219,10 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   the background is now terminal-transparent (ANSI mode, 2026-07-11 — see §4);
   a true light theme + NO_COLOR palette still open.)*
 - Keybinding consistency ✅ (§4.1/§4.5 keymap contract: r always refreshes, y alone
-  confirms, enter never mutates; **standing constraint:** any future rename action on
-  Manage screens ships as `e`, never `r` — two older mockups showing `r rename` are
-  superseded), `?` help overlay ⬜, Textual command palette ⬜.
+  confirms — scoped to delete/revert/promote since archive is confirm-free (2026-07-11),
+  enter never mutates — on the Manage lists it's a literal no-op; **standing constraint:**
+  any future rename action on Manage screens ships as `e`, never `r` — two older mockups
+  showing `r rename` are superseded), `?` help overlay ⬜, Textual command palette ⬜.
 - Async edge cases (slow net, offline, cold-start notice shown in-app), spinners.
 - Skeleton/empty/error states everywhere.
 - **Textual pilot tests** for navigation + key flows ◐ (binding-level pilot tests for

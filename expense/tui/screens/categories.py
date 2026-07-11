@@ -1,14 +1,14 @@
 """Categories screen — spending buckets.
 
-Color swatch + system-lock marker; archived rows dimmed. `n` creates; `enter`
-opens the record detail (CategoryDetailScreen), where `e` edits and `a`
-archives. System categories (@Transfer, @Debt) can be renamed/recolored (the
-engine keys them by `system_key`, not name) but cannot be archived/deleted.
+Color swatch + system-lock marker; archived rows dimmed. `n` creates; `e`
+edits the cursor row (prefilled EditCategoryScreen); `a` toggles archive
+immediately — a second `a` undoes. `enter` does nothing. System categories
+(@Transfer, @Debt) can be renamed/recolored (the engine keys them by
+`system_key`, not name) but cannot be archived/deleted — `a` is hidden there.
 """
 
 from expense.commands import categories_cmd
 from expense.tui.screens._base import ResourceListScreen
-from expense.tui.screens.manage_detail import CategoryDetailScreen
 from expense.tui.widgets.cells import swatch
 
 _HEADERS = ["Color", "Name", "System", "Status"]
@@ -36,6 +36,7 @@ class CategoriesScreen(ResourceListScreen):
     HEADERS = _HEADERS
     EMPTY = "(no categories)"
     LEGEND = "system categories (@Transfer, @Debt) can be renamed but not archived"
+    RESOURCE = "categories"
 
     def fetch_items(self, cfg, **kw):
         return categories_cmd.fetch_categories(cfg, include_archived=True, **kw)
@@ -43,8 +44,10 @@ class CategoriesScreen(ResourceListScreen):
     def rows(self, items: list) -> list:
         return category_rows(items)
 
-    def detail_screen(self, item: dict):
-        return CategoryDetailScreen(item)
+    def edit_screen(self, item: dict):
+        from expense.tui.screens.create_forms import EditCategoryScreen
+
+        return EditCategoryScreen(item)
 
     def new_screen(self):
         from expense.tui.screens.create_forms import NewCategoryScreen

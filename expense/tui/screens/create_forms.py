@@ -214,7 +214,7 @@ class NewAccountScreen(BarFormScreen):
 
 # --------------------------------------------------------------------------- #
 # Edit forms — same bar-form, prefilled, PUT instead of POST. Reached with `e`
-# on the Manage detail screen (manage_detail.py). Currency is immutable
+# on a Manage list row (ResourceListScreen). Currency is immutable
 # (engine rejects it), so account edit locks it to a read-only summary row.
 # --------------------------------------------------------------------------- #
 class EditHashtagScreen(NewHashtagScreen):

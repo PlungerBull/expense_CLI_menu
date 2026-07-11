@@ -3,7 +3,8 @@ isolation / content-swap serialization on a SectionScreen).
 
 Uses a fake HTTP client so nothing real is mutated — asserts the right
 engine endpoint would be called via the ConfirmModal → run_write path.
-Manage-list archive moved to the record detail — see test_tui_manage_detail.py.
+Manage-list archive is an immediate toggle on the list itself — see
+test_tui_manage_actions.py.
 """
 
 import asyncio

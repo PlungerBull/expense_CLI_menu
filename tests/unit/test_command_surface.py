@@ -88,12 +88,13 @@ def test_read_command_has_json_flag(path, callback):
 
 
 # --- Confirm-destructive convention ------------------------------------------
-# CLAUDE.md non-negotiable: deletes, reverts, archives prompt for confirmation
+# CLAUDE.md non-negotiable: deletes, reverts, and clears prompt for confirmation
 # unless --yes is passed. Matched by leaf name — a destructive command under a
-# new name (e.g. `remove`) must be added to the set. `unarchive`/`restore` are
-# deliberately prompt-free.
+# new name (e.g. `remove`) must be added to the set. `archive`/`unarchive`/
+# `restore` are deliberately prompt-free — reversible toggles, not destruction
+# (archive reclassified 2026-07-11; see decisions.md).
 
-_DESTRUCTIVE_NAMES = {"delete", "archive", "revert", "clear"}
+_DESTRUCTIVE_NAMES = {"delete", "revert", "clear"}
 _DESTRUCTIVE_LEAVES = [(path, cb) for path, cb in _LEAVES if path[-1] in _DESTRUCTIVE_NAMES]
 _DESTRUCTIVE_LEAF_IDS = [" ".join(path) for path, _ in _DESTRUCTIVE_LEAVES]
 
@@ -101,7 +102,7 @@ _DESTRUCTIVE_LEAF_IDS = [" ".join(path) for path, _ in _DESTRUCTIVE_LEAVES]
 def test_destructive_walker_finds_known_commands():
     # Pin the count: a drop means a destructive command was renamed out of the
     # name set above and now evades the --yes guard — extend the set instead.
-    assert len(_DESTRUCTIVE_LEAVES) == 11, sorted(_DESTRUCTIVE_LEAF_IDS)
+    assert len(_DESTRUCTIVE_LEAVES) == 8, sorted(_DESTRUCTIVE_LEAF_IDS)
 
 
 @pytest.mark.parametrize(("path", "callback"), _DESTRUCTIVE_LEAVES, ids=_DESTRUCTIVE_LEAF_IDS)

@@ -20,7 +20,7 @@ Flat CLI is **complete** (Step 9 gate closed 2026-05-10, plus the `expense impor
 - The `debit_as_negative` convention is used end-to-end (negative = expense, positive = income). Enforced at input parsing and output rendering.
 - An idempotency-key UUID is minted per logical write and sent as `X-Idempotency-Key`; on timeout or 5xx the client re-sends the same key (bounded retry, see [cli-runtime.md](cli-runtime.md) Write semantics) so a retry can never double-apply.
 - Engine errors surface intact: human mode may prettify, `--json` passes through verbatim — never swallow, never reformat lossily. (Deviations: see Sanctioned exceptions below.)
-- Destructive operations (delete, archive, revert) prompt for confirmation unless `--yes` / `-y` is passed.
+- Destructive operations (delete, revert) prompt for confirmation unless `--yes` / `-y` is passed. Archive/unarchive/restore are prompt-free — reversible toggles, not destruction (archive reclassified 2026-07-11; see [decisions.md](decisions.md)).
 - Archive vs delete distinction is honored (see [../../expense_world_engine/docs/engine-spec.md](../../expense_world_engine/docs/engine-spec.md) — archive = retired-but-real, delete = mistake/scrubbed).
 
 ### Sanctioned exceptions
@@ -152,7 +152,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 | Flag | Applies to | Purpose |
 |---|---|---|
 | `--json` | every read command | Raw engine response, passed through verbatim |
-| `--yes` / `-y` | every destructive command | Skip confirmation prompt |
+| `--yes` / `-y` | every destructive command (delete, revert, clear) | Skip confirmation prompt |
 | `--verbose` | every command (root flag) | Print HTTP request/response for debugging |
 | `--no-cache` | every command (root flag) | Stateless mode: bypass the SQLite replica, hit the engine directly (`EXPENSE_STATELESS=1` equivalent) |
 | `--no-sync-after` | every write (root flag) | Skip the post-write cache refresh (`EXPENSE_NO_SYNC_AFTER=1` equivalent) — for batch scripts |

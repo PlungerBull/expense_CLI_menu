@@ -3,13 +3,13 @@
 Built on SectionScreen + the shared CursorList. Includes people and archived
 accounts (archived rows dimmed); the Color column renders the account's hex
 color as a swatch. Native-currency balances (home equivalents live in
-Outstanding Amounts). `n` creates; `enter` opens the record detail
-(AccountDetailScreen), where `e` edits and `a` archives.
+Outstanding Amounts). `n` creates; `e` edits the cursor row (prefilled
+EditAccountScreen); `a` toggles archive immediately — a second `a` undoes.
+`enter` does nothing.
 """
 
 from expense.commands import accounts_cmd
 from expense.tui.screens._base import ResourceListScreen
-from expense.tui.screens.manage_detail import AccountDetailScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell, swatch
 
@@ -41,6 +41,7 @@ class AccountsScreen(ResourceListScreen):
     EMPTY = "(no accounts)"
     LEGEND = "balances are native currency · home equivalents in Outstanding Amounts"
     ALIGN_RIGHT = {4}
+    RESOURCE = "accounts"
 
     def fetch_items(self, cfg, **kw):
         return accounts_cmd.fetch_accounts(cfg, include_archived=True, include_people=True, **kw)
@@ -48,8 +49,10 @@ class AccountsScreen(ResourceListScreen):
     def rows(self, items: list) -> list:
         return account_rows(items, palette=resolve_palette(self.app))
 
-    def detail_screen(self, item: dict):
-        return AccountDetailScreen(item)
+    def edit_screen(self, item: dict):
+        from expense.tui.screens.create_forms import EditAccountScreen
+
+        return EditAccountScreen(item)
 
     def new_screen(self):
         from expense.tui.screens.create_forms import NewAccountScreen

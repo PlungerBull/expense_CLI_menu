@@ -302,7 +302,7 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   the error path isn't worth it at personal scale. Documented in a code
   comment at the materialization site.
 - [ ] Tests: ~37 remaining `pilot.pause(0.05)` sites across the TUI suite
-  (`test_tui_system.py`, `test_tui_manage_detail.py`,
+  (`test_tui_system.py`, `test_tui_manage_actions.py`,
   `test_tui_reconcile_detail.py`, …) should move to `wait_for` (a real
   condition) or `pilot.pause()` (settle, no magic number) — a mechanical,
   time-boxable sweep. The two glaring co-located ones
