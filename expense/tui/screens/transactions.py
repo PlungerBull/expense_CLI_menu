@@ -1,14 +1,13 @@
 """Transactions screen — the posted ledger.
 
-Built on SectionScreen + the shared CursorList. Loads the most recent page via
-the shared `transactions_cmd.fetch_transactions`; `enter` opens the record in
-the editable QuickAddLogScreen. No `cl` glyph column (dropped per request);
-interactive filters and search land in a later pass.
+Built on SectionScreen + the shared CursorList. Fetch-paged 20 rows at a time
+(PagedListMixin — real limit/offset against the engine/cache; pgdn/. turns the
+page); `enter` opens the record in the editable QuickAddLogScreen. No `cl`
+glyph column (dropped per request); interactive filters and search land in a
+later pass.
 """
 
-from rich.text import Text
 from textual.widget import Widget
-from textual.widgets import Static
 
 from expense.commands import transactions_cmd
 from expense.commands._resource import (
@@ -21,14 +20,13 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
-from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
+from expense.tui.screens._base import PagedListMixin, SectionScreen, screen_fetch_kwargs
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.cursor_list import CursorList
 
 _HEADERS = ["Title", "Description", "Amount", "Date", "Account", "Cat", "Tags"]
-_PAGE = 50
 
 
 def transaction_rows(
@@ -58,7 +56,7 @@ def transaction_rows(
     return rows
 
 
-class TransactionsScreen(SectionScreen):
+class TransactionsScreen(PagedListMixin, SectionScreen):
     crumb = ("Capture & ledger", "Transactions")
     CARD_WIDTH = 110
 
@@ -70,14 +68,12 @@ class TransactionsScreen(SectionScreen):
         from expense import config as config_module
 
         cfg = config_module.ensure_loaded()
-        body = transactions_cmd.fetch_transactions(
-            cfg, limit=_PAGE, offset=0, **screen_fetch_kwargs(self.app)
+        kw = screen_fetch_kwargs(self.app)
+        body = self.fetch_page_body(
+            lambda pkw: transactions_cmd.fetch_transactions(cfg, **pkw, **kw)
         )
-        items = items_of(body)
-        total = body.get("total") if isinstance(body, dict) else None
         return {
-            "items": items,
-            "total": total,
+            "items": items_of(body),
             "accounts": load_account_name_map(),
             "categories": load_category_name_map(),
             "hashtags": load_hashtag_name_map(),
@@ -93,13 +89,17 @@ class TransactionsScreen(SectionScreen):
             data["hashtags"],
             palette=resolve_palette(self.app),
         )
-        shown = len(rows)
-        total = data["total"]
-        count = f"showing {shown} of {total}" if isinstance(total, int) else f"showing {shown}"
+        # Panel title absorbs the old title + legend rows; the border subtitle
+        # carries the page status (picks B/A, 2026-07-11).
         return [
-            Static(Text("Ledger — posted transactions"), classes="section-title"),
-            CursorList(_HEADERS, rows, align_right={2}, empty="(no transactions)"),
-            Static(Text(f"{count}   ·   most recent first"), classes="legend"),
+            CursorList(
+                _HEADERS,
+                rows,
+                align_right={2},
+                empty="(no transactions)",
+                title="Ledger — posted transactions · most recent first",
+                page_meta=self.page_meta(),
+            ),
         ]
 
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:

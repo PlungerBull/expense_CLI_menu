@@ -21,7 +21,7 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
-from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
+from expense.tui.screens._base import PagedListMixin, SectionScreen, screen_fetch_kwargs
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
@@ -64,7 +64,7 @@ def inbox_rows(
     return rows
 
 
-class InboxScreen(SectionScreen):
+class InboxScreen(PagedListMixin, SectionScreen):
     crumb = ("Capture & ledger", "Inbox")
     CARD_WIDTH = 100
     BINDINGS = [
@@ -83,8 +83,10 @@ class InboxScreen(SectionScreen):
 
         cfg = config_module.ensure_loaded()
         kw = screen_fetch_kwargs(self.app)
-        body = inbox_cmd.fetch_inbox(
-            cfg, ready=self._filter == "ready", overdue=self._filter == "overdue", **kw
+        body = self.fetch_page_body(
+            lambda pkw: inbox_cmd.fetch_inbox(
+                cfg, ready=self._filter == "ready", overdue=self._filter == "overdue", **pkw, **kw
+            )
         )
         items = items_of(body)
         # Mark readiness with the engine's own predicate (cache ready filter),
@@ -112,8 +114,14 @@ class InboxScreen(SectionScreen):
             palette=resolve_palette(self.app),
         )
         return [
-            Static(Text("Inbox — capture now, complete later"), classes="section-title"),
-            CursorList(_HEADERS, rows, align_right={3}, empty="(no inbox items)"),
+            CursorList(
+                _HEADERS,
+                rows,
+                align_right={3},
+                empty="(no inbox items)",
+                title="Inbox — capture now, complete later",
+                page_meta=self.page_meta(),
+            ),
             Static(
                 Text(f"▶ ready · · incomplete · ✓ promoted        filter: {self._filter}"),
                 classes="legend",
@@ -123,6 +131,7 @@ class InboxScreen(SectionScreen):
     async def action_cycle_filter(self) -> None:
         i = _FILTERS.index(self._filter)
         self._filter = _FILTERS[(i + 1) % len(_FILTERS)]
+        self.reset_page()  # a new filter invalidates the old offset
         await self.action_reload()
 
     def action_promote(self) -> None:

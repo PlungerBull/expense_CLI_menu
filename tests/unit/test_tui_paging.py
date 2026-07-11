@@ -1,19 +1,22 @@
 """20-row pagination — widget window/indicator/keys + the shared helpers.
 
-Pure tests in the style of the other widget suites: `_build()` renders through
-a Rich Console; action handlers run with `_refresh`/`post_message` stubbed so
-no event loop is needed. Screen-level adoption (fetch params, page turns) is
-tested in the per-screen suites.
+Mostly pure tests in the style of the other widget suites: `_build()` renders
+through a Rich Console; action handlers run with `_refresh`/`post_message`
+stubbed so no event loop is needed. The tier-E wire tests at the bottom drive
+real screens through the app harness (limit/offset on the fetch, pgdn turns).
 """
 
+import asyncio
 import io
 
 from rich.console import Console
 
 from expense.commands._resource import DEFAULT_PAGE_ROWS, effective_limit
+from expense.tui.app import ExpenseApp
 from expense.tui.screens._base import PagedListMixin
 from expense.tui.widgets.checklist import CheckList
 from expense.tui.widgets.cursor_list import CursorList, page_indicator
+from tests.unit.helpers import wait_for
 
 
 def _text(renderable) -> str:
@@ -263,3 +266,109 @@ def test_mixin_reset_page_for_filter_changes():
     scr.on_cursor_list_page_requested(_Evt(1))
     scr.reset_page()
     assert scr._page == 0
+
+
+def test_fetch_page_body_snaps_back_when_page_vanishes():
+    """Rows shrank under us (e.g. a delete emptied the last page): the mixin
+    snaps to the last real page and refetches once."""
+    scr = _FakeScreen()
+    scr._page = 2  # offset 40, but only 21 rows exist now
+    fetched = []
+
+    def fetch(pkw):
+        fetched.append(dict(pkw))
+        offset = pkw["offset"]
+        items = [{"id": i} for i in range(offset, min(offset + 20, 21))]
+        return {"items": items, "total": 21, "limit": pkw["limit"], "offset": offset}
+
+    body = scr.fetch_page_body(fetch)
+    assert scr._page == 1 and scr._page_total == 21
+    assert fetched == [{"limit": 20, "offset": 40}, {"limit": 20, "offset": 20}]
+    assert [it["id"] for it in body["items"]] == [20]
+
+
+# ---- tier-E screens: real limit/offset on the wire ---------------------------
+
+
+def test_transactions_screen_pages_on_the_wire(monkeypatch):
+    """Loads with limit=20&offset=0; pgdn refetches offset=20 (picks A+B)."""
+    import expense.tui.screens.transactions as tx_mod
+
+    calls = []
+
+    def fake_fetch(cfg, *, limit=None, offset=None, **kw):
+        calls.append((limit, offset))
+        items = [
+            {"id": f"t{i}", "title": f"Txn {i}", "amount_cents": -100 - i, "date": "2026-07-01"}
+            for i in range(offset, offset + limit)
+        ]
+        return {"items": items, "total": 133, "limit": limit, "offset": offset}
+
+    monkeypatch.setattr("expense.commands.transactions_cmd.fetch_transactions", fake_fetch)
+    monkeypatch.setattr(tx_mod, "load_account_name_map", lambda: {})
+    monkeypatch.setattr(tx_mod, "load_category_name_map", lambda: {})
+    monkeypatch.setattr(tx_mod, "load_hashtag_name_map", lambda: {})
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        from expense.tui.screens.transactions import TransactionsScreen
+
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            screen = TransactionsScreen()
+            await app.push_screen(screen)
+            await wait_for(
+                pilot,
+                lambda: screen.query(CursorList) and not screen.query("#content LoadingIndicator"),
+            )
+            assert calls == [(20, 0)]
+            assert screen.query(CursorList).first().page_status == "rows 1-20 of 133 · page 1 of 7"
+            await pilot.press("pagedown")
+            await wait_for(
+                pilot,
+                lambda: (
+                    screen.query(CursorList)
+                    and screen.query(CursorList).first().page_status
+                    == "rows 21-40 of 133 · page 2 of 7"
+                ),
+            )
+            assert calls[-1] == (20, 20)
+
+    asyncio.run(scenario())
+
+
+def test_inbox_filter_change_resets_page(monkeypatch):
+    """`f` invalidates the old offset: page 2 of `all` must not leak into `ready`."""
+    import expense.tui.screens.inbox as inbox_mod
+
+    calls = []
+
+    def fake_inbox(cfg, *, ready=False, overdue=False, limit=None, offset=None, **kw):
+        calls.append({"ready": ready, "offset": offset})
+        items = [{"id": f"d{i}", "title": f"Draft {i}", "status": 1} for i in range(limit or 20)]
+        return {"items": items, "total": 60, "limit": limit, "offset": offset}
+
+    monkeypatch.setattr("expense.commands.inbox_cmd.fetch_inbox", fake_inbox)
+    monkeypatch.setattr(inbox_mod, "load_account_name_map", lambda: {})
+    monkeypatch.setattr(inbox_mod, "load_category_name_map", lambda: {})
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        from expense.tui.screens.inbox import InboxScreen
+
+        app = ExpenseApp(no_cache=True)  # no_cache: the ready-glyph second fetch is skipped
+        async with app.run_test() as pilot:
+            screen = InboxScreen()
+            await app.push_screen(screen)
+            await wait_for(
+                pilot,
+                lambda: screen.query(CursorList) and not screen.query("#content LoadingIndicator"),
+            )
+            await pilot.press("pagedown")
+            await wait_for(pilot, lambda: any(c["offset"] == 20 for c in calls))
+            await pilot.press("f")  # all → ready; offset must reset
+            await wait_for(pilot, lambda: any(c["ready"] for c in calls))
+            ready_call = next(c for c in calls if c["ready"])
+            assert ready_call["offset"] == 0 and screen._page == 0
+
+    asyncio.run(scenario())

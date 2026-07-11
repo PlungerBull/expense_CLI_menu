@@ -14,6 +14,7 @@ import asyncio
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from rich.console import Group
 from rich.text import Text
@@ -255,6 +256,27 @@ class PagedListMixin:
 
     def reset_page(self) -> None:
         self._page = 0
+
+    def page_meta(self) -> tuple[int, int] | None:
+        """(offset, total) for the CursorList subtitle; None until a fetch
+        recorded a real total (the widget then acts single-page)."""
+        return (self.page_offset, self._page_total) if self._page_total is not None else None
+
+    def fetch_page_body(self, fetch_page: Callable[[dict], Any]) -> Any:
+        """Fetch the current page via `fetch_page(page_kwargs)` and record the
+        body's total. If the page now points past the end (rows shrank since —
+        e.g. a delete emptied the last page), snap to the last real page and
+        refetch once."""
+        body = fetch_page(self.page_fetch_kwargs())
+        total = body.get("total") if isinstance(body, dict) else None
+        self._page_total = total if isinstance(total, int) else None
+        if self._page and self._page_total is not None and self.page_offset >= self._page_total:
+            last = self._page_total - 1
+            self._page = last // DEFAULT_PAGE_ROWS if last >= 0 else 0
+            body = fetch_page(self.page_fetch_kwargs())
+            total = body.get("total") if isinstance(body, dict) else None
+            self._page_total = total if isinstance(total, int) else None
+        return body
 
     def on_cursor_list_page_requested(self, event) -> None:
         event.stop()

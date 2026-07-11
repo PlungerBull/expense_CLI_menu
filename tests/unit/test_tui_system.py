@@ -359,7 +359,7 @@ def test_rates_screen_lists_history(monkeypatch):
     captured = {}
 
     def fake_history(cfg, *, date=None, limit=None, offset=None, verbose=False):
-        captured.update(date=date, limit=limit)
+        captured.update(date=date, limit=limit, offset=offset)
         return {
             "items": [
                 {"rate_date": "2026-07-05", "base": "USD", "target": "PEN", "rate": 3.6},
@@ -378,10 +378,13 @@ def test_rates_screen_lists_history(monkeypatch):
             from expense.tui.widgets.cursor_list import CursorList
 
             await wait_for(pilot, lambda: bool(app.screen.query(CursorList)))
-            assert captured == {"date": None, "limit": 50}
-            rows = app.screen.query_one(CursorList)._rows
+            # fetch-paged at the 20-row standard (2026-07-11 pagination)
+            assert captured == {"date": None, "limit": 20, "offset": 0}
+            cursor_list = app.screen.query_one(CursorList)
+            rows = cursor_list._rows
             assert rows[0][1] == ["2026-07-05", "USD", "PEN", "3.6000"]
             assert rows[1][1] == ["2026-07-04", "USD", "PEN", "3.5900"]
+            assert cursor_list.page_status == "rows 1-2 of 132 · page 1 of 7"
 
     asyncio.run(scenario())
 

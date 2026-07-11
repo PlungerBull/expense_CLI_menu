@@ -25,7 +25,7 @@ from textual.widgets import Static
 from expense.commands._resource import items_of, redact_token
 from expense.currencies import SUPPORTED_CURRENCIES
 from expense.errors import format_error
-from expense.tui.screens._base import SectionScreen
+from expense.tui.screens._base import PagedListMixin, SectionScreen
 from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
 from expense.tui.theme import Palette, resolve_palette
 from expense.tui.widgets.cursor_list import CursorList
@@ -483,15 +483,14 @@ def _delta_table(summary) -> Table:
     return t
 
 
-_ACTIVITY_PAGE = 50
 _ACTIVITY_HEADERS = ["Date", "Time", "Action", "Actor", "Type", "Record"]
 
 
-class ActivityScreen(SectionScreen):
-    """Engine-direct audit log — the most recent page of changes.
+class ActivityScreen(PagedListMixin, SectionScreen):
+    """Engine-direct audit log, fetch-paged 20 rows at a time (PagedListMixin).
 
     `enter` opens the before/after snapshot for one entry (the nested dicts the
-    CLI human view omits). v1 is unfiltered; filters/pagination are a later pass.
+    CLI human view omits). v1 is unfiltered; filters are a later pass.
     """
 
     crumb = ("System", "Activity")
@@ -506,10 +505,10 @@ class ActivityScreen(SectionScreen):
         from expense.commands import activity_cmd
 
         cfg = config_module.ensure_loaded()
-        body = activity_cmd.fetch_activity(cfg, limit=_ACTIVITY_PAGE, verbose=self.app._verbose)
-        items = items_of(body)
-        total = body.get("total") if isinstance(body, dict) else None
-        return {"items": items, "total": total}
+        body = self.fetch_page_body(
+            lambda pkw: activity_cmd.fetch_activity(cfg, verbose=self.app._verbose, **pkw)
+        )
+        return {"items": items_of(body)}
 
     def build(self, data: dict) -> list[Widget]:
         from expense.commands import activity_cmd
@@ -523,14 +522,16 @@ class ActivityScreen(SectionScreen):
             key = item.get("id") or f"row-{i}"
             self._by_id[key] = item
             rows.append((key, activity_cmd.activity_display_cells(item)))
-        total = data["total"]
-        shown = len(rows)
-        count = f"showing {shown} of {total}" if isinstance(total, int) else f"showing {shown}"
         return [
-            Static(Text("Activity — who changed what, and when"), classes="section-title"),
-            CursorList(_ACTIVITY_HEADERS, rows, empty="(no activity)"),
+            CursorList(
+                _ACTIVITY_HEADERS,
+                rows,
+                empty="(no activity)",
+                title="Activity — who changed what, and when",
+                page_meta=self.page_meta(),
+            ),
             Static(
-                Text(f"{count}   ·   most recent first   ·   ↵ view before/after"),
+                Text("most recent first   ·   ↵ view before/after"),
                 classes="legend",
             ),
         ]
@@ -548,16 +549,16 @@ class ActivityScreen(SectionScreen):
         )
 
 
-_RATES_PAGE = 50
 _RATES_HEADERS = ["Date", "Base", "Target", "Rate"]
 
 
-class RatesScreen(SectionScreen):
+class RatesScreen(PagedListMixin, SectionScreen):
     """Stored daily FX rates — GET /v1/exchange-rates/history (backlog 4.8).
 
-    A plain read table: newest first, one row per currency pair per day.
-    Cross-currency writes convert automatically engine-side, so this is
-    reference data only. `f` filters to an exact day; blank enter clears.
+    A plain read table, fetch-paged 20 rows at a time (PagedListMixin): newest
+    first, one row per currency pair per day. Cross-currency writes convert
+    automatically engine-side, so this is reference data only. `f` filters to
+    an exact day; blank enter clears.
     Replaced the t/b/d letter-jump lookup per the approved v2 mockup.
     """
 
@@ -576,12 +577,12 @@ class RatesScreen(SectionScreen):
         from expense.commands import rates_cmd
 
         cfg = config_module.ensure_loaded()
-        body = rates_cmd.fetch_rates_history(
-            cfg, date=self._date, limit=_RATES_PAGE, verbose=self.app._verbose
+        body = self.fetch_page_body(
+            lambda pkw: rates_cmd.fetch_rates_history(
+                cfg, date=self._date, verbose=self.app._verbose, **pkw
+            )
         )
-        items = items_of(body)
-        total = body.get("total") if isinstance(body, dict) else None
-        return {"items": items, "total": total}
+        return {"items": items_of(body)}
 
     def build(self, data: dict) -> list[Widget]:
         from expense.commands.rates_cmd import format_rate
@@ -599,13 +600,9 @@ class RatesScreen(SectionScreen):
             for it in data["items"]
             if isinstance(it, dict)
         ]
-        total = data["total"]
-        shown = len(rows)
-        count = f"showing {shown} of {total}" if isinstance(total, int) else f"showing {shown}"
         filtered = f"filtered: {self._date}   ·   " if self._date else ""
         empty = f"(no rates stored for {self._date})" if self._date else "(no rates stored yet)"
         return [
-            Static(Text("Exchange rates — stored daily history"), classes="section-title"),
             Static(
                 Text(
                     "Cross-currency writes convert automatically — this is the reference table.",
@@ -613,9 +610,16 @@ class RatesScreen(SectionScreen):
                 ),
                 classes="legend",
             ),
-            CursorList(_RATES_HEADERS, rows, align_right={3}, empty=empty),
+            CursorList(
+                _RATES_HEADERS,
+                rows,
+                align_right={3},
+                empty=empty,
+                title="Exchange rates — stored daily history",
+                page_meta=self.page_meta(),
+            ),
             Static(
-                Text(f"{filtered}{count}   ·   newest first   ·   f filter date"),
+                Text(f"{filtered}newest first   ·   f filter date"),
                 classes="legend",
             ),
         ]
@@ -625,6 +629,7 @@ class RatesScreen(SectionScreen):
             if value is None:
                 return  # esc — keep the current filter
             self._date = value.strip() or None  # blank enter clears
+            self.reset_page()  # a new filter invalidates the old offset
             self._load()
 
         self.app.push_screen(
