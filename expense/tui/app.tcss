@@ -7,7 +7,7 @@ Screen {
 
 /* ---- home ---- */
 #brand {
-    padding: 1 2 1 2;
+    padding: 0 2;  /* single physical row — the wordmark+stats content is one line (see _build_header) */
     color: $foreground;
     text-style: bold;
     border-bottom: solid $surface;  /* thin rule dividing header from menu */
