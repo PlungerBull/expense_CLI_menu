@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — 20-row pagination (TUI + CLI)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     20-ROW PAGINATION — every data table shows max 20 rows; the rest pages.
+     Companion to expense-world-panelled-dossier.html (2026-07-11). Same
+     rules: ANSI-transparent ground (app fill == terminal padding, flush),
+     every color an existing theme token (theme.py), no new hexes.
+
+     Scope decided 2026-07-11: TUI + CLI human mode. Exempt: the two tree
+     views (Outstanding categories, Monthly grid), System kv-tables, Home.
+     --json is untouched (raw body verbatim, no default limit).
+
+     Keys (free everywhere): pgdn / `.`  next page · pgup / `,` prev page.
+     `[`/`]` rejected — Monthly report owns them for window sliding.
+
+     STEP 1  Transactions paged — 20 rows inside the wrapping panel; the
+             border_subtitle carries the page status (pick B applied)
+     STEP 2  indicator placement — PICKED: B panel border_subtitle
+             (2026-07-11); the wrapping panel ships WITH pagination
+     STEP 3  page-boundary behavior — PICKED: A j/k clamp, pgdn turns
+     STEP 4  checklist page size — PICKED: 20 items (40 physical lines)
+     STEP 5  manage lists: window follows the cursor (nothing to pick) +
+             Outstanding static tables — PICK STILL OPEN: cap at 20 · exempt
+     STEP 6  CLI human mode: default --limit 20 + existing offset hint
+
+     2026-07-11 spacing fix after user review: right-aligned (amount)
+     columns had their gutter zeroed by mistake, jamming amounts against
+     dates. All columns now share the same 22px gutter (≈ two terminal
+     cells — what Rich actually renders).
+     ---------------------------------------------------------------------- */
+  :root{
+    --page:#050506;
+    --pad-black:#000000;
+    --surface:#16161a; --panel:#1d1d22;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9aa7b2; --sel:#9aa7b2; --seltext:#0e0e11;
+    --pos:#7fbf8f; --neg:#cf8d8d; --warn:#d6b878;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--page)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px;
+       padding:36px 20px 90px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+
+  .lbl{width:min(1160px,100%);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:12.5px}
+  .lbl b{color:var(--text)}
+  .step{width:min(1160px,100%);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:26px}
+  .step small{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:12px;margin-left:8px}
+  .cap{width:min(1160px,100%);color:var(--dim);font-size:12px;margin:-4px 2px 0}
+  .cap b{color:var(--muted)} .cap i{color:var(--muted);font-style:normal}
+
+  .term{width:min(1160px,100%);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:13.5px;line-height:1.5;
+        background:var(--pad-black)}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#000}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:8px;color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .tag{margin-left:auto;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+       padding:2px 9px;border-radius:999px;border:1px solid var(--dimmer);color:var(--accent)}
+  .pad{padding:11px}
+  .app{padding:14px 18px 16px;background:var(--pad-black)}
+
+  .crumb{color:var(--muted);padding-bottom:9px;border-bottom:1px solid var(--surface);
+         white-space:nowrap;overflow:hidden}
+  .crumb .glyph{color:var(--accent)} .crumb b{color:var(--text)}
+  .crumb .sep{color:var(--dimmer);margin:0 9px}
+
+  .tbl{border-collapse:collapse;width:100%}
+  .tbl th{color:var(--dim);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+          text-align:left;font-weight:400;padding:0 22px 3px 0}
+  .tbl td{padding:0 22px 0 0;vertical-align:top;white-space:nowrap}
+  .tbl .rt,.tbl th.rt{text-align:right}
+  .tbl .dim{color:var(--dim)}
+  .tbl tr.cur td{background:var(--sel);color:var(--seltext);font-weight:700}
+  .neg{color:var(--neg);font-weight:700} .pos{color:var(--pos);font-weight:700}
+  .pgline{color:var(--dim);padding-top:8px}
+  .pgline b{color:var(--muted);font-weight:400}
+
+  .panel{position:relative;border:1px solid var(--dimmer);border-radius:8px;
+         padding:13px 16px 11px;margin:18px 0 0}
+  .panel>.pt{position:absolute;top:-10px;left:12px;background:var(--pad-black);
+             padding:0 7px;color:var(--accent);font-weight:700;font-size:12.5px;letter-spacing:.05em}
+  .panel>.pt small{color:var(--dim);font-weight:400}
+  .panel>.ps{position:absolute;bottom:-10px;right:12px;background:var(--pad-black);
+             padding:0 7px;color:var(--dim);font-size:12px}
+
+  .foot{display:flex;justify-content:space-between;color:var(--text);font-size:12.5px;
+        border-top:1px solid var(--surface);margin:14px -18px -16px;padding:6px 18px}
+  .foot .k{color:var(--warn);font-weight:700} .foot .plt{color:var(--muted)} .foot .plt .k{color:var(--warn)}
+
+  .two{width:min(1160px,100%);display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:900px){.two{grid-template-columns:1fr}}
+  .mini{background:var(--pad-black);border:1px solid #23232a;border-radius:10px;
+        padding:16px;font-size:13px;line-height:1.5;position:relative}
+  .pick{font-size:12px;color:var(--muted);margin:8px 2px 0;line-height:1.5}
+  .pick b{color:var(--text)}
+  .note{position:absolute;right:12px;bottom:12px;font-size:11px;color:var(--warn);
+        border:1px dashed #4a3f28;border-radius:6px;padding:3px 8px;background:#14110a;max-width:46%}
+
+  /* checklist two-line rows */
+  .chk .t1 td{padding-top:3px}
+  .chk .t2 td{color:var(--dim);padding-bottom:3px}
+  .chk .box{color:var(--accent)}
+
+  /* CLI block */
+  .cli{width:min(1160px,100%);background:var(--pad-black);border:1px solid #23232a;border-radius:10px;
+       padding:16px 18px;font-size:13px;line-height:1.6;overflow-x:auto}
+  .cli .ps1{color:var(--pos)} .cli .cmd{color:var(--text);font-weight:700}
+  .cli .hint{color:var(--dim)}
+  .cli .hdr{color:var(--dim);text-transform:uppercase;font-size:11px;letter-spacing:.1em}
+  .cli pre{margin:0;font-family:var(--mono);white-space:pre}
+</style>
+</head>
+<body>
+
+<div class="lbl">expense world — 20-row pagination, TUI + CLI
+  <br /><span>Every data table caps at <b>20 rows</b>; the rest pages with <b>pgdn / .</b> and <b>pgup / ,</b>.
+  Exempt: Outstanding's category tree, the Monthly grid, System kv-tables, Home. <b>--json is untouched.</b>
+  Ground stays ANSI-transparent; all colors are theme tokens.
+  Picks recorded 2026-07-11: <b>B</b> (panel subtitle) · <b>A</b> (clamp + pgdn) · <b>20 items</b> (checklist).
+  Still open: the Outstanding static-tables pick in step 5.</span></div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 1 — Transactions, paged <small>the real height of a 20-row page · drawn per pick B: page status in the panel border_subtitle</small></div>
+
+<div class="term">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl">ternero — <b>expense world</b> — 120×32</span><span class="tag">pick b applied</span></div>
+  <div class="pad"><div class="app">
+
+    <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Capture &amp; ledger<span class="sep">▸</span><b>Transactions</b></div>
+
+    <div class="panel" style="margin-top:20px">
+      <div class="pt">Transactions <small>· most recent first</small></div>
+      <div class="ps">rows 1-20 of 133 · page 1 of 7</div>
+    <table class="tbl">
+      <tr><th>title</th><th>description</th><th class="rt">amount</th><th>date</th><th>account</th><th>cat</th><th>tags</th></tr>
+      <tr class="cur"><td>Wong — weekly groceries</td><td>week 28 run</td><td class="rt">-184.90</td><td>07-10</td><td>BCP Soles</td><td>Food</td><td>#casa</td></tr>
+      <tr><td>Uber — aeropuerto</td><td class="dim">—</td><td class="rt neg">-44.90</td><td class="dim">07-09</td><td>BCP Soles</td><td>Transport</td><td class="dim">—</td></tr>
+      <tr><td>Netflix</td><td class="dim">—</td><td class="rt neg">-28.90</td><td class="dim">07-09</td><td>BCP Soles</td><td>Servicios</td><td class="dim">—</td></tr>
+      <tr><td>AWS</td><td>invoice 88123</td><td class="rt neg">-12.00</td><td class="dim">07-08</td><td>BCP Dólares</td><td>Servicios</td><td>#trabajo</td></tr>
+      <tr><td>Metro — despensa</td><td class="dim">—</td><td class="rt neg">-210.35</td><td class="dim">07-07</td><td>BCP Soles</td><td>Food</td><td>#casa</td></tr>
+      <tr><td>Inkafarma</td><td class="dim">—</td><td class="rt neg">-36.50</td><td class="dim">07-07</td><td>BCP Soles</td><td>Salud</td><td class="dim">—</td></tr>
+      <tr><td>Majo — almuerzo</td><td>le debo</td><td class="rt neg">-32.00</td><td class="dim">07-06</td><td>Majo</td><td>Food</td><td>#salidas</td></tr>
+      <tr><td>Gasolina Primax</td><td class="dim">—</td><td class="rt neg">-120.00</td><td class="dim">07-05</td><td>BCP Soles</td><td>Transport</td><td>#auto</td></tr>
+      <tr><td>Sueldo julio</td><td class="dim">—</td><td class="rt pos">5 200.00</td><td class="dim">07-01</td><td>BCP Soles</td><td>Ingreso</td><td class="dim">—</td></tr>
+      <tr><td>Luz — Enel</td><td>recibo jun</td><td class="rt neg">-98.20</td><td class="dim">07-01</td><td>BCP Soles</td><td>Servicios</td><td>#casa</td></tr>
+      <tr><td>Agua — Sedapal</td><td class="dim">—</td><td class="rt neg">-41.75</td><td class="dim">07-01</td><td>BCP Soles</td><td>Servicios</td><td>#casa</td></tr>
+      <tr><td>Spotify</td><td class="dim">—</td><td class="rt neg">-19.90</td><td class="dim">06-30</td><td>BCP Soles</td><td>Servicios</td><td class="dim">—</td></tr>
+      <tr><td>Rappi — cena</td><td class="dim">—</td><td class="rt neg">-56.80</td><td class="dim">06-29</td><td>BCP Soles</td><td>Food</td><td>#salidas</td></tr>
+      <tr><td>Interbank — comisión</td><td class="dim">—</td><td class="rt neg">-7.50</td><td class="dim">06-28</td><td>Interbank</td><td>Bancos</td><td class="dim">—</td></tr>
+      <tr><td>Cine UVK</td><td class="dim">—</td><td class="rt neg">-54.00</td><td class="dim">06-28</td><td>BCP Soles</td><td>Ocio</td><td>#salidas</td></tr>
+      <tr><td>Claro — plan</td><td class="dim">—</td><td class="rt neg">-69.90</td><td class="dim">06-27</td><td>BCP Soles</td><td>Servicios</td><td class="dim">—</td></tr>
+      <tr><td>Wong — groceries</td><td class="dim">—</td><td class="rt neg">-142.35</td><td class="dim">06-26</td><td>BCP Soles</td><td>Food</td><td>#casa</td></tr>
+      <tr><td>Majo — reembolso</td><td class="dim">—</td><td class="rt pos">80.00</td><td class="dim">06-25</td><td>BCP Soles</td><td>Reembolso</td><td class="dim">—</td></tr>
+      <tr><td>Smart Fit</td><td class="dim">—</td><td class="rt neg">-89.00</td><td class="dim">06-24</td><td>BCP Soles</td><td>Salud</td><td class="dim">—</td></tr>
+      <tr><td>Taxi — reunión</td><td class="dim">—</td><td class="rt neg">-25.40</td><td class="dim">06-23</td><td>BCP Soles</td><td>Transport</td><td>#trabajo</td></tr>
+    </table>
+    </div>
+
+    <div class="foot">
+      <span><span class="k">n</span> New &nbsp;&nbsp; <span class="k">enter</span> View &nbsp;&nbsp; <span class="k">pgdn/.</span> Next &nbsp;&nbsp; <span class="k">pgup/,</span> Prev &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+      <span class="plt"><span class="k">^p</span> palette</span>
+    </div>
+
+  </div></div>
+</div>
+<div class="cap"><b>Mechanics:</b> this screen fetches exactly rows 1-20 (<i>limit=20&amp;offset=0</i> — real engine/cache
+pagination, not client-side slicing); a page turn refetches, which is instant on the local replica. The border
+title absorbs the old legend, the border subtitle owns the page status; on a single page the subtitle and the
+page keys disappear. Per pick B, the quiet-border wrapping panel (dossier step 5, option L2, treatment A) ships
+<b>together with</b> pagination on the list screens.</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 2 — where the indicator lives <small>same string, two homes · PICKED: B — panel border_subtitle (2026-07-11)</small></div>
+
+<div class="two">
+  <div>
+    <div class="mini">
+      <table class="tbl">
+        <tr><td>Wong — groceries</td><td class="rt neg">-142.35</td><td class="dim">06-26</td></tr>
+        <tr><td>Majo — reembolso</td><td class="rt pos">80.00</td><td class="dim">06-25</td></tr>
+        <tr><td>Smart Fit</td><td class="rt neg">-89.00</td><td class="dim">06-24</td></tr>
+      </table>
+      <div class="pgline"><b>rows 1-20 of 133 · page 1 of 7</b> &nbsp;·&nbsp; most recent first</div>
+    </div>
+    <div class="pick"><b>A — dim line under the table.</b> Ships now, works on every screen today,
+    and matches where the legend already sits. If/when the wrapping panel (dossier step 5, L2) lands,
+    the string simply moves into the subtitle — one-line change per screen.</div>
+  </div>
+  <div>
+    <div class="mini" style="padding-top:22px">
+      <div class="panel" style="margin:0">
+        <div class="pt">Transactions</div>
+        <div class="ps">rows 21-40 of 133 · page 2 of 7</div>
+        <table class="tbl">
+          <tr><td>Wong — groceries</td><td class="rt neg">-142.35</td><td class="dim">06-26</td></tr>
+          <tr><td>Majo — reembolso</td><td class="rt pos">80.00</td><td class="dim">06-25</td></tr>
+          <tr><td>Smart Fit</td><td class="rt neg">-89.00</td><td class="dim">06-24</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="pick"><b>B — panel border_subtitle (the future home).</b> This is what it looks like once the
+    quiet-border panels ship. Not implementable before that work lands — picking B means the indicator waits
+    for the panel milestone; picking A means it ships now and migrates later.
+    <b>PICKED (2026-07-11): the wrapping panel for list screens ships together with pagination.</b></div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 3 — behavior at the bottom of a fetched page <small>Transactions · Inbox · Activity · Rates · PICKED: A — clamp + pgdn turns (2026-07-11)</small></div>
+
+<div class="two">
+  <div>
+    <div class="mini">
+      <table class="tbl">
+        <tr><td>Smart Fit</td><td class="rt neg">-89.00</td><td class="dim">06-24</td></tr>
+        <tr class="cur"><td>Taxi — reunión</td><td class="rt">-25.40</td><td>06-23</td></tr>
+      </table>
+      <div class="pgline"><b>rows 1-20 of 133 · page 1 of 7</b></div>
+      <div class="note">cursor on row 20: <b>j stops here</b> — pgdn / . loads rows 21-40</div>
+      <div style="height:34px"></div>
+    </div>
+    <div class="pick"><b>A — j/k clamp at the page edge; pgdn turns (recommended).</b> Paging is always a
+    deliberate keypress, so holding j to skim never fires a fetch per keystroke at the boundary.</div>
+  </div>
+  <div>
+    <div class="mini">
+      <table class="tbl">
+        <tr><td>Smart Fit</td><td class="rt neg">-89.00</td><td class="dim">06-24</td></tr>
+        <tr class="cur"><td>Taxi — reunión</td><td class="rt">-25.40</td><td>06-23</td></tr>
+      </table>
+      <div class="pgline"><b>rows 1-20 of 133 · page 1 of 7</b></div>
+      <div class="note">cursor on row 20: <b>one more j</b> auto-fetches page 2, cursor lands on row 21</div>
+      <div style="height:34px"></div>
+    </div>
+    <div class="pick"><b>B — j walks through, fetching as it goes.</b> Feels like one endless list; costs a
+    fetch exactly at each boundary (instant from cache, a visible beat in --no-cache mode).</div>
+  </div>
+</div>
+<div class="cap"><b>Not affected by this pick:</b> on the full-data screens (manage lists, reconciliation panes)
+j/k always walk straight through — the data is already local, the 20-row window just follows the cursor.</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 4 — reconciliation checklist page size <small>rows are two physical lines each · PICKED: 20 items per page (2026-07-11)</small></div>
+
+<div class="two">
+  <div>
+    <div class="mini">
+      <table class="tbl chk">
+        <tr class="t1"><td><span class="box">[x]</span> Wong — weekly groceries</td><td class="rt neg">-184.90</td><td class="dim">07-10</td></tr>
+        <tr class="t2"><td>&nbsp;&nbsp;&nbsp;&nbsp;Food · #casa · week 28 run</td><td></td><td></td></tr>
+        <tr class="t1"><td><span class="box">[ ]</span> Uber — aeropuerto</td><td class="rt neg">-44.90</td><td class="dim">07-09</td></tr>
+        <tr class="t2"><td>&nbsp;&nbsp;&nbsp;&nbsp;Transport</td><td></td><td></td></tr>
+        <tr class="t1"><td><span class="box">[x]</span> Netflix</td><td class="rt neg">-28.90</td><td class="dim">07-09</td></tr>
+        <tr class="t2"><td>&nbsp;&nbsp;&nbsp;&nbsp;Servicios</td><td></td><td></td></tr>
+      </table>
+      <div class="pgline">… &nbsp; <b>items 1-20 of 47 · page 1 of 3</b></div>
+    </div>
+    <div class="pick"><b>20 items per page (recommended)</b> = 40 physical lines. Counts data rows like every
+    other table; halves the page-flipping in the most keyboard-heavy flow. Checked state lives on the whole
+    batch, not the visible page — <i>c Complete</i> always counts every [x] across all pages.</div>
+  </div>
+  <div>
+    <div class="mini">
+      <table class="tbl chk">
+        <tr class="t1"><td><span class="box">[x]</span> Wong — weekly groceries</td><td class="rt neg">-184.90</td><td class="dim">07-10</td></tr>
+        <tr class="t2"><td>&nbsp;&nbsp;&nbsp;&nbsp;Food · #casa · week 28 run</td><td></td><td></td></tr>
+        <tr class="t1"><td><span class="box">[ ]</span> Uber — aeropuerto</td><td class="rt neg">-44.90</td><td class="dim">07-09</td></tr>
+        <tr class="t2"><td>&nbsp;&nbsp;&nbsp;&nbsp;Transport</td><td></td><td></td></tr>
+      </table>
+      <div class="pgline">… &nbsp; <b>items 1-10 of 47 · page 1 of 5</b></div>
+    </div>
+    <div class="pick"><b>10 items per page</b> ≈ 20 physical lines — the strict reading of "20 lines max".
+    Shorter pages, more page turns during a reconciliation.</div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 5 — manage lists + Outstanding <small>window follows the cursor · the static-tables pick is STILL OPEN</small></div>
+
+<div class="term">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl">ternero — <b>expense world</b> — 120×32</span><span class="tag">behavior — nothing to pick</span></div>
+  <div class="pad"><div class="app">
+
+    <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Manage<span class="sep">▸</span><b>Accounts</b></div>
+
+    <table class="tbl" style="margin-top:12px">
+      <tr><th>name</th><th>cur</th><th>type</th><th class="rt">balance</th><th>st</th></tr>
+      <tr><td>Scotiabank CTS</td><td class="dim">PEN</td><td>bank</td><td class="rt pos">12 400.00</td><td class="dim"></td></tr>
+      <tr class="cur"><td>Tarjeta BBVA</td><td>PEN</td><td>bank</td><td class="rt">-1 208.33</td><td></td></tr>
+      <tr><td>Efectivo</td><td class="dim">PEN</td><td>bank</td><td class="rt pos">210.00</td><td class="dim"></td></tr>
+      <tr><td style="color:var(--dim)">Cuenta cerrada BCP</td><td class="dim">PEN</td><td class="dim">bank</td><td class="rt dim">0.00</td><td class="dim">arch</td></tr>
+      <tr><td>Majo</td><td class="dim">PEN</td><td>person</td><td class="rt pos">150.00</td><td class="dim"></td></tr>
+    </table>
+
+    <div class="pgline"><b>rows 21-25 of 25 · page 2 of 2</b></div>
+
+    <div class="foot">
+      <span><span class="k">n</span> New &nbsp;&nbsp; <span class="k">e</span> Edit &nbsp;&nbsp; <span class="k">a</span> Archive &nbsp;&nbsp; <span class="k">pgup/,</span> Prev &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+      <span class="plt"><span class="k">^p</span> palette</span>
+    </div>
+
+  </div></div>
+</div>
+<div class="cap"><b>Behavior shown:</b> all 25 accounts are in memory (these screens keep full data); the 20-row
+window just follows the cursor, so j from row 20 walks onto page 2, and after an <i>a</i> archive-toggle the
+cursor comes back to this same row on this same page. Reconciliations browse works the same way in both panes.
+Categories/Hashtags additionally start fetching ALL pages so the total is honest (today they silently cut at
+100). <b>The tree views and totals stay exempt as agreed.</b></div>
+
+<div class="two">
+  <div>
+    <div class="mini">
+      <table class="tbl">
+        <tr><th>name</th><th>cur</th><th class="rt">balance</th></tr>
+        <tr><td>BCP Soles</td><td class="dim">PEN</td><td class="rt pos">3 987.10</td></tr>
+        <tr><td>BCP Dólares</td><td class="dim">USD</td><td class="rt pos">1 240.00</td></tr>
+        <tr><td>Interbank</td><td class="dim">PEN</td><td class="rt neg">-320.45</td></tr>
+      </table>
+      <div class="pgline">… 17 more rows … &nbsp; <b>(+5 more — Manage › Accounts)</b></div>
+    </div>
+    <div class="pick"><b>Outstanding pick A — cap the static Bank/People tables at 20</b> with a dim
+    <i>(+N more — Manage › Accounts)</i> pointer (they have no cursor, so no in-place paging).</div>
+  </div>
+  <div>
+    <div class="mini">
+      <table class="tbl">
+        <tr><th>name</th><th>cur</th><th class="rt">balance</th></tr>
+        <tr><td>BCP Soles</td><td class="dim">PEN</td><td class="rt pos">3 987.10</td></tr>
+        <tr><td>BCP Dólares</td><td class="dim">USD</td><td class="rt pos">1 240.00</td></tr>
+        <tr><td>Interbank</td><td class="dim">PEN</td><td class="rt neg">-320.45</td></tr>
+      </table>
+      <div class="pgline">(all accounts, however many)</div>
+    </div>
+    <div class="pick"><b>Outstanding pick B — exempt</b>, like the category tree next to it: it's a dashboard,
+    bounded by how many accounts you actually have.</div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 6 — CLI human mode <small>default --limit 20 + the existing offset hint · --json untouched</small></div>
+
+<div class="cli"><pre><span class="ps1">$</span> <span class="cmd">expense transactions list</span>
+<span class="hdr"> DATE         TITLE                      AMOUNT   ACCOUNT       CATEGORY</span>
+ 2026-07-10   Wong — weekly groceries   <span class="neg">-184.90</span>   BCP Soles     Food &amp; groceries
+ 2026-07-09   Uber — aeropuerto          <span class="neg">-44.90</span>   BCP Soles     Transport
+ 2026-07-09   Netflix                    <span class="neg">-28.90</span>   BCP Soles     Servicios
+ 2026-07-08   AWS                        <span class="neg">-12.00</span>   BCP Dólares   Servicios
+ <span class="hint">⋮  (rows 5-19)</span>
+ 2026-06-23   Taxi — reunión             <span class="neg">-25.40</span>   BCP Soles     Transport
+
+<span class="hint">(showing 20 of 133; pass --offset 20 --limit 20 for more)</span>
+
+<span class="ps1">$</span> <span class="cmd">expense transactions list --json</span>
+<span class="hint">→ unchanged: no default limit is sent; the body is the raw engine/cache response, verbatim.</span></pre></div>
+<div class="cap"><b>Mechanics:</b> when you pass no flags in human mode the CLI now sends <i>limit=20</i>; explicit
+<i>--limit/--offset</i> always win. The hint line already exists today — it just starts appearing at 20. Same
+default lands on transactions, inbox, categories, hashtags, reconcile, activity, rates; <i>accounts list</i>
+gains <i>--limit/--offset</i> flags it never had.</div>
+
+</body>
+</html>

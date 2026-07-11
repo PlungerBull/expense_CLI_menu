@@ -22,7 +22,14 @@
      STEP 1  transaction detail as a full-screen dossier (hero, treatment A)
      STEP 2  the panel-treatment pick: A dim border · B accent border ·
              C panel fill  — same content, three skins
+             → PICKED: A (2026-07-11). Steps 4-5 are drawn in A only.
      STEP 3  import preview: validator chips + skipped-rows provenance
+     STEP 4  multi-section big views (Outstanding Amounts): one panel per
+             section — the .sect headings become border titles
+     STEP 5  full-height single-block views (Transactions · Inbox · manage
+             lists · Monthly-report grid): L1 keep boxless  vs  L2 one
+             wrapping panel whose border_title/border_subtitle absorb the
+             title + legend rows (row-neutral)
      ---------------------------------------------------------------------- */
   :root{
     --page:#050506;
@@ -71,6 +78,12 @@
   .panel>.pt{position:absolute;top:-10px;left:12px;background:var(--pad-black);
              padding:0 7px;color:var(--accent);font-weight:700;font-size:12.5px;letter-spacing:.05em}
   .panel>.pt small{color:var(--dim);font-weight:400;letter-spacing:.02em}
+  /* border_subtitle — Textual draws it bottom-right on the border line */
+  .panel>.ps{position:absolute;bottom:-10px;right:12px;background:var(--pad-black);
+             padding:0 7px;color:var(--dim);font-size:12px}
+  .ctx{color:var(--dim);padding:8px 1px 0}
+  .tbl tr.cur td{background:var(--sel);color:var(--seltext);font-weight:700}
+  .tbl tr.sub td{color:var(--dim)}
   /* treatment B: the border itself carries $accent (plantilla-closest) */
   .panel.b{border-color:var(--accent)}
   /* treatment C: boxes get a $panel fill (raised card look) */
@@ -91,8 +104,9 @@
   .tbl th{color:var(--dim);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
           text-align:left;font-weight:400;padding:0 22px 3px 0}
   .tbl td{padding:1px 22px 1px 0;vertical-align:top}
-  .tbl .rt,.tbl th.rt{text-align:right;padding-right:0}
-  .tbl td.rt{padding-right:0}
+  /* 2026-07-11: right-aligned columns keep the standard gutter — zeroing it
+     jammed amounts against their neighbor column (user-flagged). */
+  .tbl .rt,.tbl th.rt{text-align:right}
   .tbl .dim{color:var(--dim)}
 
   .chips{display:flex;gap:26px;flex-wrap:wrap;padding:1px 0 6px}
@@ -118,7 +132,8 @@
 
 <div class="lbl">expense world — panelled dossier for detail screens
   <br /><span>plantilla_helper patterns re-expressed in our tokens, on the approved ANSI-transparent ground.
-  Home + lists are untouched. Every terminal below is drawn flush (app fill == terminal padding — no seam).</span></div>
+  Home is untouched; the big views are steps 4-5. Every terminal below is drawn flush (app fill == terminal
+  padding — no seam). Treatment pick recorded 2026-07-11: <b>A — quiet border</b>.</span></div>
 
 <!-- ================================================================ -->
 <div class="step">STEP 1 — transaction detail as a dossier <small>full screen on `enter` (today: 72-col RecordModal) · shown in treatment A</small></div>
@@ -173,7 +188,7 @@ checkpoints stay plain (positions, not judgments); breadcrumb + footer are the e
 gains only the right-aligned <b>^p palette</b> hint (stock Textual command palette, already on the backlog).</div>
 
 <!-- ================================================================ -->
-<div class="step">STEP 2 — the pick: panel treatment <small>same panel, three skins · applies everywhere the pattern ships</small></div>
+<div class="step">STEP 2 — the pick: panel treatment <small>same panel, three skins · PICKED: A — quiet border (2026-07-11)</small></div>
 
 <div class="three">
   <div>
@@ -274,10 +289,130 @@ gains only the right-aligned <b>^p palette</b> hint (stock Textual command palet
 boxes in the flat CLI's dry-run output too. Whether this ships as CLI output, a TUI screen, or both is a
 separate pick; the skip reasons shown (bad-date · usd-no-rate · bad-amount) are the parser's real codes.</div>
 
+<!-- ================================================================ -->
+<div class="step">STEP 4 — multi-section big views <small>Outstanding Amounts · each `.sect` heading becomes a border title · treatment A</small></div>
+
+<div class="term">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl">ternero — <b>expense world</b> — 120×36</span><span class="tag">proposed</span></div>
+  <div class="pad"><div class="app">
+
+    <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Reports<span class="sep">▸</span><b>Outstanding Amounts</b></div>
+    <div class="ctx">July 2026 · current month</div>
+
+    <div class="panel">
+      <div class="pt">Bank accounts</div>
+      <table class="tbl">
+        <tr><th>name</th><th>cur</th><th class="rt">balance</th></tr>
+        <tr><td>BCP Soles</td><td class="dim">PEN</td><td class="rt pos">3 987.10</td></tr>
+        <tr><td>BCP Dólares</td><td class="dim">USD</td><td class="rt pos">1 240.00</td></tr>
+        <tr><td>Interbank</td><td class="dim">PEN</td><td class="rt neg">-320.45</td></tr>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="pt">People</div>
+      <table class="tbl">
+        <tr><td>Majo</td><td class="dim">PEN</td><td class="rt pos">150.00</td></tr>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="pt">Categories <small>· spent this month</small></div>
+      <table class="tbl">
+        <tr class="cur"><td>▼ Food &amp; groceries</td><td class="rt">-812.40</td></tr>
+        <tr class="sub"><td>&nbsp;&nbsp;&nbsp;&nbsp;#casa</td><td class="rt">-640.10</td></tr>
+        <tr class="sub"><td>&nbsp;&nbsp;&nbsp;&nbsp;(no hashtag)</td><td class="rt">-172.30</td></tr>
+        <tr><td>▶ Transport</td><td class="rt neg">-140.00</td></tr>
+        <tr><td>&nbsp;&nbsp;Servicios</td><td class="rt neg">-96.00</td></tr>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="pt">Totals</div>
+      <table class="tbl">
+        <tr><th></th><th class="rt">native</th><th class="rt">home</th></tr>
+        <tr><td>inflow</td><td class="rt pos">5 200.00</td><td class="rt pos">5 200.00</td></tr>
+        <tr><td>outflow</td><td class="rt neg">-1 048.40</td><td class="rt neg">-1 062.15</td></tr>
+        <tr><td>net</td><td class="rt pos">4 151.60</td><td class="rt pos">4 137.85</td></tr>
+      </table>
+    </div>
+
+    <div class="foot">
+      <span><span class="k">↑↓</span> Navigate &nbsp;&nbsp; <span class="k">→/←</span> Expand/Collapse &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+      <span class="plt"><span class="k">^p</span> palette</span>
+    </div>
+
+  </div></div>
+</div>
+<div class="cap"><b>Why panels fit here:</b> this screen already IS four titled sections — the accent `.sect`
+headings just become border titles, nothing moves. The interactive category tree (cursor, ▼/▶, dim sub-rows)
+works unchanged inside a panel. Same recipe applies to the reconciliation before/after view.</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 5 — full-height single-block views <small>Transactions shown both ways · applies to Inbox, Accounts/Categories/Hashtags, Monthly report · PICKED: L2 — wrapping panel (2026-07-11, via pagination pick B: the border_subtitle carries the page status)</small></div>
+
+<div class="term">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl">ternero — <b>expense world</b> — 120×32</span><span class="tag">option L1 — boxless (as today)</span></div>
+  <div class="pad"><div class="app">
+
+    <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Capture &amp; ledger<span class="sep">▸</span><b>Transactions</b></div>
+
+    <table class="tbl" style="margin-top:14px">
+      <tr><th>title</th><th>description</th><th class="rt">amount</th><th>date</th><th>account</th><th>cat</th><th>tags</th></tr>
+      <tr class="cur"><td>Wong — weekly groceries</td><td>week 28 run</td><td class="rt">-184.90</td><td>07-08</td><td>BCP Soles</td><td>Food</td><td>#casa</td></tr>
+      <tr><td>Uber — aeropuerto</td><td class="dim">—</td><td class="rt neg">-44.90</td><td class="dim">07-07</td><td>BCP Soles</td><td>Transport</td><td class="dim">—</td></tr>
+      <tr><td>AWS</td><td>invoice 88123</td><td class="rt neg">-12.00</td><td class="dim">07-05</td><td>BCP Dólares</td><td>Servicios</td><td>#trabajo</td></tr>
+      <tr><td>Sueldo julio</td><td class="dim">—</td><td class="rt pos">5 200.00</td><td class="dim">07-01</td><td>BCP Soles</td><td>Ingreso</td><td class="dim">—</td></tr>
+    </table>
+    <div class="ctx" style="padding-top:12px">50 shown &nbsp;·&nbsp; most recent first</div>
+
+    <div class="foot">
+      <span><span class="k">n</span> New &nbsp;&nbsp; <span class="k">enter</span> View &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+      <span class="plt"><span class="k">^p</span> palette</span>
+    </div>
+
+  </div></div>
+</div>
+
+<div class="term" style="margin-top:14px">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl">ternero — <b>expense world</b> — 120×32</span><span class="tag">option L2 — one wrapping panel</span></div>
+  <div class="pad"><div class="app">
+
+    <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Capture &amp; ledger<span class="sep">▸</span><b>Transactions</b></div>
+
+    <div class="panel" style="max-width:none">
+      <div class="pt">Transactions <small>· 50 shown</small></div>
+      <div class="ps">most recent first</div>
+      <table class="tbl">
+        <tr><th>title</th><th>description</th><th class="rt">amount</th><th>date</th><th>account</th><th>cat</th><th>tags</th></tr>
+        <tr class="cur"><td>Wong — weekly groceries</td><td>week 28 run</td><td class="rt">-184.90</td><td>07-08</td><td>BCP Soles</td><td>Food</td><td>#casa</td></tr>
+        <tr><td>Uber — aeropuerto</td><td class="dim">—</td><td class="rt neg">-44.90</td><td class="dim">07-07</td><td>BCP Soles</td><td>Transport</td><td class="dim">—</td></tr>
+        <tr><td>AWS</td><td>invoice 88123</td><td class="rt neg">-12.00</td><td class="dim">07-05</td><td>BCP Dólares</td><td>Servicios</td><td>#trabajo</td></tr>
+        <tr><td>Sueldo julio</td><td class="dim">—</td><td class="rt pos">5 200.00</td><td class="dim">07-01</td><td>BCP Soles</td><td>Ingreso</td><td class="dim">—</td></tr>
+      </table>
+    </div>
+
+    <div class="foot">
+      <span><span class="k">n</span> New &nbsp;&nbsp; <span class="k">enter</span> View &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+      <span class="plt"><span class="k">^p</span> palette</span>
+    </div>
+
+  </div></div>
+</div>
+<div class="cap"><b>The trade:</b> L2 is row-neutral — the border title absorbs the count line and the
+border subtitle absorbs the legend, so the list keeps the same number of visible rows; the cost is ~4
+columns of width and more ink. L1 is closest to the boxless home-menu decision. Whichever wins applies
+uniformly: <b>Inbox</b> (subtitle carries <i>filter: ready · ▶ = ready to promote</i>), the three
+<b>manage lists</b>, and the <b>Monthly report</b> grid (title <i>Monthly report · Mar → Jun 2026</i>,
+subtitle <i>home currency · — = no activity</i>; the `[`/`]` window keys are untouched).</div>
+
 <div class="lbl" style="margin-top:30px">not proposed
   <br /><span>Big Aprobar/Rechazar-style buttons (footer keys already carry the actions, and our surface is
   keyboard-first) · any literal colors — everything above is the existing theme tokens, guard test unchanged ·
-  any change to Home or the list screens.</span></div>
+  any change to Home (the boxless menu stays exactly as approved; lists are step 5's open pick).</span></div>
 
 </body>
 </html>
