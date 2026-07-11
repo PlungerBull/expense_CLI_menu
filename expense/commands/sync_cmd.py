@@ -16,17 +16,15 @@ def _format_pulled_at(now: datetime) -> str:
     return now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _render_resource_counts(body: dict, label: str = "") -> None:
+def _render_resource_counts(body: dict) -> None:
     width = max(len(key) for key in RESOURCE_KEYS) + 1
     for key in RESOURCE_KEYS:
         items = body.get(key) or []
         count = len(items) if isinstance(items, list) else 0
-        prefix = f"{label}{key}:"
-        typer.echo(f"  {prefix:<{width + len(label) + 1}} {count}")
+        typer.echo(f"  {key + ':':<{width + 1}} {count}")
     settings = body.get("settings")
     settings_label = "present" if isinstance(settings, dict) else "(null)"
-    settings_prefix = f"{label}settings:"
-    typer.echo(f"  {settings_prefix:<{width + len(label) + 1}} {settings_label}")
+    typer.echo(f"  {'settings:':<{width + 1}} {settings_label}")
 
 
 def _render_stateless(body: dict, pulled_at: datetime, *, json_mode: bool) -> None:

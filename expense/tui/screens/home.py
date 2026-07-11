@@ -1,14 +1,27 @@
-"""Home screen — header banner + the section menu.
+"""Home screen — single-line header (wordmark + live stat cluster) + section menu.
+
+The header is one line: the wordmark on the left, and a right-pinned
+`net · spent · owed` cluster fed by one current-month dashboard read. The read
+runs in a background worker on mount and again whenever you return home (so a
+just-logged transaction is reflected); it is failure-silent — offline, no
+config, or engine-down leaves the cluster empty and the menu fully usable. The
+cluster paints after first paint, so the menu never waits on the network.
 
 The section list is the top-level entry point into every TUI screen; every
 entry is wired (the last "soon" stub, Monthly report, shipped 2026-07-08).
 """
 
+from rich.table import Table
+from rich.text import Text
+from textual import work
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
+from expense.commands import dashboard_cmd
+from expense.commands._resource import format_cents
+from expense.tui.screens._base import screen_fetch_kwargs
 from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.categories import CategoriesScreen
 from expense.tui.screens.hashtags import HashtagsScreen
@@ -25,6 +38,7 @@ from expense.tui.screens.system import (
     SyncScreen,
 )
 from expense.tui.screens.transactions import TransactionsScreen
+from expense.tui.theme import Palette, resolve_palette
 
 _BANNER = "◈  EXPENSE WORLD"
 
@@ -51,13 +65,85 @@ _MENU: list[tuple[str | None, str]] = [
 ]
 
 
+def _signed(cents: object) -> str:
+    """`format_cents` with a leading `+` for non-negative amounts (e.g. `+1,240.50`)."""
+    text = format_cents(cents)
+    return f"+{text}" if isinstance(cents, int) and cents >= 0 else text
+
+
+def _extract_stats(body: dict) -> dict:
+    """Pull the header's three home-currency figures from a dashboard body.
+
+    net/spent come straight from `totals`; `owed` is the net of every person's
+    *home-converted* balance (positive = they owe you, negative = you owe them).
+    Native `current_balance_cents` is intentionally ignored — summing across
+    currencies would be meaningless — and `None` home-cents are skipped.
+    """
+    totals = body.get("totals") or {}
+    people = body.get("people") or []
+    owed = sum(
+        p["current_balance_home_cents"]
+        for p in people
+        if isinstance(p.get("current_balance_home_cents"), int)
+    )
+    return {
+        "net": totals.get("net_home_cents"),
+        "spent": totals.get("outflow_home_cents"),
+        "owed": owed,
+    }
+
+
+def _stat_cluster(stats: dict | None, palette: Palette | None) -> Text:
+    """The right-pinned `net · spent · owed` line as sign-colored Rich text.
+
+    `None` (pre-fetch / failed fetch) → empty. The owed segment is dropped
+    entirely when nothing is outstanding (`owed == 0`); otherwise its label and
+    color flip with the sign. Colors come from the palette, never literal names.
+    """
+    if stats is None:
+        return Text("")
+    pos = palette.success if palette else ""
+    neg = palette.error if palette else ""
+    sep = ("  ·  ", "dim")
+    parts: list = []
+    net, spent, owed = stats.get("net"), stats.get("spent"), stats.get("owed")
+    if isinstance(net, int):
+        parts += [("net ", "dim"), (_signed(net), pos if net >= 0 else neg)]
+    if isinstance(spent, int):
+        if parts:
+            parts.append(sep)
+        parts += [("spent ", "dim"), (format_cents(spent), neg)]
+    if isinstance(owed, int) and owed != 0:
+        if parts:
+            parts.append(sep)
+        label = "owed to you " if owed > 0 else "you owe "
+        parts += [(label, "dim"), (format_cents(abs(owed)), pos if owed > 0 else neg)]
+    return Text.assemble(*parts)
+
+
+def _build_header(stats: dict | None, palette: Palette | None) -> Table:
+    """Wordmark (left) + stat cluster (right), one line, full width.
+
+    `expand=True` with a `ratio=1` left column and a right-justified column pins
+    the cluster to the terminal's right edge — the same idiom the section tables
+    use. `no_wrap` keeps it on one line; overflow truncates rather than wraps.
+    """
+    grid = Table(box=None, expand=True, pad_edge=False, show_header=False)
+    grid.add_column(ratio=1, no_wrap=True)
+    grid.add_column(justify="right", no_wrap=True)
+    grid.add_row(Text(_BANNER, style="bold"), _stat_cluster(stats, palette))
+    return grid
+
+
 class HomeScreen(Screen):
     # q lives here, not on the App — a stray q mid-flow (modal, list) must
     # never kill the app (backlog 4.6). ctrl+q stays the everywhere-quit.
     BINDINGS = [("q", "app.quit", "Quit")]
 
+    _stats: dict | None = None
+
     def compose(self) -> ComposeResult:
-        yield Static(f"{_BANNER}\nyour money, in the terminal", id="brand")
+        yield Static(_build_header(None, None), id="brand")
         options: list = []
         for opt_id, label in _MENU:
             if opt_id is None:
@@ -67,6 +153,35 @@ class HomeScreen(Screen):
                 options.append(Option(label, id=f"{opt_id}:{label}"))
         yield OptionList(*options, id="menu")
         yield Footer()
+
+    def on_mount(self) -> None:
+        self._load_stats()
+        # colors are baked palette hexes, so re-render when the theme switches
+        self.app.theme_changed_signal.subscribe(self, lambda _theme: self._rerender())
+
+    def on_screen_resume(self) -> None:
+        # returning home after a write should reflect the new numbers
+        self._load_stats()
+
+    @work(thread=True, exclusive=True, group="home-stats")
+    def _load_stats(self) -> None:
+        # failure-silent: home must stay usable offline / unconfigured / engine-down
+        from expense import config as config_module
+
+        try:
+            cfg = config_module.ensure_loaded()
+            body = dashboard_cmd.fetch_dashboard(cfg, **screen_fetch_kwargs(self.app))
+        except Exception:
+            return
+        self.app.call_from_thread(self._set_stats, _extract_stats(body))
+
+    def _set_stats(self, stats: dict) -> None:
+        self._stats = stats
+        self._rerender()
+
+    def _rerender(self) -> None:
+        palette = resolve_palette(self.app)
+        self.query_one("#brand", Static).update(_build_header(self._stats, palette))
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         opt_id = event.option.id or ""

@@ -19,10 +19,12 @@ from tests.unit import helpers
 def _hermetic_paths(tmp_path, monkeypatch):
     """Point config + cache env at nonexistent tmp files for EVERY test.
 
-    Every ExpenseApp launch mounts HomeScreen, whose status line (backlog 4.3)
-    reads real config/cache state — without this, tests would read the
-    developer's actual ~/.expense-config and could ping a real engine.
-    `configured` and friends re-set these env vars afterward and still win.
+    Every ExpenseApp launch mounts HomeScreen, whose header stat worker
+    (net · spent · owed) calls ensure_loaded + fetch_dashboard on mount —
+    without this, tests would read the developer's actual ~/.expense-config
+    and could ping a real engine. (The worker is failure-silent, so with these
+    tmp paths ensure_loaded raises and it no-ops.) `configured` and friends
+    re-set these env vars afterward and still win.
     """
     monkeypatch.setenv("EXPENSE_CONFIG", str(tmp_path / "hermetic-config"))
     monkeypatch.setenv("EXPENSE_CACHE", str(tmp_path / "hermetic-cache.sqlite3"))

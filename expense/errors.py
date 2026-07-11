@@ -46,6 +46,20 @@ class SyncContractError(Exception):
     or no derivable user_id). Not retryable client-side."""
 
 
+def error_haystack(err: EngineError) -> str:
+    """Lowercased message + string field values, for keyword hint-scanning.
+
+    Shared by the 422-message scans in transactions_cmd and reconcile_cmd, which
+    match different keywords against the same haystack.
+    """
+    haystack = (err.message or "").lower()
+    if isinstance(err.fields, dict):
+        haystack += (
+            " " + " ".join(f"{k} {v}" for k, v in err.fields.items() if isinstance(v, str)).lower()
+        )
+    return haystack
+
+
 def format_error(err: Exception) -> str:
     """Human-readable error text, without the leading 'Error: ' prefix.
 
@@ -75,7 +89,7 @@ def format_error(err: Exception) -> str:
 # EngineError stays a dedicated branch in render() — its --json output is the
 # engine's raw body passed through verbatim, not a client-composed envelope.
 _ENVELOPE_ERRORS: dict[type[Exception], tuple[str, int]] = {
-    EngineConnectionError: ("CONNECTION_ERROR", 2),
+    EngineConnectionError: ("CONNECTION_ERROR", 6),
     ConfigMissingError: ("CONFIG_MISSING", 3),
     ConfigInvalidError: ("CONFIG_INVALID", 3),
     CacheUnavailableError: ("CACHE_UNAVAILABLE", 4),

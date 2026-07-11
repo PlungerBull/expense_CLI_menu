@@ -329,6 +329,7 @@ def render_table(
     *,
     align_right: set[str] | frozenset[str] = frozenset(),
     sep: str = "  ",
+    footer: dict[str, str] | None = None,
 ) -> None:
     """Render an ASCII table. Cells must be pre-formatted strings.
 
@@ -336,21 +337,32 @@ def render_table(
     Each `row` is a dict keyed by the same column keys.
     Cells listed in `align_right` are right-padded; the rest are left-padded.
     Width per column = max(header label, max(visible_len(cell) for cell in column)).
+
+    `footer` (optional) is one summary row keyed like a data row; when given, it
+    is printed below a second separator rule and its cells seed the column widths
+    so the totals line stays aligned. A footer prints even when `rows` is empty.
     """
-    if not rows:
+    if not rows and footer is None:
         return
+    extra = [footer] if footer is not None else []
     widths = {
-        key: max([len(headers[key])] + [visible_len(row.get(key, "")) for row in rows])
+        key: max([len(headers[key])] + [visible_len(row.get(key, "")) for row in rows + extra])
         for key in headers
     }
 
     def fmt(text: str, key: str) -> str:
         return pad_right(text, widths[key]) if key in align_right else pad_left(text, widths[key])
 
+    def rule() -> None:
+        typer.echo(sep.join("-" * widths[key] for key in headers))
+
     typer.echo(sep.join(fmt(headers[key], key) for key in headers))
-    typer.echo(sep.join("-" * widths[key] for key in headers))
+    rule()
     for row in rows:
         typer.echo(sep.join(fmt(row.get(key, ""), key) for key in headers))
+    if footer is not None:
+        rule()
+        typer.echo(sep.join(fmt(footer.get(key, ""), key) for key in headers))
 
 
 def fetch_body(

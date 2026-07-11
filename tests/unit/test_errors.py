@@ -9,10 +9,33 @@ from expense.errors import (
     EngineConnectionError,
     EngineError,
     SyncContractError,
+    error_haystack,
     format_error,
     handle_errors,
     render,
 )
+
+
+def _engine_error(message, fields=None, status=422):
+    return EngineError(
+        code="VALIDATION_ERROR", message=message, fields=fields, status=status, raw_body={}
+    )
+
+
+def test_error_haystack_lowercases_message():
+    assert error_haystack(_engine_error("No Transactions Assigned")) == "no transactions assigned"
+
+
+def test_error_haystack_folds_in_string_field_values():
+    haystack = error_haystack(_engine_error("Bad", fields={"transactions": "At Least one"}))
+    assert "bad" in haystack
+    assert "transactions at least one" in haystack
+
+
+def test_error_haystack_ignores_non_string_field_values():
+    haystack = error_haystack(_engine_error("Msg", fields={"count": 3, "note": "Keep"}))
+    assert "keep" in haystack
+    assert "3" not in haystack
 
 
 def test_engine_error_attributes():
@@ -99,7 +122,7 @@ def test_render_connection_error_human_includes_url():
         original=ConnectionRefusedError("refused"),
     )
     output, exit_code, use_stderr = render(err, json_mode=False)
-    assert exit_code == 2
+    assert exit_code == 6
     assert use_stderr is True
     assert "https://nonexistent.invalid" in output
     assert "could not reach engine" in output
@@ -111,7 +134,7 @@ def test_render_connection_error_json_envelope():
         original=TimeoutError("timeout"),
     )
     output, exit_code, _ = render(err, json_mode=True)
-    assert exit_code == 2
+    assert exit_code == 6
     envelope = json.loads(output)
     assert envelope["error"]["code"] == "CONNECTION_ERROR"
     assert envelope["error"]["fields"] is None
@@ -246,7 +269,7 @@ def test_handle_errors_catches_connection_error():
 
     with pytest.raises(typer.Exit) as exc:
         cmd()
-    assert exc.value.exit_code == 2
+    assert exc.value.exit_code == 6
 
 
 def test_handle_errors_catches_config_missing():

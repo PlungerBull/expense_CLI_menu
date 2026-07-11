@@ -265,7 +265,7 @@ def test_sync_401_surfaces_engine_error(configured):
 def test_sync_connection_error_surfaces_cleanly(configured):
     respx.get("https://api.example.com/v1/sync").mock(side_effect=httpx.ConnectError("refused"))
     result = runner.invoke(cli_app, ["sync"])
-    assert result.exit_code == 2
+    assert result.exit_code == 6
     assert "could not reach engine" in result.stderr
 
 

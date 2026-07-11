@@ -49,6 +49,13 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 
+# Typer's whole API is `param: T = typer.Option(...)` in the signature — the calls
+# are its declaration syntax, not mutable defaults. B008 auto-exempts plain-typed
+# options but not Enum-typed ones, so allowlist them explicitly (Typer's documented
+# ruff config) to keep the exemption uniform.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
 # Permissive start, scoped to the plumbing that passes engine JSON around
 # (backlog 4.2); widen the file list / tighten flags as modules get annotated.
 [tool.mypy]

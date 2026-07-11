@@ -386,5 +386,5 @@ def test_monthly_connection_error(configured_synced):
         side_effect=httpx.ConnectError("refused")
     )
     result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-04"])
-    assert result.exit_code == 2
+    assert result.exit_code == 6
     assert "could not reach engine" in result.output

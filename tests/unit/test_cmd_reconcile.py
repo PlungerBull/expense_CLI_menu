@@ -369,9 +369,10 @@ def test_create_invalid_source_value_blocks_at_parse(configured):
             "auto",
         ],
     )
-    assert result.exit_code != 0
+    assert result.exit_code == 2  # Click usage error, distinct from the connection code
     stripped = _strip_panel(result.output)
-    assert "Choose one of: manual, chained" in stripped
+    assert "is not one of" in stripped
+    assert "manual" in stripped and "chained" in stripped
 
 
 @respx.mock
@@ -735,6 +736,23 @@ def test_move_no_op(configured):
     assert result.exit_code == 0, result.output
     assert "No changes." in result.output
     assert put_route.call_count == 0
+
+
+@respx.mock
+def test_move_no_op_json_emits_document(configured):
+    """--json on the no-op path must still emit a JSON document, not empty output."""
+    respx.get("https://api.example.com/v1/reconciliations/aaaa").mock(
+        return_value=httpx.Response(200, json=RECON_A)
+    )
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=CHAIN_LIST)
+    )
+    put_route = respx.put(f"https://api.example.com/v1/accounts/{ACCOUNT_ID}/reconciliations/order")
+
+    result = runner.invoke(cli_app, ["reconcile", "move", "aaaa", "--to", "1", "--json"])
+    assert result.exit_code == 0, result.output
+    assert put_route.call_count == 0
+    assert json.loads(result.output) == {"ordered_ids": ["aaaa", "bbbb", "cccc"]}
 
 
 def test_move_no_flags_blocks_at_parse(configured):

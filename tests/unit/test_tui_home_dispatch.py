@@ -36,8 +36,9 @@ _CASES = [
 
 
 def _stub_loaders(monkeypatch):
-    """Kill every on-mount fetch: 12 targets are SectionScreens (worker _load),
-    QuickAddLogScreen is a plain Screen with its own _load_entities worker."""
+    """Kill every on-mount fetch: HomeScreen's stat worker, the 12 SectionScreen
+    workers (_load), and QuickAddLogScreen's own _load_entities worker."""
+    monkeypatch.setattr(HomeScreen, "_load_stats", lambda self: None)
     monkeypatch.setattr(SectionScreen, "_load", lambda self: None)
     monkeypatch.setattr(QuickAddLogScreen, "_load_entities", lambda self: None)
 

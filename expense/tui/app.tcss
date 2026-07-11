@@ -10,12 +10,17 @@ Screen {
     padding: 1 2 1 2;
     color: $foreground;
     text-style: bold;
+    border-bottom: solid $surface;  /* thin rule dividing header from menu */
 }
+/* No box: the menu sits directly on the app background (two surfaces, not
+   three). `border: none` overrides OptionList's default `tall` border; group
+   headers, the inter-group separators, and the selection bar carry the
+   structure the box used to. */
 #menu {
     height: 1fr;
-    margin: 0 1 1 1;
-    border: round $surface;
-    background: $surface;
+    margin: 1 1 1 1;
+    background: $background;
+    border: none;
     padding: 0 1;
 }
 

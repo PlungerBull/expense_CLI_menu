@@ -25,6 +25,7 @@ from expense.commands._resource import (
     redact_token,
     render_pagination_hint,
     render_record,
+    render_table,
     render_totals,
     require_yes,
     run_toggle,
@@ -628,3 +629,63 @@ def test_fetch_all_pages_custom_page_size():
     fetch_page, calls = _pager([full, short])
     assert len(fetch_all_pages(fetch_page, page_size=2)) == 3
     assert calls == [(2, 0), (2, 2)]
+
+
+# ---------------------------------------------------------------------------
+# render_table (incl. optional footer)
+# ---------------------------------------------------------------------------
+
+
+def _is_rule(line: str) -> bool:
+    """A separator line is only dashes and the column separators."""
+    return "-" in line and set(line) <= {"-", " "}
+
+
+def test_render_table_no_footer_single_rule(capsys):
+    render_table(
+        headers={"name": "Name", "amt": "Amt"},
+        rows=[{"name": "Food", "amt": "-50.00"}],
+        align_right={"amt"},
+    )
+    lines = capsys.readouterr().out.splitlines()
+    # header, one rule, one data row — no footer, exactly one rule line
+    assert len(lines) == 3
+    assert [_is_rule(line) for line in lines] == [False, True, False]
+    assert "Name" in lines[0] and "Amt" in lines[0]
+    assert "Food" in lines[2] and "-50.00" in lines[2]
+
+
+def test_render_table_footer_adds_second_rule_and_row(capsys):
+    render_table(
+        headers={"name": "Category", "jan": "jan"},
+        rows=[{"name": "Food", "jan": "-50.00"}],
+        align_right={"jan"},
+        footer={"name": "Totals (net)", "jan": "-50.00"},
+    )
+    lines = capsys.readouterr().out.splitlines()
+    # header, header-rule, data row, footer-rule, footer row
+    assert len(lines) == 5
+    assert [_is_rule(line) for line in lines] == [False, True, False, True, False]
+    assert lines[4].startswith("Totals (net)")
+    # name column widened to fit "Totals (net)" (12 cols) — the header rule's
+    # first segment is that many dashes.
+    assert lines[1].split()[0] == "-" * len("Totals (net)")
+
+
+def test_render_table_footer_prints_when_rows_empty(capsys):
+    render_table(
+        headers={"name": "Category", "jan": "jan"},
+        rows=[],
+        align_right={"jan"},
+        footer={"name": "Totals (net)", "jan": "0.00"},
+    )
+    lines = capsys.readouterr().out.splitlines()
+    # header, header-rule, footer-rule, footer row — still renders with zero data rows
+    assert len(lines) == 4
+    assert [_is_rule(line) for line in lines] == [False, True, True, False]
+    assert lines[-1].startswith("Totals (net)")
+
+
+def test_render_table_empty_without_footer_prints_nothing(capsys):
+    render_table(headers={"name": "Name"}, rows=[])
+    assert capsys.readouterr().out == ""

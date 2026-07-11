@@ -1,3 +1,4 @@
+import enum
 import json
 from uuid import uuid4
 
@@ -30,14 +31,20 @@ from expense.commands._resource import (
 )
 from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
-from expense.errors import EngineError, handle_errors
+from expense.errors import EngineError, error_haystack, handle_errors
 from expense.http import ExpenseClient
 
 app = typer.Typer(help="Reconciliations.", no_args_is_help=True)
 
 _RESOURCE = "reconciliations"
 
-_SOURCE_CHOICES = ("manual", "chained")
+
+class ReconciliationSource(enum.StrEnum):
+    """Allowed values for --source. Typer validates the choice and lists it in --help."""
+
+    manual = "manual"
+    chained = "chained"
+
 
 STATUS_LABELS = {1: "draft", 2: "completed"}
 
@@ -283,17 +290,6 @@ def _is_field_locked_422(err: EngineError) -> bool:
     )
 
 
-def _validate_source_choice(value: str | None) -> str | None:
-    if value is None:
-        return None
-    if value not in _SOURCE_CHOICES:
-        raise typer.BadParameter(
-            f"Invalid value {value!r}. Choose one of: {', '.join(_SOURCE_CHOICES)}.",
-            param_hint="--source",
-        )
-    return value
-
-
 @app.command("list")
 @handle_errors
 def list_(
@@ -380,10 +376,10 @@ def create(
         help="Signed cents. Omit to chain from the previous reconciliation in this account.",
     ),
     ending_balance: int | None = typer.Option(None, "--ending-balance", help="Signed cents."),
-    source: str | None = typer.Option(
+    source: ReconciliationSource | None = typer.Option(
         None,
         "--source",
-        help="manual | chained. Mutually exclusive with --beginning-balance for 'chained'.",
+        help="Mutually exclusive with --beginning-balance for 'chained'.",
     ),
     sort_order: int | None = typer.Option(
         None,
@@ -397,8 +393,7 @@ def create(
     Example: expense reconcile create --account-id <id> --name "April 2026"
              --date-start 2026-04-01 --date-end 2026-04-30 --ending-balance 12345600
     """
-    source = _validate_source_choice(source)
-    if source == "chained" and beginning_balance is not None:
+    if source == ReconciliationSource.chained and beginning_balance is not None:
         raise typer.BadParameter(
             _CHAINED_AMBIGUITY_HINT,
             param_hint="--source/--beginning-balance",
@@ -422,7 +417,7 @@ def create(
     if ending_balance is not None:
         payload["ending_balance_cents"] = ending_balance
     if source is not None:
-        payload["beginning_balance_source"] = source
+        payload["beginning_balance_source"] = source.value
     if sort_order is not None:
         payload["sort_order"] = sort_order
 
@@ -455,10 +450,10 @@ def update(
         None, "--beginning-balance", help="Signed cents. Implicitly switches source to 'manual'."
     ),
     ending_balance: int | None = typer.Option(None, "--ending-balance"),
-    source: str | None = typer.Option(
+    source: ReconciliationSource | None = typer.Option(
         None,
         "--source",
-        help="manual | chained. Mutually exclusive with --beginning-balance for 'chained'.",
+        help="Mutually exclusive with --beginning-balance for 'chained'.",
     ),
     json_output: bool = JSON_OPT,
 ) -> None:
@@ -466,8 +461,7 @@ def update(
 
     Example: expense reconcile update <id> --name "March 2026" --ending-balance 12500
     """
-    source = _validate_source_choice(source)
-    if source == "chained" and beginning_balance is not None:
+    if source == ReconciliationSource.chained and beginning_balance is not None:
         raise typer.BadParameter(
             _CHAINED_AMBIGUITY_HINT,
             param_hint="--source/--beginning-balance",
@@ -483,7 +477,7 @@ def update(
             "date_end": to_canonical_aware(date_end) if date_end is not None else None,
             "beginning_balance_cents": beginning_balance,
             "ending_balance_cents": ending_balance,
-            "beginning_balance_source": source,
+            "beginning_balance_source": source.value if source is not None else None,
         }
     )
 
@@ -600,14 +594,7 @@ def complete(
             body = client.post(f"/{_RESOURCE}/{id_}/complete")
         except EngineError as err:
             if err.status == 422:
-                haystack = (err.message or "").lower()
-                if isinstance(err.fields, dict):
-                    haystack += (
-                        " "
-                        + " ".join(
-                            f"{k} {v}" for k, v in err.fields.items() if isinstance(v, str)
-                        ).lower()
-                    )
+                haystack = error_haystack(err)
                 if "transaction" in haystack and (
                     "no " in haystack or "empty" in haystack or "at least" in haystack
                 ):
@@ -790,7 +777,9 @@ def move(
         new_order.insert(target_index, id_)
 
         if new_order == chain_ids:
-            if not json_output:
+            if json_output:
+                typer.echo(json.dumps({"ordered_ids": chain_ids}, indent=2))
+            else:
                 typer.echo("No changes.")
             return
 

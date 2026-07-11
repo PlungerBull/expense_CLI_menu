@@ -140,41 +140,16 @@ def _render_range_table(body: dict, *, json_mode: bool) -> None:
 
     grid = build_range_grid(months)
     month_labels: list[str] = grid["labels"]
-    rows: list[dict] = grid["rows"]
+    grid_rows: list[dict] = grid["rows"]
     totals_row: dict[str, int | None] = grid["net"]
 
-    name_widths = [len("Category"), len("Totals (net)")]
-    name_widths.extend(len(row["name"]) for row in rows)
-    name_col_w = max(name_widths)
+    def month_cells(source: dict) -> dict[str, str]:
+        return {label: format_cents(source.get(label)) for label in month_labels}
 
-    def fmt_cell(val: int | None) -> str:
-        return format_cents(val)
-
-    col_widths: list[int] = []
-    for label in month_labels:
-        widest = len(label)
-        for row in rows:
-            widest = max(widest, len(fmt_cell(row["cells"].get(label))))
-        widest = max(widest, len(fmt_cell(totals_row.get(label))))
-        col_widths.append(widest)
-
-    header_parts = [f"{'Category':<{name_col_w}}"] + [
-        f"{label:>{w}}" for label, w in zip(month_labels, col_widths, strict=True)
-    ]
-    typer.echo("  ".join(header_parts))
-    typer.echo("  ".join(["-" * name_col_w] + ["-" * w for w in col_widths]))
-
-    for row in rows:
-        row_parts = [f"{row['name']:<{name_col_w}}"]
-        for label, w in zip(month_labels, col_widths, strict=True):
-            row_parts.append(f"{fmt_cell(row['cells'].get(label)):>{w}}")
-        typer.echo("  ".join(row_parts))
-
-    typer.echo("  ".join(["-" * name_col_w] + ["-" * w for w in col_widths]))
-    totals_parts = [f"{'Totals (net)':<{name_col_w}}"]
-    for label, w in zip(month_labels, col_widths, strict=True):
-        totals_parts.append(f"{fmt_cell(totals_row.get(label)):>{w}}")
-    typer.echo("  ".join(totals_parts))
+    headers = {"name": "Category", **{label: label for label in month_labels}}
+    rows = [{"name": row["name"], **month_cells(row["cells"])} for row in grid_rows]
+    footer = {"name": "Totals (net)", **month_cells(totals_row)}
+    render_table(headers, rows, align_right=set(month_labels), footer=footer)
 
 
 def fetch_single_month(

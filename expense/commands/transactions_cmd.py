@@ -31,7 +31,7 @@ from expense.commands._resource import (
 )
 from expense.context import get_no_cache, get_verbose
 from expense.dates import to_canonical_aware
-from expense.errors import EngineError, handle_errors
+from expense.errors import EngineError, error_haystack, handle_errors
 from expense.http import ExpenseClient
 
 app = typer.Typer(
@@ -107,12 +107,7 @@ def _print_warnings(body: dict) -> None:
 
 
 def _update_hint_for(err: EngineError) -> str | None:
-    haystack = (err.message or "").lower()
-    if isinstance(err.fields, dict):
-        haystack += (
-            " " + " ".join(f"{k} {v}" for k, v in err.fields.items() if isinstance(v, str)).lower()
-        )
-
+    haystack = error_haystack(err)
     if "reconciliation" in haystack and (
         "complete" in haystack or "lock" in haystack or "read-only" in haystack
     ):

@@ -111,11 +111,14 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 
 ### Phase 0 — Walking skeleton · **3–5 days** · ✅ shipped
 - `expense world` launches the Textual app; neutral theme loads.
-- Header banner + **home menu** (real section list + live status line), arrow-key nav,
-  footer keybar, quit. *(The status line was later **removed by decision** at
-  polish-backlog §4.3, 2026-07-06 — the hardcoded placeholder reflected nothing; the
-  designed local/live variants live on in `mockups/expense-world-home-status-4.3.html`
-  if ever wanted.)*
+- Header banner + **home menu** (real section list), arrow-key nav, footer keybar, quit.
+  *(The old hardcoded status line was **removed by decision** at polish-backlog §4.3,
+  2026-07-06 — it reflected nothing; the designed local/live variants live on in
+  `mockups/expense-world-home-status-4.3.html`. The header was then **redesigned
+  2026-07-10** into a single-line wordmark + live `net · spent · owed` stat cluster
+  (one dashboard read on mount/resume, failure-silent) with the menu de-boxed onto the
+  app background — mockup `mockups/expense-world-home-header.html`. Partially answers the
+  §4.3 "useful home header" itch with stats, not engine status.)*
 - **One real read view wired to live data: Outstanding Amounts** (start flat, then add
   the tree) via the worker helper, reusing `ensure_synced`.
 - **Exit criteria:** launch → navigate the menu → see real current-month data in your

@@ -37,7 +37,7 @@ def test_ping_success_json_mode(configured):
 def test_ping_connection_error(configured):
     respx.get("https://api.example.com/health").mock(side_effect=httpx.ConnectError("refused"))
     result = runner.invoke(cli_app, ["ping"])
-    assert result.exit_code == 2
+    assert result.exit_code == 6
     assert "could not reach engine" in result.output
 
 
@@ -58,7 +58,7 @@ def test_ping_500_engine_error(configured):
 def test_ping_timeout(configured):
     respx.get("https://api.example.com/health").mock(side_effect=httpx.ReadTimeout("timeout"))
     result = runner.invoke(cli_app, ["ping"])
-    assert result.exit_code == 2
+    assert result.exit_code == 6
     assert "could not reach engine" in result.output
 
 

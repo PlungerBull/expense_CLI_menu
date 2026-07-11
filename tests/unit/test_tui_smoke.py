@@ -9,7 +9,7 @@ import asyncio
 import io
 
 from rich.console import Console
-from textual.widgets import OptionList
+from textual.widgets import OptionList, Static
 
 from expense.commands import dashboard_cmd
 from expense.tui.app import ExpenseApp
@@ -93,6 +93,31 @@ def test_app_launches_home_with_outstanding_option():
             assert any(i.startswith("report:") for i in ids)
             # every entry is wired — the last "soon" stub shipped 2026-07-08
             assert not any(i.startswith("soon:") for i in ids)
+
+    asyncio.run(scenario())
+
+
+def test_home_header_stat_cluster_populates_from_worker(monkeypatch):
+    """Drive the real on-mount worker path end-to-end: fetch → _extract_stats →
+    call_from_thread → _set_stats (which caches _stats and re-renders #brand).
+    The header Static exists from first paint; the stats arrive once the worker
+    returns. (Rendering of _stats into the cluster is covered in
+    test_tui_home_header.py.)"""
+    body = {
+        "totals": {"net_home_cents": 480000, "outflow_home_cents": 320000},
+        "people": [{"current_balance_home_cents": 42000}],  # they owe you
+    }
+    monkeypatch.setattr(dashboard_cmd, "fetch_dashboard", lambda *a, **k: body)
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        app = ExpenseApp(no_cache=True)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            home = app.screen
+            assert home.query_one("#brand", Static) is not None  # header up from first paint
+            await wait_for(pilot, lambda: home._stats is not None)
+            assert home._stats == {"net": 480000, "spent": 320000, "owed": 42000}
 
     asyncio.run(scenario())
 
