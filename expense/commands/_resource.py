@@ -20,7 +20,11 @@ from expense.http import ExpenseClient
 # modules. Never mutate these; a command whose flag means something different
 # declares it inline (e.g. `reconcile reorder --json` skips the editor).
 JSON_OPT = typer.Option(False, "--json", help="Output the raw engine response as JSON.")
-LIMIT_OPT = typer.Option(None, "--limit", help="Max rows to return (engine default applies).")
+LIMIT_OPT = typer.Option(
+    None,
+    "--limit",
+    help="Max rows per page (human output defaults to 20; --json sends no default).",
+)
 OFFSET_OPT = typer.Option(None, "--offset", help="Rows to skip (pagination).")
 INCLUDE_DELETED_OPT = typer.Option(
     False, "--include-deleted", help="Include soft-deleted rows (always reads from the engine)."
@@ -183,6 +187,16 @@ def items_of(body: object) -> list:
 
 
 ENGINE_PAGE_CAP = 200  # the engine's hard cap on `limit` — the one copy (backlog 6.4a)
+# Rows per table page, everywhere a human reads one: CLI list output and TUI
+# lists share this single copy (20-row standard, picked 2026-07-11).
+DEFAULT_PAGE_ROWS = 20
+
+
+def effective_limit(limit: int | None, *, json_mode: bool) -> int | None:
+    """The limit a list command sends: DEFAULT_PAGE_ROWS in human mode unless
+    the user passed --limit. `--json` requests are left untouched (no default),
+    so the raw body stays exactly what the engine/cache returns today."""
+    return DEFAULT_PAGE_ROWS if limit is None and not json_mode else limit
 
 
 def fetch_all_pages(

@@ -141,3 +141,16 @@ ConfirmModal #modal, PromptModal #modal {
     color: $error;
     text-style: bold;
 }
+
+/* ---- list panels ----
+   Every CursorList/CheckList is its own quiet-border panel (dossier option L2
+   + treatment A, picked 2026-07-11): dim round border, accent title (absorbs
+   the old title/legend line), muted subtitle carrying the page status
+   (pagination pick B: `rows 21-40 of 133 · page 2 of 7`). Theme tokens only. */
+CursorList, CheckList {
+    border: round $surface-lighten-2;
+    border-title-color: $accent;
+    border-title-style: bold;
+    border-subtitle-color: $text-muted;
+    padding: 0 1;
+}

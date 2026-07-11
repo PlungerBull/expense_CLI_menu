@@ -7,6 +7,13 @@ In `read_only` mode (completed batch) there's no checkbox and no toggle.
 
 Rows are pure `(key, title, amount_cents, date, sub)` tuples so formatting is
 unit-testable without an event loop.
+
+Renders at most `page_size` items (20-row standard, picked 2026-07-11; an item
+is two physical lines) — always window mode: the full batch stays in memory,
+the visible window follows the cursor, and `pgdn`/`.` / `pgup`/`,` jump a page.
+Membership is window-proof: `_checked` is a key-set over the whole batch, so
+`c Complete` counts every checked row across all pages. Page status renders in
+the border subtitle (`items 21-40 of 47 · page 2 of 3`, mockup pick B).
 """
 
 from collections.abc import Iterable, Sequence
@@ -20,8 +27,10 @@ from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import Static
 
+from expense.commands._resource import DEFAULT_PAGE_ROWS
 from expense.tui.theme import AMOUNT_RULE, FALLBACK, Palette
 from expense.tui.widgets.cells import amount_cell
+from expense.tui.widgets.cursor_list import page_indicator
 
 
 class Row(NamedTuple):
@@ -51,6 +60,8 @@ class CheckList(Static):
         Binding("down,j", "move(1)", "Navigate"),
         Binding("up,k", "move(-1)", show=False),
         Binding("space", "toggle", "Toggle"),
+        Binding("pagedown,full_stop", "page(1)", "Next", key_display="pgdn/."),
+        Binding("pageup,comma", "page(-1)", "Prev", key_display="pgup/,"),
     ]
 
     class Toggled(Message):
@@ -67,6 +78,7 @@ class CheckList(Static):
         read_only: bool = False,
         empty: str = "(no transactions)",
         palette: Palette = FALLBACK,  # value object: _build must stay app-less
+        page_size: int = DEFAULT_PAGE_ROWS,
     ) -> None:
         super().__init__()
         self._rows: list[Row] = [Row.coerce(r) for r in rows]
@@ -74,6 +86,7 @@ class CheckList(Static):
         self._read_only = read_only
         self._empty = empty
         self._palette = palette
+        self._page_size = page_size
         self._cursor = 0
 
     def on_mount(self) -> None:
@@ -95,7 +108,19 @@ class CheckList(Static):
         self._cursor = min(self._cursor, max(0, len(self._rows) - 1))
         self._refresh()
 
+    @property
+    def _window_start(self) -> int:
+        return (self._cursor // self._page_size) * self._page_size
+
+    @property
+    def page_status(self) -> str | None:
+        """The border-subtitle string, or None when everything fits one page."""
+        start = self._window_start
+        shown = min(self._page_size, len(self._rows) - start)
+        return page_indicator(start, shown, len(self._rows), self._page_size, unit="items")
+
     def _refresh(self) -> None:
+        self.border_subtitle = self.page_status or ""
         self.update(self._build())
 
     def _build(self) -> RenderableType:
@@ -107,7 +132,9 @@ class CheckList(Static):
         t.add_column("Title")
         t.add_column("Amount", justify="right", no_wrap=True)
         t.add_column("Date", justify="right", width=12, no_wrap=True)
-        for i, (key, title, amount, date, sub) in enumerate(self._rows):
+        start = self._window_start
+        window = self._rows[start : start + self._page_size]
+        for i, (key, title, amount, date, sub) in enumerate(window, start=start):
             cursor = i == self._cursor
             amt = amount_cell(amount, self._palette, AMOUNT_RULE)
             line1 = [str(title or "(untitled)"), amt, (date or "")[:10]]
@@ -126,6 +153,17 @@ class CheckList(Static):
             return
         self._cursor = max(0, min(len(self._rows) - 1, self._cursor + delta))
         self._refresh()
+
+    def action_page(self, delta: int) -> None:
+        if not self._rows:
+            return
+        self._cursor = max(0, min(len(self._rows) - 1, self._cursor + delta * self._page_size))
+        self._refresh()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "page":  # hide the page keys when one page holds it all
+            return len(self._rows) > self._page_size
+        return True
 
     def action_toggle(self) -> None:
         if self._read_only or not self._rows:

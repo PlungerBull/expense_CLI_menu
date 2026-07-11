@@ -4,6 +4,22 @@ Reused by every list screen (inbox, transactions, accounts, categories...).
 Rows are `(key, cells)` pairs: `key` identifies the row (e.g. a record id) and
 is carried on the `Selected` message; `cells` are the column strings. `_build()`
 is pure, so formatting is unit-testable without an event loop.
+
+Every list renders at most `page_size` rows (20-row standard, picked
+2026-07-11); `pgdn`/`.` and `pgup`/`,` page. Two modes share the one widget:
+
+- window mode (default): `_rows` holds the full dataset and the visible
+  window follows the cursor (`cursor // page_size`), so `j`/`k` walk straight
+  through page boundaries and cursor-restore-after-write lands on the right
+  page for free.
+- fetched-page mode (`page_meta=(offset, total)`): `_rows` is one page a
+  screen fetched with real limit/offset; the page keys post `PageRequested`
+  and the screen refetches (see `PagedListMixin`). `j`/`k` clamp at the edge —
+  paging is always a deliberate keypress (mockup pick A).
+
+The widget is its own quiet-border panel (app.tcss): screens name it via
+`title` (border title) and the page status renders in the border subtitle
+(mockup pick B) — `rows 21-40 of 133 · page 2 of 7`.
 """
 
 from collections.abc import Iterable, Sequence
@@ -16,6 +32,19 @@ from rich.text import Text
 from textual.binding import Binding
 from textual.message import Message
 from textual.widgets import Static
+
+from expense.commands._resource import DEFAULT_PAGE_ROWS
+
+
+def page_indicator(
+    start: int, shown: int, total: int, page_size: int, *, unit: str = "rows"
+) -> str | None:
+    """`rows 21-40 of 133 · page 2 of 7`, or None when one page holds it all."""
+    if total <= page_size:
+        return None
+    page = start // page_size + 1
+    pages = -(-total // page_size)  # ceil
+    return f"{unit} {start + 1}-{start + shown} of {total} · page {page} of {pages}"
 
 
 class Row(NamedTuple):
@@ -48,6 +77,8 @@ class CursorList(Static):
         Binding("down,j", "move(1)", "Navigate"),
         Binding("up,k", "move(-1)", show=False),
         Binding("enter", "select", "Open"),
+        Binding("pagedown,full_stop", "page(1)", "Next", key_display="pgdn/."),
+        Binding("pageup,comma", "page(-1)", "Prev", key_display="pgup/,"),
     ]
 
     class Selected(Message):
@@ -79,6 +110,21 @@ class CursorList(Static):
             CursorLists must filter by source (backlog 6.2c)."""
             return self._control
 
+    class PageRequested(Message):
+        """Posted in fetched-page mode when a page key needs data beyond the
+        fetched window; the screen refetches (see PagedListMixin)."""
+
+        def __init__(self, control: "CursorList", delta: int) -> None:
+            super().__init__()
+            self._control = control
+            self.delta = delta
+
+        @property
+        def control(self) -> "CursorList":
+            """The list that posted this — handlers on screens with several
+            CursorLists must filter by source (backlog 6.2c)."""
+            return self._control
+
     def __init__(
         self,
         headers: Sequence[str],
@@ -86,13 +132,20 @@ class CursorList(Static):
         *,
         align_right: Iterable[int] = (),
         empty: str = "(empty)",
+        title: str | None = None,
+        page_size: int = DEFAULT_PAGE_ROWS,
+        page_meta: tuple[int, int] | None = None,
     ) -> None:
         super().__init__()
         self._headers = list(headers)
         self._rows: list[Row] = [Row.coerce(r) for r in rows]
         self._align = set(align_right)
         self._empty = empty
+        self._page_size = page_size
+        self._page_meta = page_meta
         self._cursor = 0
+        if title is not None:
+            self.border_title = title
 
     def on_mount(self) -> None:
         self._refresh()
@@ -118,7 +171,22 @@ class CursorList(Static):
             self._cursor = max(0, min(len(self._rows) - 1, index))
             self._refresh()
 
+    @property
+    def _window_start(self) -> int:
+        return (self._cursor // self._page_size) * self._page_size
+
+    @property
+    def page_status(self) -> str | None:
+        """The border-subtitle string, or None when everything fits one page."""
+        if self._page_meta is not None:
+            offset, total = self._page_meta
+            return page_indicator(offset, len(self._rows), total, self._page_size)
+        start = self._window_start
+        shown = min(self._page_size, len(self._rows) - start)
+        return page_indicator(start, shown, len(self._rows), self._page_size)
+
     def _refresh(self) -> None:
+        self.border_subtitle = self.page_status or ""
         self.update(self._build())
 
     @staticmethod
@@ -132,7 +200,8 @@ class CursorList(Static):
         t = Table(box=box.SIMPLE, expand=True, pad_edge=False)
         for i, header in enumerate(self._headers):
             t.add_column(header, justify="right" if i in self._align else "left", no_wrap=True)
-        for r, row in enumerate(self._rows):
+        start = self._window_start
+        for r, row in enumerate(self._rows[start : start + self._page_size], start=start):
             style = "reverse" if r == self._cursor else row.base_style
             t.add_row(*[self._cell(c) for c in row.cells], style=style)
         return t
@@ -145,6 +214,26 @@ class CursorList(Static):
             self._cursor = new
             self._refresh()
             self.post_message(self.Highlighted(self, self.cursor_key, self._cursor))
+
+    def action_page(self, delta: int) -> None:
+        if self._page_meta is not None:
+            # fetched-page mode: the screen owns the data; ask it to turn.
+            self.post_message(self.PageRequested(self, delta))
+            return
+        if not self._rows:
+            return
+        new = max(0, min(len(self._rows) - 1, self._cursor + delta * self._page_size))
+        if new != self._cursor:
+            self._cursor = new
+            self._refresh()
+            self.post_message(self.Highlighted(self, self.cursor_key, self._cursor))
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "page":  # hide the page keys when one page holds it all
+            if self._page_meta is not None:
+                return self._page_meta[1] > self._page_size
+            return len(self._rows) > self._page_size
+        return True
 
     def action_select(self) -> None:
         if self._rows:

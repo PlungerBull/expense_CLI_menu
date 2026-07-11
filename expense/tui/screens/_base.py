@@ -25,6 +25,7 @@ from textual.widget import Widget
 from textual.widgets import Footer, LoadingIndicator, Static
 from textual.worker import get_current_worker
 
+from expense.commands._resource import DEFAULT_PAGE_ROWS
 from expense.errors import format_error
 from expense.tui.widgets.header import Breadcrumb
 
@@ -229,6 +230,42 @@ class ContentSwapLockMixin:
         if self._swap_lock is None:  # lazily created; only ever touched on the UI thread
             self._swap_lock = asyncio.Lock()
         return self._swap_lock
+
+
+class PagedListMixin:
+    """Fetch-side pagination for SectionScreens whose fetch sends limit/offset.
+
+    The list widget renders one fetched page (`CursorList(page_meta=…)`) and
+    posts `PageRequested` on the page keys; this mixin clamps against the last
+    known total, bumps the page, and reloads through the normal section-load
+    worker. The subclass contract: call `page_fetch_kwargs()` inside `fetch()`,
+    record the body's `total` into `_page_total` (fetch- or build-side), and
+    call `reset_page()` whenever a filter change invalidates the offset.
+    """
+
+    _page: int = 0
+    _page_total: int | None = None
+
+    @property
+    def page_offset(self) -> int:
+        return DEFAULT_PAGE_ROWS * self._page
+
+    def page_fetch_kwargs(self) -> dict:
+        return {"limit": DEFAULT_PAGE_ROWS, "offset": self.page_offset}
+
+    def reset_page(self) -> None:
+        self._page = 0
+
+    def on_cursor_list_page_requested(self, event) -> None:
+        event.stop()
+        target = self._page + event.delta
+        if target < 0:
+            return
+        total = self._page_total
+        if total is not None and target * DEFAULT_PAGE_ROWS >= total:
+            return  # no page there — the last page stays put
+        self._page = target
+        self._load()
 
 
 class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
