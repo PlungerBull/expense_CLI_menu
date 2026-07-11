@@ -93,6 +93,8 @@ In stateless mode (Step 7b's `--no-cache`), the engine response with `sync_token
 
 **`--search` ASCII caveat.** SQLite's `LIKE … COLLATE NOCASE` is case-insensitive for ASCII inputs but not for full Unicode. The engine uses PostgreSQL `ILIKE` which is locale-aware. For ASCII titles/descriptions (the realistic case) results match between cached and engine paths; for non-ASCII, results may differ. If precise non-ASCII case-insensitivity matters, pass `--no-cache`.
 
+**Read defaults (limits).** A cache list read with no explicit limit returns up to 100 rows (`_list_paginated` in [expense/cache/queries.py](../expense/cache/queries.py)) vs the engine's default 50 — deliberately left unaligned: changing the replica default would silently alter `--json` cache-read output, and internal full-table consumers (name maps) pass no limit. Human-mode CLI and the TUI never hit either default — since 2026-07-11 they send `limit=20` explicitly (see [decisions.md](decisions.md)).
+
 ## Home-currency drift warning
 
 `amount_home_cents` and related fields in cached rows reflect FX rates **at sync time**, not now. Across a multi-day cache they drift. **Accounts are stricter still:** `/sync` returns `current_balance_home_cents: null` for every account row by design — only `GET /v1/dashboard` computes it against current FX rates. So `expense accounts list/get` returns null where engine-direct calls would return a value. Run `expense dashboard` or pass `--no-cache` for current balances.

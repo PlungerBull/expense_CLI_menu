@@ -223,6 +223,18 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   enter never mutates — on the Manage lists it's a literal no-op; **standing constraint:**
   any future rename action on Manage screens ships as `e`, never `r` — two older mockups
   showing `r rename` are superseded), `?` help overlay ⬜, Textual command palette ⬜.
+- 20-row pagination ✅ (2026-07-11): every `CursorList`/`CheckList` renders one
+  20-row window (`DEFAULT_PAGE_ROWS`, one copy with the CLI); keymap-contract page
+  keys `pgdn`/`.` next and `pgup`/`,` previous, hidden when one page holds it all.
+  Transactions/Inbox/Activity/Rates fetch real `limit/offset` pages via
+  `PagedListMixin` (`j`/`k` clamp at the fetched edge); full-data screens (Manage,
+  Reconciliations, recon checklist at 20 items) window locally (`j`/`k` walk
+  through, cursor-restore lands on its page). Lists are quiet-border panels:
+  border title carries the screen title, border subtitle the page status
+  (`rows 21-40 of 133 · page 2 of 7`). Exempt: Outstanding tree + static tables
+  (static-table pick still open), Monthly grid, System kv-tables. Picks:
+  [mockups/expense-world-pagination.html](mockups/expense-world-pagination.html);
+  rationale: [decisions.md](decisions.md) (2026-07-11).
 - Async edge cases (slow net, offline, cold-start notice shown in-app), spinners.
 - Skeleton/empty/error states everywhere.
 - **Textual pilot tests** for navigation + key flows ◐ (binding-level pilot tests for
