@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — adaptive rows + launch scrollback clear</title>
+<style>
+  /* ----------------------------------------------------------------------
+     ADAPTIVE ROWS — the rows-per-page count follows the terminal height
+     instead of the fixed 20. Amends the 2026-07-11 20-row decision
+     (expense-world-pagination.html): 20 stays the CLI human-mode default
+     (stdout has no viewport); the TUI page becomes "what fits".
+
+     Trigger (2026-07-12): in a 120×30 terminal the 20-row panel + 11 lines
+     of chrome = 31 > 30 — the panel's bottom border and the page-status
+     subtitle clip off-screen, and Textual grows a scrollbar on #content
+     that nothing can operate: the mouse is off (keyboard-only decision,
+     a9ea4fb) and arrows move the row cursor, not the container.
+
+     Chrome math (Transactions): crumb 4 + #content padding 2 +
+     panel frame 4 (border+title, column header, header rule, border+
+     subtitle) + footer 1 = 11 lines. rows = height − 11.
+
+     STEP 1  the problem, verbatim from the 2026-07-12 screenshot
+     STEP 2  adaptive model — PICKED: A page = screenful (2026-07-13)
+     STEP 3  tall terminals — PICKED: CAP 20, adaptive only ever shrinks
+             (2026-07-13; keeps the 2026-07-11 "no more than 20" literal)
+     STEP 4  mechanics (notes, nothing to pick)
+     STEP 5  launch scrollback clear — PICKED: YES (2026-07-13);
+             ESC[2J 3J H in run_world before entering the app
+
+     Same rules as every mockup since 2026-07-11: ANSI-transparent ground,
+     every color an existing theme token (theme.py), no new hexes.
+     ---------------------------------------------------------------------- */
+  :root{
+    --page:#050506;
+    --pad-black:#000000;
+    --surface:#16161a; --panel:#1d1d22;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9aa7b2; --sel:#9aa7b2; --seltext:#0e0e11;
+    --pos:#7fbf8f; --neg:#cf8d8d; --warn:#d6b878;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--page)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px;
+       padding:36px 20px 90px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+
+  .lbl{width:min(1160px,100%);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:12.5px}
+  .lbl b{color:var(--text)}
+  .step{width:min(1160px,100%);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:26px}
+  .step small{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:12px;margin-left:8px}
+  .cap{width:min(1160px,100%);color:var(--dim);font-size:12px;margin:-4px 2px 0;line-height:1.55}
+  .cap b{color:var(--muted)} .cap i{color:var(--muted);font-style:normal}
+
+  .term{width:min(1160px,100%);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:13.5px;line-height:1.5;
+        background:var(--pad-black)}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#000}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:8px;color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .tag{margin-left:auto;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+       padding:2px 9px;border-radius:999px;border:1px solid var(--dimmer);color:var(--accent)}
+  .tag.bad{color:var(--neg);border-color:#4a3232}
+  .app{padding:14px 18px 16px;background:var(--pad-black);position:relative}
+
+  .crumb{color:var(--muted);padding-bottom:9px;border-bottom:1px solid var(--surface);
+         white-space:nowrap;overflow:hidden}
+  .crumb .glyph{color:var(--accent)} .crumb b{color:var(--text)}
+  .crumb .sep{color:var(--dimmer);margin:0 9px}
+
+  .tbl{border-collapse:collapse;width:100%}
+  .tbl th{color:var(--dim);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+          text-align:left;font-weight:400;padding:0 22px 3px 0}
+  .tbl td{padding:0 22px 0 0;vertical-align:top;white-space:nowrap}
+  .tbl .rt,.tbl th.rt{text-align:right}
+  .tbl .dim{color:var(--dim)}
+  .tbl tr.cur td{background:var(--sel);color:var(--seltext);font-weight:700}
+  .neg{color:var(--neg);font-weight:700} .pos{color:var(--pos);font-weight:700}
+
+  .panel{position:relative;border:1px solid var(--dimmer);border-radius:8px;
+         padding:13px 16px 11px;margin:18px 0 0}
+  .panel>.pt{position:absolute;top:-10px;left:12px;background:var(--pad-black);
+             padding:0 7px;color:var(--accent);font-weight:700;font-size:12.5px;letter-spacing:.05em}
+  .panel>.pt small{color:var(--dim);font-weight:400}
+  .panel>.ps{position:absolute;bottom:-10px;right:12px;background:var(--pad-black);
+             padding:0 7px;color:var(--dim);font-size:12px}
+
+  .foot{display:flex;justify-content:space-between;color:var(--text);font-size:12.5px;
+        border-top:1px solid var(--surface);margin:14px -18px -16px;padding:6px 18px}
+  .foot .k{color:var(--warn);font-weight:700} .foot .plt{color:var(--muted)} .foot .plt .k{color:var(--warn)}
+
+  .two{width:min(1160px,100%);display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:900px){.two{grid-template-columns:1fr}}
+  .mini{background:var(--pad-black);border:1px solid #23232a;border-radius:10px;
+        padding:16px;font-size:13px;line-height:1.5;position:relative}
+  .mini .mt{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  .mini .mt small{color:var(--dim);letter-spacing:.02em;text-transform:none;margin-left:6px}
+  .pick{font-size:12px;color:var(--muted);margin:8px 2px 0;line-height:1.55}
+  .pick b{color:var(--text)}
+  .pick .cost{color:var(--warn)}
+  .note{position:absolute;font-size:11px;color:var(--warn);
+        border:1px dashed #4a3f28;border-radius:6px;padding:3px 8px;background:#14110a;max-width:46%;z-index:2}
+
+  /* STEP 1: hard viewport cut — everything below the line is off-screen */
+  .clipwrap{max-height:340px;overflow:hidden;position:relative}
+  .cutline{border-top:1px dashed var(--neg);color:var(--neg);font-size:11px;
+           letter-spacing:.12em;text-transform:uppercase;padding-top:4px;margin:0 -18px;
+           padding-left:18px;background:#120c0c}
+  .ghost{opacity:.38;filter:saturate(.6)}
+  .ghost .cutcap{color:var(--neg);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin:6px 0 2px}
+
+  /* tall-terminal elision band */
+  .elide{color:var(--dim);font-size:12px;text-align:center;border-top:1px dashed var(--dimmer);
+         border-bottom:1px dashed var(--dimmer);padding:4px 0;margin:4px 0}
+
+  /* STEP 5 shell view */
+  .shell{font-size:13px;line-height:1.55}
+  .shell .ps1{color:var(--pos)} .shell .cmd{color:var(--text);font-weight:700}
+  .shell .err{color:var(--dim)}
+  .shell .void{color:var(--dimmer);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+               text-align:center;padding:26px 0;border:1px dashed var(--dimmer);border-radius:6px;margin:8px 0}
+  .shell .void.calm{border-style:solid;border-color:#1a1a1f}
+  .appslice{border-top:1px solid var(--surface);margin-top:8px;padding-top:8px}
+  .appslice .brand{font-weight:700}
+  .appslice .brand .glyph{color:var(--accent)}
+  .appslice .stats{float:right;color:var(--muted)}
+  .appslice .stats .neg{font-weight:700}
+  .appslice .mi{color:var(--text)} .appslice .mh{color:var(--dim);font-size:11px;letter-spacing:.14em;
+                text-transform:uppercase;margin-top:8px}
+  .appslice .misel{background:var(--sel);color:var(--seltext);font-weight:700;display:inline-block;padding:0 6px}
+</style>
+</head>
+<body>
+
+<div class="lbl">EXPENSE WORLD — <b>adaptive rows-per-page + launch scrollback clear</b> <span>· 2026-07-12 · amends the 20-row decision of 2026-07-11 (TUI side only; CLI keeps 20)</span></div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 1 — THE PROBLEM <small>120×30 terminal, verbatim from the 2026-07-12 screenshot: 20-row page needs 31 lines, window has 30</small></div>
+
+<div class="term">
+  <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="ttl">ternero — <b>expense world</b> — 120×30</span><span class="tag bad">TODAY — CLIPPED</span></div>
+  <div class="app">
+    <div class="note" style="right:14px;top:52px">Textual scrollbar appears here —<br/>undraggable (mouse off, a9ea4fb)<br/>and no key scrolls #content</div>
+    <div class="clipwrap">
+      <div class="crumb"><span class="glyph">◆</span> <b>EXPENSE WORLD</b><span class="sep">▸</span>Capture &amp; ledger<span class="sep">▸</span><b>Transactions</b></div>
+      <div class="panel">
+        <div class="pt">Ledger — posted transactions <small>· most recent first</small></div>
+        <table class="tbl">
+          <tr><th>Title</th><th>Description</th><th class="rt">Amount</th><th>Date</th><th>Account</th><th>Cat</th><th>Tags</th></tr>
+          <tr><td>asdas</td><td class="dim"></td><td class="rt neg">-1.00</td><td class="dim">2026-07-…</td><td>BCP Oro</td><td>HOGAR</td><td class="dim">Alquiler</td></tr>
+          <tr><td>a new test</td><td class="dim">A note for this</td><td class="rt neg">-98.00</td><td class="dim">2026-07-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">Streaming, Financi…</td></tr>
+          <tr><td>A NEW TEST HE…</td><td class="dim">A note</td><td class="rt neg">-91.00</td><td class="dim">2026-07-…</td><td>BCP USD</td><td>HOGAR</td><td class="dim">Alquiler</td></tr>
+          <tr><td>another TEST</td><td class="dim">A NOTE</td><td class="rt neg">-99.00</td><td class="dim">2026-06-…</td><td>Fondo Mut…</td><td>WANTS</td><td class="dim">Otros(O), Transpor…</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr class="cur"><td>blank title</td><td></td><td class="rt">-9.00</td><td>2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td>—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+          <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="cutline">▔▔ window bottom — everything below exists but is off-screen ▔▔</div>
+    <div class="ghost">
+      <div class="cutcap">clipped: the last rows, the panel border, and the page-status subtitle — the one line that says more pages exist</div>
+      <table class="tbl">
+        <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+        <tr><td>blank title</td><td class="dim"></td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td><td class="dim">—</td></tr>
+      </table>
+      <div style="text-align:right;color:var(--dim);border-top:1px solid var(--dimmer);padding-top:2px">rows 1-20 of 133 · page 1 of 7</div>
+    </div>
+  </div>
+</div>
+<div class="cap">Chrome adds up to <b>11 lines</b> (crumb 4 · content padding 2 · panel frame 4 · footer 1); a 20-row page therefore needs a <b>31-line</b> terminal.
+The fix in every option below: <b>rows-per-page = terminal height − chrome, measured live</b> — the panel then always fits, so the dead scrollbar never exists.</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 2 — PICK THE ADAPTIVE MODEL <small>both shown in a 120×24 terminal → 13 rows fit</small></div>
+
+<div class="two">
+  <div class="mini">
+    <div class="mt">A — the page IS the screenful <small>recommended</small></div>
+    <div class="panel" style="margin-top:12px">
+      <div class="pt">Ledger — posted transactions</div>
+      <table class="tbl">
+        <tr><th>Title</th><th class="rt">Amount</th><th>Date</th><th>Account</th><th>Cat</th></tr>
+        <tr><td>asdas</td><td class="rt neg">-1.00</td><td class="dim">2026-07-…</td><td>BCP Oro</td><td>HOGAR</td></tr>
+        <tr><td>a new test</td><td class="rt neg">-98.00</td><td class="dim">2026-07-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr class="cur"><td>A NEW TEST HE…</td><td class="rt">-91.00</td><td>2026-07-…</td><td>BCP USD</td><td>HOGAR</td></tr>
+        <tr><td>another TEST</td><td class="rt neg">-99.00</td><td class="dim">2026-06-…</td><td>Fondo Mut…</td><td>WANTS</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+      </table>
+      <div class="ps">rows 1-13 of 133 · page 1 of 11</div>
+    </div>
+    <div class="pick"><b>One windowing layer, resized.</b> The fetch sends <b>limit=13</b> (what fits), <code>pgdn</code> turns
+    exactly one screenful, and the subtitle tells the plain truth: 13 shown, 11 pages. What you see and what
+    a "page" means are the same thing. Architecture unchanged — the 20 constant becomes a measured value.</div>
+  </div>
+
+  <div class="mini">
+    <div class="mt">B — keep 20-row pages, slide a window inside them</div>
+    <div class="panel" style="margin-top:12px">
+      <div class="pt">Ledger — posted transactions</div>
+      <table class="tbl">
+        <tr><th>Title</th><th class="rt">Amount</th><th>Date</th><th>Account</th><th>Cat</th></tr>
+        <tr><td>asdas</td><td class="rt neg">-1.00</td><td class="dim">2026-07-…</td><td>BCP Oro</td><td>HOGAR</td></tr>
+        <tr><td>a new test</td><td class="rt neg">-98.00</td><td class="dim">2026-07-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr class="cur"><td>A NEW TEST HE…</td><td class="rt">-91.00</td><td>2026-07-…</td><td>BCP USD</td><td>HOGAR</td></tr>
+        <tr><td>another TEST</td><td class="rt neg">-99.00</td><td class="dim">2026-06-…</td><td>Fondo Mut…</td><td>WANTS</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+      </table>
+      <div class="ps">rows 1-20 of 133 · page 1 of 7 · ↓7 below</div>
+    </div>
+    <div class="note" style="right:12px;bottom:98px">page says 20, screen shows 13 —<br/>7 rows live "below the fold" of the<br/>same page; j slides, pgdn jumps 20</div>
+    <div class="pick"><b>The 20 stays sacred, at a cost.</b> Fetches keep <b>limit=20</b>; the widget renders the 13 that fit and
+    slides as the cursor walks. Preserves the 2026-07-11 number exactly, but a "page" no longer matches a screenful —
+    the subtitle needs a third clause (<i>↓7 below</i>) and <code>pgdn</code> jumps past rows you never saw.</div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 3 — PICK THE TALL-TERMINAL BEHAVIOR <small>269×66 window → 55 rows fit · the 2026-07-11 request said "no more than 20", so this is explicitly yours to re-call</small></div>
+
+<div class="two">
+  <div class="mini">
+    <div class="mt">GROW — fill what the window gives <small>recommended</small></div>
+    <div class="panel" style="margin-top:12px">
+      <div class="pt">Ledger — posted transactions</div>
+      <table class="tbl">
+        <tr><th>Title</th><th class="rt">Amount</th><th>Date</th><th>Account</th><th>Cat</th></tr>
+        <tr><td>asdas</td><td class="rt neg">-1.00</td><td class="dim">2026-07-…</td><td>BCP Oro</td><td>HOGAR</td></tr>
+        <tr class="cur"><td>a new test</td><td class="rt">-98.00</td><td>2026-07-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>A NEW TEST HE…</td><td class="rt neg">-91.00</td><td class="dim">2026-07-…</td><td>BCP USD</td><td>HOGAR</td></tr>
+        <tr><td>another TEST</td><td class="rt neg">-99.00</td><td class="dim">2026-06-…</td><td>Fondo Mut…</td><td>WANTS</td></tr>
+      </table>
+      <div class="elide">⋮ &nbsp;rows 5–52 elided in this mockup — the real panel renders all 55&nbsp; ⋮</div>
+      <table class="tbl">
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+      </table>
+      <div class="ps">rows 1-55 of 133 · page 1 of 3</div>
+    </div>
+    <div class="pick"><b>A big window is for seeing data.</b> 55 rows, 133 transactions in 3 pages. Bounded by the
+    engine's <code>limit ≤ 200</code>, so even absurd terminals stay in contract.</div>
+  </div>
+
+  <div class="mini">
+    <div class="mt">CAP 20 — adaptive only ever shrinks</div>
+    <div class="panel" style="margin-top:12px">
+      <div class="pt">Ledger — posted transactions</div>
+      <table class="tbl">
+        <tr><th>Title</th><th class="rt">Amount</th><th>Date</th><th>Account</th><th>Cat</th></tr>
+        <tr><td>asdas</td><td class="rt neg">-1.00</td><td class="dim">2026-07-…</td><td>BCP Oro</td><td>HOGAR</td></tr>
+        <tr class="cur"><td>a new test</td><td class="rt">-98.00</td><td>2026-07-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>A NEW TEST HE…</td><td class="rt neg">-91.00</td><td class="dim">2026-07-…</td><td>BCP USD</td><td>HOGAR</td></tr>
+      </table>
+      <div class="elide">⋮ &nbsp;rows 4–18 elided — the real panel renders 20&nbsp; ⋮</div>
+      <table class="tbl">
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+        <tr><td>blank title</td><td class="rt neg">-9.00</td><td class="dim">2026-06-…</td><td>BCP Oro</td><td>SALUD</td></tr>
+      </table>
+      <div class="ps">rows 1-20 of 133 · page 1 of 7</div>
+    </div>
+    <div class="void" style="color:var(--dimmer);border:1px dashed var(--dimmer);border-radius:6px;text-align:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:22px 0;margin:10px 0 0">~35 blank lines below the panel</div>
+    <div class="pick"><b>Keeps 2026-07-11 literal</b> ("no table shows more than 20 rows") — a page is always ≤20, at the
+    price of a third of a 66-row window sitting empty in a data browser.</div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 4 — MECHANICS <small>notes, nothing to pick</small></div>
+<div class="cap" style="margin-top:2px">
+  · <b>Measured, not a formula:</b> each screen measures the real space its panel gets (screens with legends,
+    split reconciliation panes, and the 2-line CheckList differ), on mount and on every terminal resize.<br/>
+  · <b>Resize keeps your place:</b> the page re-snaps so the cursor row stays on screen; in fetched-page mode
+    the refetch re-anchors the offset to the first visible row.<br/>
+  · <b>Floor of 5 rows:</b> below a ~16-line terminal the panel clips again (today's behavior) — the TUI was
+    never usable there; nothing is spent on it.<br/>
+  · <b>CheckList:</b> same rule in items — <i>items = fit ÷ 2</i> (two physical lines each).<br/>
+  · <b>CLI untouched:</b> human mode keeps <code>limit=20</code> + the offset hint; stdout has no viewport.
+    <code>--json</code> stays byte-verbatim. <code>DEFAULT_PAGE_ROWS</code> remains the shared floor-of-truth for the CLI
+    and the TUI's fallback before first measure.<br/>
+  · <b>The dead scrollbar is gone structurally:</b> the panel always fits, so <code>#content</code> never overflows —
+    no scrollbar to drag, nothing clipped, footer and subtitle always visible.
+</div>
+
+<!-- ================================================================ -->
+<div class="step">STEP 5 — CONFIRM: LAUNCH SCROLLBACK CLEAR <small>image-2 request: "clear everything and just render our app"</small></div>
+
+<div class="two">
+  <div class="mini">
+    <div class="mt">TODAY <small>Terminal.app lets you scroll above the running app</small></div>
+    <div class="shell">
+      <div>Last login: Sun Jul 12 17:21:13 on ttys001</div>
+      <div><span class="ps1">ternero@Alexs-MacBook-Air ~ %</span> <span class="cmd">expense_world</span></div>
+      <div class="err">zsh: command not found: expense_world</div>
+      <div><span class="ps1">ternero@Alexs-MacBook-Air ~ %</span> <span class="cmd">expense world</span></div>
+      <div class="void">the blank rest of the pre-launch screen,<br/>pushed into scrollback as one full page — "the gap"</div>
+      <div class="appslice">
+        <div><span class="brand"><span class="glyph">◆</span> EXPENSE WORLD</span><span class="stats">net <span class="neg">-192.75</span> · spent 192.75</span></div>
+        <div class="mh">Capture &amp; ledger</div>
+        <div><span class="misel">Log a transaction</span></div>
+        <div class="mi">Inbox</div>
+        <div class="mi">Transactions</div>
+      </div>
+    </div>
+    <div class="pick">The app <b>is</b> full-screen (alternate screen, verified in the Textual driver) — but with mouse
+    tracking off, every wheel/scrollbar gesture goes to Terminal.app, which happily scrolls into scrollback
+    <b>while the app runs</b>. Any keypress snaps back. Old text was never deleted; it lives in scrollback by design.</div>
+  </div>
+
+  <div class="mini">
+    <div class="mt">PROPOSED <small>emit ESC[2J 3J H once, right before entering the app</small></div>
+    <div class="shell">
+      <div class="void calm">scrollback empty — scrolling up during<br/>the app reveals nothing at all</div>
+      <div class="appslice">
+        <div><span class="brand"><span class="glyph">◆</span> EXPENSE WORLD</span><span class="stats">net <span class="neg">-192.75</span> · spent 192.75</span></div>
+        <div class="mh">Capture &amp; ledger</div>
+        <div><span class="misel">Log a transaction</span></div>
+        <div class="mi">Inbox</div>
+        <div class="mi">Transactions</div>
+      </div>
+    </div>
+    <div class="pick"><b>One escape sequence in <code>run_world</code></b> (clear screen + clear scrollback + home), before
+    Textual takes over. Supported by Terminal.app (where <code>3J</code> originated), iTerm2, kitty, VTE, Windows
+    Terminal; terminals that don't know it ignore it harmlessly.<br/>
+    <span class="cost">Cost — this is destructive: it wipes the tab's ENTIRE scrollback history on every launch,
+    not just the page above the app. On exit you still get the visible pre-launch screen back (alt-screen restore),
+    but nothing scrolled above it.</span><br/>
+    Alternative: skip it, document "scrolled weird? press any key" in tui-plan — with STEP 2/3 shipped there is
+    no reason left to touch the terminal scrollbar.</div>
+  </div>
+</div>
+
+<div class="cap" style="margin-top:18px">Awaiting picks: <b>STEP 2</b> (A or B) · <b>STEP 3</b> (grow or cap 20) · <b>STEP 5</b> (clear on launch: yes / no + docs note). No code until then.</div>
+
+</body>
+</html>

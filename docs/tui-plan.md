@@ -223,18 +223,26 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   enter never mutates — on the Manage lists it's a literal no-op; **standing constraint:**
   any future rename action on Manage screens ships as `e`, never `r` — two older mockups
   showing `r rename` are superseded), `?` help overlay ⬜, Textual command palette ⬜.
-- 20-row pagination ✅ (2026-07-11): every `CursorList`/`CheckList` renders one
-  20-row window (`DEFAULT_PAGE_ROWS`, one copy with the CLI); keymap-contract page
-  keys `pgdn`/`.` next and `pgup`/`,` previous, hidden when one page holds it all.
-  Transactions/Inbox/Activity/Rates fetch real `limit/offset` pages via
-  `PagedListMixin` (`j`/`k` clamp at the fetched edge); full-data screens (Manage,
-  Reconciliations, recon checklist at 20 items) window locally (`j`/`k` walk
-  through, cursor-restore lands on its page). Lists are quiet-border panels:
-  border title carries the screen title, border subtitle the page status
-  (`rows 21-40 of 133 · page 2 of 7`). Exempt: Outstanding tree + static tables
-  (static-table pick still open), Monthly grid, System kv-tables. Picks:
-  [mockups/expense-world-pagination.html](mockups/expense-world-pagination.html);
-  rationale: [decisions.md](decisions.md) (2026-07-11).
+- Adaptive pagination ✅ (2026-07-11, rows adaptive since 2026-07-13): every
+  `CursorList`/`CheckList` renders one window of **min(20, what fits the
+  terminal)** rows — the page IS the screenful (pick A + cap 20), so the panel
+  border/subtitle/footer never clip and no dead scrollbar appears; a resize
+  re-measures (`SectionScreen.measure_list_rows`, floor 5) and keeps the first
+  visible row. `DEFAULT_PAGE_ROWS` (20, one copy with the CLI) is the cap and
+  the pre-layout fallback. Keymap-contract page keys `pgdn`/`.` next and
+  `pgup`/`,` previous, hidden when one page holds it all.
+  Transactions/Inbox/Activity/Rates fetch real `limit/offset` pages sized to
+  the window via `PagedListMixin` (`j`/`k` clamp at the fetched edge; resize
+  refetches, offset re-anchored); full-data screens (Manage, the two
+  Reconciliations panes splitting the space equally, recon checklist at
+  fit÷2 items) window locally (`j`/`k` walk through, cursor-restore lands on
+  its page). Lists are quiet-border panels: border title carries the screen
+  title, border subtitle the page status (`rows 21-40 of 133 · page 2 of 7`).
+  Exempt: Outstanding tree + static tables (static-table pick still open),
+  Monthly grid, System kv-tables. Picks:
+  [mockups/expense-world-pagination.html](mockups/expense-world-pagination.html),
+  [mockups/expense-world-adaptive-rows.html](mockups/expense-world-adaptive-rows.html);
+  rationale: [decisions.md](decisions.md) (2026-07-11, amended 2026-07-13).
 - Async edge cases (slow net, offline, cold-start notice shown in-app), spinners.
 - Skeleton/empty/error states everywhere.
 - **Textual pilot tests** for navigation + key flows ◐ (binding-level pilot tests for
@@ -245,7 +253,11 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 ### Phase 4 (optional, later) — Live niceties
 Auto-refresh / watch mode, search-as-you-type, richer dashboards. (Mouse is
 deliberately **off** — the TUI is keyboard-only; see [decisions.md](decisions.md)
-"TUI is keyboard-only".)
+"TUI is keyboard-only". Corollary: terminal-level scrolling reaches the
+terminal itself, and Terminal.app will scroll into scrollback *above* the
+running app — any keypress snaps back. Launch therefore wipes the screen and
+scrollback (`CSI 2J 3J H` in `run_world`, picked 2026-07-13) so there is
+nothing to reveal; see decisions.md "Launch clears the terminal scrollback".)
 
 ## 6. Effort summary
 
