@@ -160,10 +160,12 @@ def test_reconciliations_browse_account_first(monkeypatch):
             # account focus: first account (acc1) selected → its batch (r1) shown below
             assert screen._mode == "accts"
             assert set(screen._by_id) == {"r1"}
-            # arrow to the second account → batch list follows to acc2's batch (r2)
+            # arrow to the second account → batch list follows to acc2's batch (r2).
+            # Wait on the state, not a fixed sleep: the Highlighted message
+            # bubbles through several widget pumps and a 50ms nap lost that race
+            # on CI (flaked 2026-07-13 after the adaptive-rows load deferral).
             screen._accts_list.action_move(1)
-            await pilot.pause(0.05)
-            assert screen._acct_idx == 1
+            await wait_for(pilot, lambda: screen._acct_idx == 1)
             assert set(screen._by_id) == {"r2"}
 
     asyncio.run(scenario())
