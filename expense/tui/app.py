@@ -48,6 +48,15 @@ def run_world(ctx: typer.Context) -> None:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         typer.echo("Error: expense world requires an interactive terminal.", err=True)
         raise typer.Exit(code=1)
+    # Wipe the screen AND the terminal's scrollback before Textual enters the
+    # alt screen (picked 2026-07-13, mockups/expense-world-adaptive-rows.html
+    # STEP 5): with mouse tracking off, wheel/scrollbar gestures go to the
+    # terminal itself, and Terminal.app reveals scrollback ABOVE the running
+    # app — pre-launch prompt text floating over the TUI. CSI 3J leaves
+    # nothing to reveal; terminals without it ignore it harmlessly. Accepted
+    # cost (the tab's whole scrollback, every launch): docs/decisions.md.
+    sys.stdout.write("\x1b[2J\x1b[3J\x1b[H")
+    sys.stdout.flush()
     # mouse=False: the TUI is keyboard-only. Textual otherwise enables terminal
     # mouse tracking on launch (clicks/scroll act on widgets AND the terminal's
     # native text-selection/copy is suppressed). Disabling it makes the app
