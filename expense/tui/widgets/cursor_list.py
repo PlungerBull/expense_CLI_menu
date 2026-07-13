@@ -5,8 +5,10 @@ Rows are `(key, cells)` pairs: `key` identifies the row (e.g. a record id) and
 is carried on the `Selected` message; `cells` are the column strings. `_build()`
 is pure, so formatting is unit-testable without an event loop.
 
-Every list renders at most `page_size` rows (20-row standard, picked
-2026-07-11); `pgdn`/`.` and `pgup`/`,` page. Two modes share the one widget:
+Every list renders at most `page_size` rows — min(20, what fits the terminal)
+since 2026-07-13 (adaptive rows, pick A + cap 20; the screen measures and calls
+`set_page_size` on resize); `pgdn`/`.` and `pgup`/`,` page. Two modes share the
+one widget:
 
 - window mode (default): `_rows` holds the full dataset and the visible
   window follows the cursor (`cursor // page_size`), so `j`/`k` walk straight
@@ -170,6 +172,15 @@ class CursorList(Static):
         if self._rows:
             self._cursor = max(0, min(len(self._rows) - 1, index))
             self._refresh()
+
+    def set_page_size(self, page_size: int) -> None:
+        """Adaptive rows (2026-07-13): the screen re-measures on terminal resize.
+        Window mode re-slices around the cursor here; fetched-page screens
+        refetch and rebuild the widget instead."""
+        if page_size < 1 or page_size == self._page_size:
+            return
+        self._page_size = page_size
+        self._refresh()
 
     @property
     def _window_start(self) -> int:

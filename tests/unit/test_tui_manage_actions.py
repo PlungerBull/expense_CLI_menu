@@ -107,7 +107,9 @@ def test_archive_toggle_restores_cursor_across_pages(fake_client, monkeypatch):
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
-        async with app.run_test() as pilot:
+        # tall harness: rows-per-page adapt to the terminal since 2026-07-13;
+        # 40 lines keeps the manage window at the 20-row cap, so a22 is page 2
+        async with app.run_test(size=(120, 40)) as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)
             await _wait_loaded(app, pilot)

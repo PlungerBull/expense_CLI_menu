@@ -1,8 +1,9 @@
 """Transactions screen — the posted ledger.
 
-Built on SectionScreen + the shared CursorList. Fetch-paged 20 rows at a time
-(PagedListMixin — real limit/offset against the engine/cache; pgdn/. turns the
-page); `enter` opens the record in the editable QuickAddLogScreen. No `cl`
+Built on SectionScreen + the shared CursorList. Fetch-paged (PagedListMixin —
+real limit/offset against the engine/cache, sized to the terminal ≤20 rows;
+pgdn/. turns the page); `enter` opens the record in the editable
+QuickAddLogScreen. No `cl`
 glyph column (dropped per request); interactive filters and search land in a
 later pass.
 """
@@ -98,6 +99,7 @@ class TransactionsScreen(PagedListMixin, SectionScreen):
                 align_right={2},
                 empty="(no transactions)",
                 title="Ledger — posted transactions · most recent first",
+                page_size=self.page_rows,
                 page_meta=self.page_meta(),
             ),
         ]

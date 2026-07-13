@@ -26,7 +26,7 @@ import uuid
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Container, VerticalScroll
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Footer, Input, Static
@@ -34,6 +34,7 @@ from textual.worker import get_current_worker
 
 from expense.commands import accounts_cmd, reconcile_cmd, transactions_cmd
 from expense.commands._resource import (
+    DEFAULT_PAGE_ROWS,
     account_choices,
     fetch_all_pages,
     format_cents,
@@ -147,6 +148,25 @@ class ReconciliationsScreen(SectionScreen):
         label = acct[1] if acct else "—"
         return f"Reconciliations · {label}   ·   chain order (oldest → newest)"
 
+    # ---- adaptive window (2026-07-13): two stacked panes split #content ----
+    def pane_rows(self) -> int:
+        """Rows-per-pane = an equal split of what fits (title 2 + two panel
+        frames), capped at 20, floor PAGE_ROWS_FLOOR — auto-height panes give
+        unused rows back when a pane has fewer rows than its share."""
+        try:
+            avail = self.query_one("#content", VerticalScroll).content_size.height
+        except Exception:
+            return DEFAULT_PAGE_ROWS
+        if avail <= 0:
+            return DEFAULT_PAGE_ROWS
+        per = (avail - 2 - 2 * self.LIST_FRAME_LINES) // 2
+        return max(self.PAGE_ROWS_FLOOR, min(DEFAULT_PAGE_ROWS, per))
+
+    def _viewport_resized(self) -> None:
+        for lst in (getattr(self, "_accts_list", None), getattr(self, "_batch_list", None)):
+            if lst is not None and lst.is_attached:
+                lst.set_page_size(self.pane_rows())
+
     def build(self, data: dict) -> list[Widget]:
         self._recons = data["recons"]
         self._accounts = data["accounts"]
@@ -157,12 +177,14 @@ class ReconciliationsScreen(SectionScreen):
             (aid, [name, cur, amount_cell(bal, palette, AMOUNT_RULE)])
             for (aid, name, cur, bal) in self._accounts
         ]
+        pane_size = self.pane_rows()
         self._accts_list = CursorList(
             ["Account", "Cur", "Balance"],
             acct_rows,
             align_right={2},
             empty="(no bank accounts)",
             title="Accounts",
+            page_size=pane_size,
         )
         self._accts_list.id = "accts"
         self._batch_list = CursorList(
@@ -171,6 +193,7 @@ class ReconciliationsScreen(SectionScreen):
             align_right={2, 3},
             empty="(no batches — press n to create one)",
             title=self._batch_caption(),  # panel title; updated as the account cursor moves
+            page_size=pane_size,
         )
         self._batch_list.id = "batches"
         title = "Reconciliations — pick an account, then a batch"
@@ -540,7 +563,26 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
     def on_mount(self) -> None:
         self.app.theme_changed_signal.subscribe(self, self._on_theme_change)
         self._render_header()
-        self._load_txns()
+        # First fetch waits for the first layout pass: _populate sizes the
+        # checklist to #rlist's real height (adaptive rows, 2026-07-13).
+        self.call_after_refresh(self._load_txns)
+
+    # ---- adaptive window (2026-07-13) --------------------------------------
+    def _checklist_items(self) -> int:
+        """Items-per-page = what fits #rlist at two lines each, capped at 20,
+        floor 5. Pre-layout / unmeasurable → the 20-item default."""
+        try:
+            avail = self.query_one("#rlist", Container).content_size.height
+        except Exception:
+            return DEFAULT_PAGE_ROWS
+        if avail <= 0:
+            return DEFAULT_PAGE_ROWS
+        items = (avail - 4) // 2  # panel border 2 + column header + rule, then 2 lines/item
+        return max(5, min(DEFAULT_PAGE_ROWS, items))
+
+    def on_resize(self, _event) -> None:
+        if self._list is not None and self._list.is_attached:
+            self._list.set_page_size(self._checklist_items())
 
     def _on_theme_change(self, _theme: object) -> None:
         # Repaint with the new palette; rebuild the checklist from cached rows
@@ -690,6 +732,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
                 read_only=self._completed,
                 empty=empty,
                 palette=resolve_palette(self.app),
+                page_size=self._checklist_items(),  # adaptive window (2026-07-13)
             )
             self._list.border_title = "Transactions"
             await container.mount(self._list)

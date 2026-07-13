@@ -1,9 +1,13 @@
-"""20-row pagination — widget window/indicator/keys + the shared helpers.
+"""Pagination — widget window/indicator/keys + the shared helpers.
+
+Pages are min(20, what fits the terminal) since 2026-07-13 (adaptive rows,
+pick A + cap 20): the tier-E wire tests at the bottom pin `run_test(size=…)`
+so the expected rows-per-page is deterministic — a tall harness proves the
+20 cap, a 30-line one proves the shrink, a tiny one proves the floor.
 
 Mostly pure tests in the style of the other widget suites: `_build()` renders
 through a Rich Console; action handlers run with `_refresh`/`post_message`
-stubbed so no event loop is needed. The tier-E wire tests at the bottom drive
-real screens through the app harness (limit/offset on the fetch, pgdn turns).
+stubbed so no event loop is needed.
 """
 
 import asyncio
@@ -111,6 +115,20 @@ def test_single_page_hides_page_keys_and_subtitle():
     assert _list(45).check_action("page", ()) is True
 
 
+def test_set_page_size_rewindows_around_cursor():
+    """Terminal resize (adaptive rows, 2026-07-13): the window re-slices to the
+    new size and keeps following the cursor."""
+    lst = _list(45)
+    lst.set_page_size(10)
+    out = _text(lst._build())
+    assert "row 00" in out and "row 09" in out and "row 10" not in out
+    assert lst.page_status == "rows 1-10 of 45 · page 1 of 5"
+    lst.set_cursor(23)
+    assert lst.page_status == "rows 21-30 of 45 · page 3 of 5"
+    lst.set_page_size(10)  # no-op: same size must not re-render
+    assert lst._page_size == 10
+
+
 # ---- CursorList fetched-page mode (page_meta, tier E) ------------------------
 
 
@@ -196,6 +214,17 @@ def test_checklist_single_page_hides_page_keys():
     assert _checklist(25).check_action("page", ()) is True
 
 
+def test_checklist_set_page_size_keeps_checks():
+    """Resize re-slices the window; membership is a key-set over the whole
+    batch, so checks survive (adaptive rows, 2026-07-13)."""
+    chk = _checklist(25, checked=["t3", "t22"])
+    chk.set_page_size(6)
+    out = _text(chk._build())
+    assert "txn 05" in out and "txn 06" not in out
+    assert chk.checked == {"t3", "t22"}
+    assert chk.page_status == "items 1-6 of 25 · page 1 of 5"
+
+
 # ---- manage-list fetch: all pages, not the source default -------------------
 
 
@@ -268,6 +297,21 @@ def test_mixin_reset_page_for_filter_changes():
     assert scr._page == 0
 
 
+def test_mixin_resize_refetches_and_reanchors():
+    """Terminal shrank 19→13 rows: refetch with the new limit, the offset
+    re-anchored so the old first visible row stays on the new page (pick A,
+    2026-07-13). An unchanged size must not refetch."""
+    scr = _FakeScreen(total=133)
+    scr._page_rows = 19
+    scr._page = 2  # first visible row 38
+    scr.measure_list_rows = lambda: 13
+    scr._viewport_resized()
+    assert scr._page_rows == 13 and scr.loads == 1
+    assert scr.page_offset <= 38 < scr.page_offset + 13
+    scr._viewport_resized()  # same measure → no spurious refetch
+    assert scr.loads == 1
+
+
 def test_fetch_page_body_snaps_back_when_page_vanishes():
     """Rows shrank under us (e.g. a delete emptied the last page): the mixin
     snaps to the last real page and refetches once."""
@@ -290,8 +334,8 @@ def test_fetch_page_body_snaps_back_when_page_vanishes():
 # ---- tier-E screens: real limit/offset on the wire ---------------------------
 
 
-def test_transactions_screen_pages_on_the_wire(monkeypatch):
-    """Loads with limit=20&offset=0; pgdn refetches offset=20 (picks A+B)."""
+def _patch_transactions(monkeypatch) -> list:
+    """133 fake transactions behind fetch_transactions; returns the calls log."""
     import expense.tui.screens.transactions as tx_mod
 
     calls = []
@@ -300,7 +344,7 @@ def test_transactions_screen_pages_on_the_wire(monkeypatch):
         calls.append((limit, offset))
         items = [
             {"id": f"t{i}", "title": f"Txn {i}", "amount_cents": -100 - i, "date": "2026-07-01"}
-            for i in range(offset, offset + limit)
+            for i in range(offset, min(offset + limit, 133))
         ]
         return {"items": items, "total": 133, "limit": limit, "offset": offset}
 
@@ -309,32 +353,84 @@ def test_transactions_screen_pages_on_the_wire(monkeypatch):
     monkeypatch.setattr(tx_mod, "load_category_name_map", lambda: {})
     monkeypatch.setattr(tx_mod, "load_hashtag_name_map", lambda: {})
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+    return calls
+
+
+def _drive_transactions(size: tuple[int, int], calls: list, checks) -> None:
+    """Push a TransactionsScreen in a `size` harness and run `checks(pilot, screen)`."""
 
     async def scenario():
         from expense.tui.screens.transactions import TransactionsScreen
 
         app = ExpenseApp(no_cache=True)
-        async with app.run_test() as pilot:
+        async with app.run_test(size=size) as pilot:
             screen = TransactionsScreen()
             await app.push_screen(screen)
             await wait_for(
                 pilot,
                 lambda: screen.query(CursorList) and not screen.query("#content LoadingIndicator"),
             )
-            assert calls == [(20, 0)]
-            assert screen.query(CursorList).first().page_status == "rows 1-20 of 133 · page 1 of 7"
-            await pilot.press("pagedown")
-            await wait_for(
-                pilot,
-                lambda: (
-                    screen.query(CursorList)
-                    and screen.query(CursorList).first().page_status
-                    == "rows 21-40 of 133 · page 2 of 7"
-                ),
-            )
-            assert calls[-1] == (20, 20)
+            await checks(pilot, screen)
 
     asyncio.run(scenario())
+
+
+def test_transactions_screen_pages_on_the_wire(monkeypatch):
+    """A tall terminal caps at 20 (pick: cap 20, 2026-07-13): loads with
+    limit=20&offset=0; pgdn refetches offset=20 (picks A+B, 2026-07-11)."""
+    calls = _patch_transactions(monkeypatch)
+
+    async def checks(pilot, screen):
+        assert calls == [(20, 0)]
+        assert screen.query(CursorList).first().page_status == "rows 1-20 of 133 · page 1 of 7"
+        await pilot.press("pagedown")
+        await wait_for(
+            pilot,
+            lambda: (
+                screen.query(CursorList)
+                and screen.query(CursorList).first().page_status
+                == "rows 21-40 of 133 · page 2 of 7"
+            ),
+        )
+        assert calls[-1] == (20, 20)
+
+    # content 28 lines → 24 rows fit → capped at the 20 standard
+    _drive_transactions((120, 35), calls, checks)
+
+
+def test_transactions_screen_adapts_rows_to_short_terminal(monkeypatch):
+    """A 30-line terminal fits 19 rows (chrome takes 11): the page IS the
+    screenful — limit=19 on the wire, 19-row pages in the indicator (pick A,
+    2026-07-13). This is the 2026-07-12 clipped-panel screenshot, fixed."""
+    calls = _patch_transactions(monkeypatch)
+
+    async def checks(pilot, screen):
+        assert calls == [(19, 0)]
+        assert screen.page_rows == 19
+        assert screen.query(CursorList).first().page_status == "rows 1-19 of 133 · page 1 of 7"
+        await pilot.press("pagedown")
+        await wait_for(
+            pilot,
+            lambda: (
+                screen.query(CursorList)
+                and screen.query(CursorList).first().page_status
+                == "rows 20-38 of 133 · page 2 of 7"
+            ),
+        )
+        assert calls[-1] == (19, 19)
+
+    _drive_transactions((120, 30), calls, checks)
+
+
+def test_transactions_screen_floors_at_five_rows(monkeypatch):
+    """Below a ~16-line terminal the fit goes under 5; the floor holds (the
+    panel clips there — pre-2026-07-13 behavior, terminal was never usable)."""
+    calls = _patch_transactions(monkeypatch)
+
+    async def checks(pilot, screen):
+        assert calls == [(5, 0)]
+
+    _drive_transactions((120, 14), calls, checks)
 
 
 def test_inbox_filter_change_resets_page(monkeypatch):
@@ -357,7 +453,8 @@ def test_inbox_filter_change_resets_page(monkeypatch):
         from expense.tui.screens.inbox import InboxScreen
 
         app = ExpenseApp(no_cache=True)  # no_cache: the ready-glyph second fetch is skipped
-        async with app.run_test() as pilot:
+        # 35 lines: inbox chrome + legend take 13, so the 20 cap still applies
+        async with app.run_test(size=(120, 35)) as pilot:
             screen = InboxScreen()
             await app.push_screen(screen)
             await wait_for(

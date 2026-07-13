@@ -240,22 +240,46 @@ class PagedListMixin:
     posts `PageRequested` on the page keys; this mixin clamps against the last
     known total, bumps the page, and reloads through the normal section-load
     worker. The subclass contract: call `page_fetch_kwargs()` inside `fetch()`,
-    record the body's `total` into `_page_total` (fetch- or build-side), and
-    call `reset_page()` whenever a filter change invalidates the offset.
+    record the body's `total` into `_page_total` (fetch- or build-side), pass
+    `page_size=self.page_rows` to the CursorList, and call `reset_page()`
+    whenever a filter change invalidates the offset.
+
+    Rows-per-page adapt to the terminal (2026-07-13, pick A + cap 20): the
+    page IS the screenful — `_start_load` measures before the first fetch and
+    a terminal resize refetches with the new limit, re-anchoring the offset so
+    the old first visible row stays on the new page.
     """
 
     _page: int = 0
     _page_total: int | None = None
+    _page_rows: int | None = None  # measured rows-per-page; None until first layout
+
+    @property
+    def page_rows(self) -> int:
+        return self._page_rows or DEFAULT_PAGE_ROWS
 
     @property
     def page_offset(self) -> int:
-        return DEFAULT_PAGE_ROWS * self._page
+        return self.page_rows * self._page
 
     def page_fetch_kwargs(self) -> dict:
-        return {"limit": DEFAULT_PAGE_ROWS, "offset": self.page_offset}
+        return {"limit": self.page_rows, "offset": self.page_offset}
 
     def reset_page(self) -> None:
         self._page = 0
+
+    def _start_load(self) -> None:
+        self._page_rows = self.measure_list_rows()
+        super()._start_load()
+
+    def _viewport_resized(self) -> None:
+        new = self.measure_list_rows()
+        if new == self.page_rows:
+            return
+        first_row = self.page_offset  # keep the old first visible row on the new page
+        self._page_rows = new
+        self._page = first_row // new
+        self._load()
 
     def page_meta(self) -> tuple[int, int] | None:
         """(offset, total) for the CursorList subtitle; None until a fetch
@@ -272,7 +296,7 @@ class PagedListMixin:
         self._page_total = total if isinstance(total, int) else None
         if self._page and self._page_total is not None and self.page_offset >= self._page_total:
             last = self._page_total - 1
-            self._page = last // DEFAULT_PAGE_ROWS if last >= 0 else 0
+            self._page = last // self.page_rows if last >= 0 else 0
             body = fetch_page(self.page_fetch_kwargs())
             total = body.get("total") if isinstance(body, dict) else None
             self._page_total = total if isinstance(total, int) else None
@@ -284,7 +308,7 @@ class PagedListMixin:
         if target < 0:
             return
         total = self._page_total
-        if total is not None and target * DEFAULT_PAGE_ROWS >= total:
+        if total is not None and target * self.page_rows >= total:
             return  # no page there — the last page stays put
         self._page = target
         self._load()
@@ -300,6 +324,11 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
     # Last fetched payload, cached so a theme swap re-renders from memory instead
     # of re-fetching. None = nothing loaded yet (an empty list/dict is still cached).
     _data: object = None
+    _started: bool = False  # first load ran (it waits for the first layout pass)
+
+    # ---- adaptive list sizing (2026-07-13, mockups/expense-world-adaptive-rows.html)
+    LIST_FRAME_LINES = 4  # panel border 2 + column header + header rule
+    PAGE_ROWS_FLOOR = 5  # below this the panel clips again (a <16-line terminal)
 
     def compose(self) -> ComposeResult:
         yield Breadcrumb(self.crumb, id="crumb")
@@ -308,7 +337,41 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
 
     def on_mount(self) -> None:
         self.app.theme_changed_signal.subscribe(self, self._on_theme_change)
+        # First load waits for the first layout pass: adaptive page sizing
+        # (measure_list_rows) reads #content's height, which is 0 at mount.
+        self.call_after_refresh(self._start_load)
+
+    def _start_load(self) -> None:
+        if self._started:
+            return
+        self._started = True
         self._load()
+
+    def on_resize(self, _event) -> None:
+        # The initial layout fires Resize too; adaptive re-windowing only makes
+        # sense once the first load measured this same geometry.
+        if self._started:
+            self._viewport_resized()
+
+    def _viewport_resized(self) -> None:
+        """Hook — adaptive-list screens re-window (window mode) or refetch with
+        the new limit (fetched-page mode) when the terminal size changes."""
+
+    def list_extra_lines(self) -> int:
+        """Lines the screen renders around its list inside #content (legends…)."""
+        return 0
+
+    def measure_list_rows(self) -> int:
+        """Rows-per-page = min(20, what fits #content), floor PAGE_ROWS_FLOOR —
+        pick A + cap 20, 2026-07-13. Pre-layout / unmeasurable → the 20 default."""
+        try:
+            avail = self.query_one("#content", VerticalScroll).content_size.height
+        except Exception:
+            return DEFAULT_PAGE_ROWS
+        if avail <= 0:
+            return DEFAULT_PAGE_ROWS
+        rows = avail - self.LIST_FRAME_LINES - self.list_extra_lines()
+        return max(self.PAGE_ROWS_FLOOR, min(DEFAULT_PAGE_ROWS, rows))
 
     def _on_theme_change(self, _theme: object) -> None:
         # Rich content bakes resolved hexes at build time, so a live theme change
@@ -317,7 +380,7 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
         if self._data is not None:
             self.run_worker(self._show(self._data), exclusive=False, group="section-render")
         else:
-            self._load()
+            self._start_load()
 
     async def action_reload(self) -> None:
         async with self._content_lock():
@@ -489,6 +552,19 @@ class ResourceListScreen(SectionScreen):
     def on_cursor_list_highlighted(self, event) -> None:
         self.refresh_bindings()  # re-check e/a for the row the cursor just landed on
 
+    # ---- adaptive window (2026-07-13) --------------------------------------
+    def list_extra_lines(self) -> int:
+        return 2 if self.LEGEND else 0  # legend Static: margin-top 1 + one text line
+
+    def _viewport_resized(self) -> None:
+        from expense.tui.widgets.cursor_list import CursorList
+
+        try:
+            cursor_list = self.query_one(CursorList)
+        except Exception:
+            return  # not built yet (loading/error state)
+        cursor_list.set_page_size(self.measure_list_rows())
+
     # ---- scaffold ----------------------------------------------------------
     def fetch(self) -> list:
         from expense import config as config_module
@@ -507,6 +583,7 @@ class ResourceListScreen(SectionScreen):
             align_right=self.ALIGN_RIGHT,
             empty=self.EMPTY,
             title=self.TITLE,  # panel border title (L2, 2026-07-11) — no title row
+            page_size=self.measure_list_rows(),  # adaptive window (2026-07-13)
         )
         # Re-select the acted-on row: _show mounts a fresh CursorList each load,
         # so without this an archive toggle would snap the cursor back to row 0

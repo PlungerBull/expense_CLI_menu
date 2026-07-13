@@ -78,6 +78,9 @@ class InboxScreen(PagedListMixin, SectionScreen):
         self._filter = "all"
         self._by_id: dict = {}
 
+    def list_extra_lines(self) -> int:
+        return 2  # the glyph/filter legend below the list (margin-top 1 + text)
+
     def fetch(self) -> dict:
         from expense import config as config_module
 
@@ -120,6 +123,7 @@ class InboxScreen(PagedListMixin, SectionScreen):
                 align_right={3},
                 empty="(no inbox items)",
                 title="Inbox — capture now, complete later",
+                page_size=self.page_rows,
                 page_meta=self.page_meta(),
             ),
             Static(

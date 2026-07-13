@@ -8,8 +8,10 @@ In `read_only` mode (completed batch) there's no checkbox and no toggle.
 Rows are pure `(key, title, amount_cents, date, sub)` tuples so formatting is
 unit-testable without an event loop.
 
-Renders at most `page_size` items (20-row standard, picked 2026-07-11; an item
-is two physical lines) — always window mode: the full batch stays in memory,
+Renders at most `page_size` items — min(20, what fits the pane) since
+2026-07-13 (adaptive rows; an item is two physical lines, so the screen passes
+`fit ÷ 2` and calls `set_page_size` on resize) — always window mode: the full
+batch stays in memory,
 the visible window follows the cursor, and `pgdn`/`.` / `pgup`/`,` jump a page.
 Membership is window-proof: `_checked` is a key-set over the whole batch, so
 `c Complete` counts every checked row across all pages. Page status renders in
@@ -106,6 +108,15 @@ class CheckList(Static):
         self._rows = list(rows)
         self._checked = set(checked)
         self._cursor = min(self._cursor, max(0, len(self._rows) - 1))
+        self._refresh()
+
+    def set_page_size(self, page_size: int) -> None:
+        """Adaptive rows (2026-07-13): the screen re-measures on terminal resize
+        and re-slices the window around the cursor. Membership (`_checked`) is a
+        key-set over the whole batch, so a re-slice can't drop checks."""
+        if page_size < 1 or page_size == self._page_size:
+            return
+        self._page_size = page_size
         self._refresh()
 
     @property

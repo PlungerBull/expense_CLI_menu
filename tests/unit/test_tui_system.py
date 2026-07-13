@@ -372,13 +372,15 @@ def test_rates_screen_lists_history(monkeypatch):
 
     async def scenario():
         app = ExpenseApp(no_cache=True)
-        async with app.run_test() as pilot:
+        # tall harness: rows-per-page adapt to the terminal since 2026-07-13;
+        # 35 lines puts rates (chrome 11 + two legends 4) at the 20-row cap
+        async with app.run_test(size=(120, 35)) as pilot:
             screen = RatesScreen()
             await app.push_screen(screen)
             from expense.tui.widgets.cursor_list import CursorList
 
             await wait_for(pilot, lambda: bool(app.screen.query(CursorList)))
-            # fetch-paged at the 20-row standard (2026-07-11 pagination)
+            # fetch-paged, capped at the 20-row standard (2026-07-11 + 2026-07-13)
             assert captured == {"date": None, "limit": 20, "offset": 0}
             cursor_list = app.screen.query_one(CursorList)
             rows = cursor_list._rows

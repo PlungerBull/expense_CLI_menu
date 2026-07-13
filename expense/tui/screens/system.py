@@ -487,7 +487,8 @@ _ACTIVITY_HEADERS = ["Date", "Time", "Action", "Actor", "Type", "Record"]
 
 
 class ActivityScreen(PagedListMixin, SectionScreen):
-    """Engine-direct audit log, fetch-paged 20 rows at a time (PagedListMixin).
+    """Engine-direct audit log, fetch-paged ≤20 rows at a time (PagedListMixin,
+    sized to the terminal).
 
     `enter` opens the before/after snapshot for one entry (the nested dicts the
     CLI human view omits). v1 is unfiltered; filters are a later pass.
@@ -499,6 +500,9 @@ class ActivityScreen(PagedListMixin, SectionScreen):
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
+
+    def list_extra_lines(self) -> int:
+        return 2  # the "most recent first · ↵ view" legend below (margin-top 1 + text)
 
     def fetch(self) -> dict:
         from expense import config as config_module
@@ -528,6 +532,7 @@ class ActivityScreen(PagedListMixin, SectionScreen):
                 rows,
                 empty="(no activity)",
                 title="Activity — who changed what, and when",
+                page_size=self.page_rows,
                 page_meta=self.page_meta(),
             ),
             Static(
@@ -555,10 +560,10 @@ _RATES_HEADERS = ["Date", "Base", "Target", "Rate"]
 class RatesScreen(PagedListMixin, SectionScreen):
     """Stored daily FX rates — GET /v1/exchange-rates/history (backlog 4.8).
 
-    A plain read table, fetch-paged 20 rows at a time (PagedListMixin): newest
-    first, one row per currency pair per day. Cross-currency writes convert
-    automatically engine-side, so this is reference data only. `f` filters to
-    an exact day; blank enter clears.
+    A plain read table, fetch-paged ≤20 rows at a time (PagedListMixin, sized
+    to the terminal): newest first, one row per currency pair per day.
+    Cross-currency writes convert automatically engine-side, so this is
+    reference data only. `f` filters to an exact day; blank enter clears.
     Replaced the t/b/d letter-jump lookup per the approved v2 mockup.
     """
 
@@ -571,6 +576,9 @@ class RatesScreen(PagedListMixin, SectionScreen):
     def __init__(self) -> None:
         super().__init__()
         self._date: str | None = None  # exact-day filter; None = full history
+
+    def list_extra_lines(self) -> int:
+        return 4  # legends above AND below the list (each: margin-top 1 + text)
 
     def fetch(self) -> dict:
         from expense import config as config_module
@@ -616,6 +624,7 @@ class RatesScreen(PagedListMixin, SectionScreen):
                 align_right={3},
                 empty=empty,
                 title="Exchange rates — stored daily history",
+                page_size=self.page_rows,
                 page_meta=self.page_meta(),
             ),
             Static(
