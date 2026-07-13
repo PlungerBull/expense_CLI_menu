@@ -243,7 +243,9 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - **Exit criteria:** shippable; feature-complete vs the flat command surface.
 
 ### Phase 4 (optional, later) — Live niceties
-Auto-refresh / watch mode, search-as-you-type, mouse, richer dashboards.
+Auto-refresh / watch mode, search-as-you-type, richer dashboards. (Mouse is
+deliberately **off** — the TUI is keyboard-only; see [decisions.md](decisions.md)
+"TUI is keyboard-only".)
 
 ## 6. Effort summary
 

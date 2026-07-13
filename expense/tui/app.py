@@ -48,4 +48,9 @@ def run_world(ctx: typer.Context) -> None:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         typer.echo("Error: expense world requires an interactive terminal.", err=True)
         raise typer.Exit(code=1)
-    ExpenseApp(verbose=get_verbose(ctx), no_cache=get_no_cache(ctx)).run()
+    # mouse=False: the TUI is keyboard-only. Textual otherwise enables terminal
+    # mouse tracking on launch (clicks/scroll act on widgets AND the terminal's
+    # native text-selection/copy is suppressed). Disabling it makes the app
+    # ignore the mouse and restores native select-to-copy. Every affordance has
+    # a full keyboard path; see docs/decisions.md.
+    ExpenseApp(verbose=get_verbose(ctx), no_cache=get_no_cache(ctx)).run(mouse=False)
