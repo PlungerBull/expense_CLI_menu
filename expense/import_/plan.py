@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from expense.import_ import mapping
-from expense.import_.parse import ParsedRow, SkippedRow
+from expense.import_.parse import OpeningRow, ParsedRow, SkippedRow
 
 
 @dataclass(frozen=True)
@@ -27,10 +27,12 @@ class ImportPlan:
     accounts: list[AccountSpec]  # distinct (name, currency)
     categories: list[str]  # distinct names, first-seen casing
     hashtags: list[str]  # distinct names, first-seen casing
+    openings: list[OpeningRow] = field(default_factory=list)
+    opening_ids: dict[int, str] = field(default_factory=dict)  # row.line -> uuid
     skipped: list[SkippedRow] = field(default_factory=list)
 
 
-def stable_row_key(row: ParsedRow) -> str:
+def stable_row_key(row: ParsedRow | OpeningRow) -> str:
     return "|".join(
         [
             row.date_iso,
@@ -43,7 +45,7 @@ def stable_row_key(row: ParsedRow) -> str:
     )
 
 
-def tx_id_for(row: ParsedRow) -> str:
+def tx_id_for(row: ParsedRow | OpeningRow) -> str:
     return str(uuid.uuid5(mapping.IMPORT_NAMESPACE, stable_row_key(row)))
 
 
@@ -57,7 +59,11 @@ def _distinct_ci(names: Iterable[str]) -> list[str]:
     return list(seen.values())
 
 
-def build_plan(parsed: list[ParsedRow], skipped: list[SkippedRow]) -> ImportPlan:
+def build_plan(
+    parsed: list[ParsedRow],
+    openings: list[OpeningRow],
+    skipped: list[SkippedRow],
+) -> ImportPlan:
     skips = list(skipped)
     rows: list[ParsedRow] = []
     tx_ids: dict[int, str] = {}
@@ -68,9 +74,33 @@ def build_plan(parsed: list[ParsedRow], skipped: list[SkippedRow]) -> ImportPlan
         tx_ids[row.line] = tx_id_for(row)
         rows.append(row)
 
+    # Opening balances: the engine enforces one active opening per account, so
+    # a sheet with two SALDO INICIAL rows for the same (account, currency)
+    # keeps only the first (lowest line) and reports the rest — deterministic
+    # and visible in the dry-run rather than a surprise 409 at apply time.
+    kept_openings: list[OpeningRow] = []
+    opening_ids: dict[int, str] = {}
+    first_by_account: dict[tuple[str, str], int] = {}
+    for row in openings:
+        key = (row.account.strip().casefold(), row.currency)
+        if key in first_by_account:
+            skips.append(
+                SkippedRow(
+                    row.line,
+                    "duplicate-opening",
+                    f"first at line {first_by_account[key]}",
+                )
+            )
+            continue
+        first_by_account[key] = row.line
+        opening_ids[row.line] = tx_id_for(row)
+        kept_openings.append(row)
+
     accounts: list[AccountSpec] = []
     acct_seen: set[tuple[str, str]] = set()
-    for row in rows:
+    # Openings can reference accounts that appear in no ordinary row — an
+    # account whose only sheet entry is its SALDO INICIAL still gets created.
+    for row in [*rows, *kept_openings]:
         key = (row.account.strip().casefold(), row.currency)
         if key not in acct_seen:
             acct_seen.add(key)
@@ -82,5 +112,7 @@ def build_plan(parsed: list[ParsedRow], skipped: list[SkippedRow]) -> ImportPlan
         accounts=accounts,
         categories=_distinct_ci(row.category for row in rows),
         hashtags=_distinct_ci(row.hashtag for row in rows),
+        openings=kept_openings,
+        opening_ids=opening_ids,
         skipped=skips,
     )

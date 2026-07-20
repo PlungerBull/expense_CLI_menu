@@ -532,6 +532,8 @@ Landed between Step 9.5 and Step 10, outside the numbered steps: `expense import
 
 **Commit:** `feat(import): expense import — bulk .xlsx → engine via batch endpoint`
 
+**Opening balances (added 2026-07-20):** rows titled `SALDO INICIAL` (case/whitespace-insensitive) are detected at parse time (`OpeningRow`), skip the category/hashtag requirement, dedupe per (account, currency) with `duplicate-opening` skips (first line wins), and route to the engine's `POST /accounts/{id}/opening-balance` (engine Step 9.4) instead of the batch — seeding the account under the `@Opening` system category, which flow reports exclude. Companion flat command: `expense accounts opening-balance`. Why + rejected alternatives: [decisions.md](decisions.md) "Opening balances are an engine concept".
+
 ---
 
 ## Post-Step-9 ergonomics

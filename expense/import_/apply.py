@@ -18,7 +18,7 @@ from expense.dates import to_canonical_aware
 from expense.errors import EngineConnectionError, EngineError, format_error
 from expense.http import ExpenseClient
 from expense.import_ import mapping
-from expense.import_.parse import ParsedRow
+from expense.import_.parse import OpeningRow, ParsedRow
 from expense.import_.plan import ImportPlan
 
 
@@ -45,6 +45,9 @@ class ApplyResult:
     tx_created: int = 0
     tx_skipped_existing: int = 0  # rows whose singleton retry 409'd (id already imported)
     tx_failed: int = 0
+    opening_created: int = 0
+    opening_skipped_existing: int = 0  # 409: id replayed, or account already seeded
+    opening_failed: int = 0
     # (chunk_index, message) — messages carry sheet line numbers so a failed
     # row can be found in the workbook without bisecting.
     failures: list[tuple[int, str]] = field(default_factory=list)
@@ -200,6 +203,68 @@ def build_tx_payload(row: ParsedRow, tx_id: str, res: ResolveResult) -> dict:
     return payload
 
 
+def build_opening_payload(row: OpeningRow, transaction_id: str) -> dict:
+    payload: dict = {
+        "transaction_id": transaction_id,
+        "amount_cents": row.amount_cents,
+        "date": to_canonical_aware(row.date_iso),
+        "title": row.title,
+    }
+    if row.exchange_rate is not None:
+        # Same boundary cast as build_tx_payload: Decimal kept rounding
+        # money-correct; the wire field is a JSON number.
+        payload["exchange_rate"] = float(row.exchange_rate)
+    return payload
+
+
+def _apply_openings(client: ExpenseClient, plan: ImportPlan, res, result: ApplyResult) -> bool:
+    """POST each opening balance to /accounts/{id}/opening-balance.
+
+    A 409 means the seed already landed (replayed transaction_id, or the
+    account already carries an opening balance) — counted as already-present,
+    mirroring the singleton-batch semantics. Returns False when a connection
+    error stopped the run (remaining openings are counted failed).
+    """
+    for pos, row in enumerate(plan.openings):
+        account_key = (row.account.strip().casefold(), row.currency)
+        account_id = res.account_ids.get(account_key)
+        if account_id is None:
+            result.opening_failed += 1
+            result.failures.append(
+                (
+                    -1,
+                    f"sheet line {row.line}: opening balance not sent — "
+                    f"account {row.account!r} ({row.currency}) was not created",
+                )
+            )
+            continue
+        try:
+            client.post(
+                f"/accounts/{account_id}/opening-balance",
+                json_body=build_opening_payload(row, plan.opening_ids[row.line]),
+            )
+            result.opening_created += 1
+        except EngineError as err:
+            if err.status == 409:
+                result.opening_skipped_existing += 1
+            else:
+                result.opening_failed += 1
+                result.failures.append(
+                    (-1, f"sheet line {row.line} (opening balance): {format_error(err)}")
+                )
+        except EngineConnectionError as err:
+            result.opening_failed += len(plan.openings) - pos
+            result.failures.append(
+                (
+                    -1,
+                    f"CONNECTION_ERROR: {format_error(err)} — opening balances from "
+                    f"sheet line {row.line} on were not sent",
+                )
+            )
+            return False
+    return True
+
+
 def chunked(items: list, size: int) -> Iterator[list]:
     for i in range(0, len(items), size):
         yield items[i : i + size]
@@ -266,6 +331,16 @@ def apply_plan(
     chunk_size: int = 200,
 ) -> ApplyResult:
     result = ApplyResult(resolve=res)
+
+    # Opening balances go first: seeds are account-level state, and if the
+    # engine is unreachable the ordinary rows would fail identically anyway.
+    if not _apply_openings(client, plan, res, result):
+        result.tx_failed += len(plan.rows)
+        result.failures.append(
+            (-1, "transactions not sent — connection lost while seeding opening balances")
+        )
+        return result
+
     items: list[dict] = []
     line_by_id: dict[str, int] = {}
     for row in plan.rows:

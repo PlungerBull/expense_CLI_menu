@@ -395,6 +395,56 @@ def test_create_json_mode(configured):
     assert "Created:" not in result.output
 
 
+@respx.mock
+def test_opening_balance_happy(configured):
+    route = respx.post("https://api.example.com/v1/accounts/acc-1/opening-balance").mock(
+        return_value=httpx.Response(201, json={"id": "seed-1", "amount_cents": 1250000})
+    )
+    result = runner.invoke(
+        cli_app,
+        [
+            "accounts",
+            "opening-balance",
+            "acc-1",
+            "--amount",
+            "1250000",
+            "--date",
+            "2026-01-01",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Seeded opening balance:" in result.output
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["amount_cents"] == 1250000
+    assert body["date"].startswith("2026-01-01")
+    assert "title" not in body  # engine supplies the default
+    UUID(body["transaction_id"])
+
+
+@respx.mock
+def test_opening_balance_conflict_surfaces_error(configured):
+    respx.post("https://api.example.com/v1/accounts/acc-1/opening-balance").mock(
+        return_value=httpx.Response(
+            409,
+            json={
+                "error": {
+                    "code": "CONFLICT",
+                    "message": "This account already has an opening balance.",
+                    "fields": None,
+                }
+            },
+        )
+    )
+    result = runner.invoke(
+        cli_app,
+        ["accounts", "opening-balance", "acc-1", "--amount", "1000"],
+    )
+    assert result.exit_code == 1
+    assert "CONFLICT" in result.output
+    assert "already has an opening balance" in result.output
+
+
 def test_update_no_flags_errors(configured):
     result = runner.invoke(cli_app, ["accounts", "update", "abc"])
     assert result.exit_code == 1

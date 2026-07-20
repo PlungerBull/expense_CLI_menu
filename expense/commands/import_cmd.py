@@ -37,6 +37,16 @@ def _render_plan(plan: plan_mod.ImportPlan, *, json_output: bool) -> None:
                     "accounts": [{"name": a.name, "currency": a.currency} for a in plan.accounts],
                     "categories": plan.categories,
                     "hashtags": plan.hashtags,
+                    "opening_balances": [
+                        {
+                            "line": o.line,
+                            "account": o.account,
+                            "currency": o.currency,
+                            "amount_cents": o.amount_cents,
+                            "date": o.date_iso,
+                        }
+                        for o in plan.openings
+                    ],
                 },
                 indent=2,
                 ensure_ascii=False,
@@ -64,6 +74,13 @@ def _render_plan(plan: plan_mod.ImportPlan, *, json_output: bool) -> None:
     typer.echo(f"\nHashtags to ensure ({len(plan.hashtags)}):")
     typer.echo(f"  {', '.join(sorted(plan.hashtags))}")
 
+    if plan.openings:
+        typer.echo(f"\nOpening balances to seed ({len(plan.openings)}):")
+        for o in sorted(plan.openings, key=lambda r: (r.account.casefold(), r.currency)):
+            sign = "-" if o.amount_cents < 0 else ""
+            major = f"{abs(o.amount_cents) // 100:,}.{abs(o.amount_cents) % 100:02d}"
+            typer.echo(f"  {o.account} [{o.currency}]: {sign}{major} on {o.date_iso}")
+
 
 def _render_result(result: apply_mod.ApplyResult, *, json_output: bool) -> None:
     res = result.resolve
@@ -81,6 +98,9 @@ def _render_result(result: apply_mod.ApplyResult, *, json_output: bool) -> None:
                     "tx_created": result.tx_created,
                     "tx_skipped_existing": result.tx_skipped_existing,
                     "tx_failed": result.tx_failed,
+                    "opening_created": result.opening_created,
+                    "opening_skipped_existing": result.opening_skipped_existing,
+                    "opening_failed": result.opening_failed,
                     "failures": [{"chunk": c, "error": m} for c, m in result.failures],
                 },
                 indent=2,
@@ -96,6 +116,12 @@ def _render_result(result: apply_mod.ApplyResult, *, json_output: bool) -> None:
         typer.echo(f"Resource failures ({len(res.resolve_failures)}):")
         for message in res.resolve_failures:
             typer.echo(f"  {message}")
+    if result.opening_created or result.opening_skipped_existing or result.opening_failed:
+        typer.echo(
+            f"Opening balances: seeded {result.opening_created}, "
+            f"already-present {result.opening_skipped_existing}, "
+            f"failed {result.opening_failed}"
+        )
     typer.echo(
         f"Transactions: created {result.tx_created}, "
         f"already-present {result.tx_skipped_existing}, failed {result.tx_failed}"
@@ -125,6 +151,12 @@ def run_import(
     name and writes transactions in atomic batches. Without --apply it only
     prints what it would do and writes nothing.
 
+    Rows titled "SALDO INICIAL" (case/space-insensitive) are opening balances:
+    they seed the account via the engine's opening-balance endpoint (@Opening
+    system category, excluded from flow reports) instead of importing as
+    ordinary transactions. Their category/hashtag cells may be blank; one per
+    account — extras are skipped as duplicate-opening in the preview.
+
     Re-running --apply is safe for unchanged and appended sheets: transaction
     ids derive from each row's content plus its line number, so already-imported
     rows are skipped and new rows still land (a chunk mixing both falls back to
@@ -139,12 +171,12 @@ def run_import(
     """
     try:
         sheet = read_workbook(file)
-        parsed, skipped = parse_sheet(sheet)
+        parsed, openings, skipped = parse_sheet(sheet)
     except (ImportDependencyError, ImportFileError, ImportFormatError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
-    plan = plan_mod.build_plan(parsed, skipped)
+    plan = plan_mod.build_plan(parsed, openings, skipped)
 
     if not apply:
         _render_plan(plan, json_output=json_output)

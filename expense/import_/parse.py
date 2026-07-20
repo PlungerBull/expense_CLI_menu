@@ -30,10 +30,41 @@ class ParsedRow:
 
 
 @dataclass(frozen=True)
+class OpeningRow:
+    """A SALDO INICIAL row — routed to POST /accounts/{id}/opening-balance.
+
+    Detected by title (case/whitespace-insensitive). Category and hashtag are
+    deliberately absent: the engine assigns the @Opening system category, and
+    spreadsheets typically leave those cells blank on opening rows.
+    """
+
+    line: int
+    title: str
+    account: str
+    currency: str
+    date_iso: str
+    amount_cents: int
+    exchange_rate: Decimal | None
+
+
+@dataclass(frozen=True)
 class SkippedRow:
     line: int
     reason: str
     detail: str = ""
+
+
+#: Titles that mark a row as an opening balance, normalized via
+#: ``_normalize_title`` (casefold + collapsed whitespace).
+OPENING_TITLES = frozenset({"saldo inicial"})
+
+
+def _normalize_title(title: str) -> str:
+    return " ".join(title.split()).casefold()
+
+
+def is_opening_title(title: str) -> bool:
+    return _normalize_title(title) in OPENING_TITLES
 
 
 class ImportFormatError(Exception):
@@ -130,7 +161,7 @@ def parse_rate(value: object) -> Decimal | None:
         return None
 
 
-def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | SkippedRow:
+def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | OpeningRow | SkippedRow:
     def cell(field: str) -> object:
         i = index.get(field)
         if i is None or i >= len(raw.cells):
@@ -145,11 +176,14 @@ def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | SkippedRow:
 
     if title is None:
         return SkippedRow(raw.line, "missing-title")
+    opening = is_opening_title(title)
     if account is None:
         return SkippedRow(raw.line, "missing-account")
-    if category is None:
+    # Opening rows skip the category/hashtag requirement — the engine assigns
+    # the @Opening system category, and sheets leave those cells blank.
+    if not opening and category is None:
         return SkippedRow(raw.line, "missing-category")
-    if hashtag is None:
+    if not opening and hashtag is None:
         return SkippedRow(raw.line, "missing-hashtag")
     if currency_raw is None:
         return SkippedRow(raw.line, "missing-currency")
@@ -178,6 +212,17 @@ def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | SkippedRow:
             return SkippedRow(raw.line, "bad-rate", str(cell("rate")))
         exchange_rate = rate
 
+    if opening:
+        return OpeningRow(
+            line=raw.line,
+            title=title,
+            account=account,
+            currency=currency,
+            date_iso=date_iso,
+            amount_cents=amount_cents,
+            exchange_rate=exchange_rate,
+        )
+
     return ParsedRow(
         line=raw.line,
         title=title,
@@ -192,10 +237,13 @@ def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | SkippedRow:
     )
 
 
-def parse_sheet(sheet: SheetData) -> tuple[list[ParsedRow], list[SkippedRow]]:
+def parse_sheet(
+    sheet: SheetData,
+) -> tuple[list[ParsedRow], list[OpeningRow], list[SkippedRow]]:
     """Parse every data row. Fully-empty rows are ignored (not reported)."""
     index = build_column_index(sheet.headers)
     parsed: list[ParsedRow] = []
+    openings: list[OpeningRow] = []
     skipped: list[SkippedRow] = []
     for raw in sheet.rows:
         if all(_clean(c) is None for c in raw.cells):
@@ -203,6 +251,8 @@ def parse_sheet(sheet: SheetData) -> tuple[list[ParsedRow], list[SkippedRow]]:
         result = parse_row(raw, index)
         if isinstance(result, ParsedRow):
             parsed.append(result)
+        elif isinstance(result, OpeningRow):
+            openings.append(result)
         else:
             skipped.append(result)
-    return parsed, skipped
+    return parsed, openings, skipped

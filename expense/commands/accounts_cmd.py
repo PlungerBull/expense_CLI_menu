@@ -28,6 +28,7 @@ from expense.commands._resource import (
     run_toggle,
 )
 from expense.context import get_no_cache, get_verbose
+from expense.dates import now_local_iso, to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
 
@@ -222,6 +223,64 @@ def create(
 
     if not json_output:
         typer.echo(f"Created: {new_id}")
+    render_record(body, json_mode=json_output)
+
+
+@app.command("opening-balance")
+@handle_errors
+def opening_balance(
+    ctx: typer.Context,
+    account_id: str = typer.Argument(..., help="Account UUID to seed."),
+    amount: int = typer.Option(
+        ...,
+        "--amount",
+        help="Signed cents. Positive = money you had, negative = starting debt.",
+    ),
+    date: str | None = typer.Option(
+        None,
+        "--date",
+        help="YYYY-MM-DD, 'YYYY-MM-DD HH:MM[:SS]', or RFC 3339 with offset. "
+        "Naive forms get the local timezone attached. Defaults to now.",
+    ),
+    title: str | None = typer.Option(
+        None, "--title", help='Seed transaction title. Engine defaults to "Opening balance".'
+    ),
+    exchange_rate: float | None = typer.Option(
+        None, "--exchange-rate", help="Override engine auto-fetch."
+    ),
+    json_output: bool = JSON_OPT,
+) -> None:
+    """POST /v1/accounts/{id}/opening-balance.
+
+    Seeds the account's starting balance as a transaction under the @Opening
+    system category. The seed counts toward the account balance but is
+    excluded from flow reports (dashboard month panel, monthly report) — an
+    opening balance is where tracking starts, not money that moved. One active
+    opening balance per account; to adjust it, edit or delete the existing
+    seed transaction (it is an ordinary transaction).
+
+    Example: expense accounts opening-balance <id> --amount 1250000 --date 2026-01-01
+    """
+    cfg = config_module.ensure_loaded()
+    verbose = get_verbose(ctx)
+
+    new_id = str(uuid4())
+    payload: dict = {
+        "transaction_id": new_id,
+        "amount_cents": amount,
+        "date": to_canonical_aware(date) if date is not None else now_local_iso(),
+    }
+    if title is not None:
+        payload["title"] = title
+    if exchange_rate is not None:
+        payload["exchange_rate"] = exchange_rate
+
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        body = client.post(f"/{_RESOURCE}/{account_id}/opening-balance", json_body=payload)
+        cache_after_write(ctx, client, cfg)
+
+    if not json_output:
+        typer.echo(f"Seeded opening balance: {new_id}")
     render_record(body, json_mode=json_output)
 
 

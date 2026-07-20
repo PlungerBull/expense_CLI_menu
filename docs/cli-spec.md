@@ -71,6 +71,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `accounts get <id>`
 - `accounts create`, `update`, `delete`, `restore`
 - `accounts archive <id>`, `accounts unarchive <id>`
+- `accounts opening-balance <id> --amount <signed-cents> [--date] [--title] [--exchange-rate]` → `POST /v1/accounts/{id}/opening-balance` — seeds the account's starting balance as a transaction under the `@Opening` system category (counts toward the balance, excluded from flow reports). One active opening per account; the engine's 409 says to edit/delete the existing seed instead.
 - Currency immutability on update: pre-flight hint before the engine 422 lands.
 
 ### `expense categories`
@@ -78,7 +79,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `categories get <id>`
 - `categories create`, `update`, `delete`, `restore`
 - `categories archive <id>`, `categories unarchive <id>`
-- System categories (`@Debt`, `@Transfer`) cannot be renamed, deleted, or archived — the engine's 403 surfaces as a friendly message.
+- System categories (`@Debt`, `@Transfer`, `@Opening`) cannot be deleted or archived — the engine's 403 surfaces as a friendly message. (Renames are allowed; the engine resolves them by `system_key`.)
 
 ### `expense hashtags`
 - Same shape as categories: `list`, `get`, `create`, `update`, `delete`, `restore`, `archive`, `unarchive`. Hashtag archive does not cascade to junction rows (per engine spec).
@@ -141,6 +142,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ### `expense import`
 - `import <file.xlsx> [--apply] [--chunk-size N] [--json]` — bulk `.xlsx → engine` importer. Parses the spreadsheet, resolves names to ids, plans, then writes via the transactions batch endpoint. **Dry-run preview is the default**; `--apply` writes. Requires the `openpyxl` extra (`pip install -e ".[import]"`). Package: [expense/import_/](../expense/import_/).
+- **Opening balances:** rows titled `SALDO INICIAL` (case/whitespace-insensitive) route to `POST /v1/accounts/{id}/opening-balance` instead of the batch — their category/hashtag cells may be blank. One per (account, currency): extra rows are skipped as `duplicate-opening` (first line wins) and listed in the dry-run. A 409 at apply time (re-run, or account already seeded) counts as already-present, mirroring batch dedup semantics.
 
 ### `expense world`
 - `world` — launches the Textual TUI, the interactive front door over the same fetch/write layer. `expense` (no args) keeps group-help behavior. Replaced the questionary `expense menu` (deleted at Step 10.X, 2026-07-02). Full plan and status: [tui-plan.md](tui-plan.md).

@@ -12,7 +12,7 @@ from expense.commands import import_cmd
 from expense.http import ExpenseClient
 from expense.import_ import apply as apply_mod
 from expense.import_ import plan as plan_mod
-from expense.import_.parse import ParsedRow
+from expense.import_.parse import OpeningRow, ParsedRow
 from expense.import_.reader import RawRow, SheetData
 from tests.unit.helpers import ENGINE_URL as BASE
 from tests.unit.helpers import make_cli_app, sync_payload
@@ -38,7 +38,21 @@ def _prow(line: int, **over: object) -> ParsedRow:
 
 
 def _plan(rows: list[ParsedRow]) -> plan_mod.ImportPlan:
-    return plan_mod.build_plan(rows, [])
+    return plan_mod.build_plan(rows, [], [])
+
+
+def _orow(line: int, **over: object) -> OpeningRow:
+    base = dict(
+        line=line,
+        title="SALDO INICIAL",
+        account="BCP PEN",
+        currency="PEN",
+        date_iso="2022-12-01",
+        amount_cents=350000,
+        exchange_rate=None,
+    )
+    base.update(over)
+    return OpeningRow(**base)  # type: ignore[arg-type]
 
 
 def _mock_existing(*, accounts: list, categories: list, hashtags: list) -> None:
@@ -103,6 +117,116 @@ def test_apply_reuses_existing_and_creates_rest(configured):
     assert len(pen["hashtag_ids"]) == 1
     assert pen["id"] == plan_mod.tx_id_for(rows[0])  # deterministic
     assert result.tx_created == 2
+
+
+@respx.mock
+def test_apply_seeds_opening_balances(configured):
+    """Opening rows POST to /accounts/{id}/opening-balance, not the batch."""
+    rows = [_prow(2)]
+    openings = [
+        _orow(3),
+        _orow(
+            4,
+            account="Interbank USD",
+            currency="USD",
+            exchange_rate=Decimal("3.68"),
+            amount_cents=100000,
+        ),
+    ]
+    plan = plan_mod.build_plan(rows, openings, [])
+    _mock_existing(
+        accounts=[
+            {"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"},
+            {"id": "acc-usd", "name": "Interbank USD", "currency_code": "USD"},
+        ],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    pen_route = respx.post(f"{BASE}/v1/accounts/acc-pen/opening-balance").mock(
+        return_value=httpx.Response(201, json={"id": "seed-1"})
+    )
+    usd_route = respx.post(f"{BASE}/v1/accounts/acc-usd/opening-balance").mock(
+        return_value=httpx.Response(201, json={"id": "seed-2"})
+    )
+    respx.post(f"{BASE}/v1/transactions/batch").mock(
+        return_value=httpx.Response(201, json={"created": []})
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res)
+
+    assert result.opening_created == 2
+    assert result.opening_failed == 0
+    body = json.loads(pen_route.calls.last.request.content)
+    assert body["transaction_id"] == plan.opening_ids[3]
+    assert body["amount_cents"] == 350000
+    assert body["title"] == "SALDO INICIAL"
+    assert body["date"].startswith("2022-12-01")
+    assert "exchange_rate" not in body
+    usd_body = json.loads(usd_route.calls.last.request.content)
+    assert usd_body["exchange_rate"] == 3.68
+
+
+@respx.mock
+def test_opening_409_counts_already_present(configured):
+    """A 409 (replayed id or account already seeded) is a skip, not a failure."""
+    plan = plan_mod.build_plan([], [_orow(2)], [])
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/accounts/acc-pen/opening-balance").mock(
+        return_value=httpx.Response(
+            409,
+            json={"error": {"code": "CONFLICT", "message": "already seeded", "fields": None}},
+        )
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res)
+
+    assert result.opening_created == 0
+    assert result.opening_skipped_existing == 1
+    assert result.opening_failed == 0
+    assert result.failures == []
+
+
+@respx.mock
+def test_opening_engine_error_reports_sheet_line(configured):
+    plan = plan_mod.build_plan([], [_orow(7)], [])
+    _mock_existing(
+        accounts=[{"id": "acc-pen", "name": "BCP PEN", "currency_code": "PEN"}],
+        categories=[],
+        hashtags=[],
+    )
+    respx.post(f"{BASE}/v1/accounts/acc-pen/opening-balance").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Transaction validation failed.",
+                    "fields": {"date": "Must not be in the future."},
+                }
+            },
+        )
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res)
+
+    assert result.opening_failed == 1
+    ((_, message),) = result.failures
+    assert "sheet line 7" in message and "opening balance" in message
 
 
 def _conflict() -> httpx.Response:

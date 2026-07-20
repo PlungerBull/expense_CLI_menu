@@ -57,7 +57,7 @@ def test_read_workbook_happy(tmp_path):
 
 def test_read_then_parse_roundtrip(tmp_path):
     """Lock the real reader↔parser contract: serial dates, major amounts, headers."""
-    parsed, skipped = parse_sheet(read_workbook(_write_xlsx(tmp_path, [_ROW])))
+    parsed, _openings, skipped = parse_sheet(read_workbook(_write_xlsx(tmp_path, [_ROW])))
     assert skipped == []
     assert len(parsed) == 1
     row = parsed[0]
