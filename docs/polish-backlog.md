@@ -140,8 +140,9 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
   a comment pinning it to the engine rule it mirrors.
   *Engine-spec gap noted:* the same-account transfer rejection
   (engine `app/helpers/transfers.py`, 422 `transfer.account_id` "Must be a
-  different account.") is enforced but undocumented in engine-spec.md — to
-  be added in the engine repo.
+  different account.") was enforced but undocumented in engine-spec.md —
+  **documented in the engine repo 2026-08-01**, in a new Validation block
+  under §Transfers.
 
 - [x] **2.6 Document the two sanctioned exceptions** so future reviews stop
   re-flagging them: `accounts update --currency-code` exists solely to be
@@ -475,10 +476,12 @@ existing item are marked.
 
 > **§6 closed 2026-07-08** — all 17 items shipped (commits `6260211..3145125`),
 > verified by the full unit suite (925 tests, 92% cov) and a supervised live
-> contract run. *Engine-spec gap found by that gate:* `GET /accounts` is
-> documented unpaginated ("returns all", engine-spec.md §Bank Accounts) but the
-> engine serves default-limit-50 pages and honors `limit`/`offset` — to be
-> fixed in the engine repo (spec or behavior). The contract suite now pages
+> contract run. *Engine-spec gap found by that gate:* `GET /accounts` was
+> documented unpaginated ("returns all", engine-spec.md §Bank Accounts) while the
+> engine serves default-limit-50 pages and honors `limit`/`offset` —
+> **resolved 2026-08-01 in the engine repo, spec side**: the endpoint is
+> documented as paginated like every other list (the behavior was the
+> convention; the prose was the outlier). The contract suite now pages
 > via `fetch_all_pages`; the CLI's `accounts list` still reads one page, which
 > only bites past 50 accounts (fine at personal scale, note if it recurs).
 
