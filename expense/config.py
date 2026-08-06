@@ -3,7 +3,6 @@ import os
 import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
-from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -32,11 +31,12 @@ def validate_engine_url(url: str) -> None:
 
 
 class Config(BaseModel):
+    # extra="ignore" also tolerates the retired client_id key still present in
+    # config files written before the sync deletion (2026-08-06).
     model_config = ConfigDict(extra="ignore")
 
     engine_url: str
     token: str | None = None
-    client_id: UUID
     main_currency: str | None = None
 
 
@@ -93,7 +93,3 @@ def ensure_loaded() -> Config:
             "No config found. Run: expense config set --engine-url <url> --token <pat>"
         )
     return cfg
-
-
-def generate_client_id() -> UUID:
-    return uuid4()

@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import typer
 
-from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     INCLUDE_ARCHIVED_OPT,
@@ -13,7 +12,6 @@ from expense.commands._resource import (
     OFFSET_OPT,
     YES_OPT,
     build_update_payload,
-    cache_after_write,
     color_supported,
     color_swatch,
     effective_limit,
@@ -27,7 +25,7 @@ from expense.commands._resource import (
     require_yes,
     run_toggle,
 )
-from expense.context import get_no_cache, get_verbose
+from expense.context import get_verbose
 from expense.dates import now_local_iso, to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
@@ -83,16 +81,11 @@ def fetch_accounts(
     include_people: bool = False,
     limit: int | None = None,
     offset: int | None = None,
-    no_cache: bool = False,
     verbose: bool = False,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ):
-    """GET /v1/accounts → the raw engine/replica body. Pure data.
+    """GET /v1/accounts → the raw engine body. Pure data.
 
     Shared by the flat `accounts list` command and the TUI's Accounts screen.
-    Reads the local replica by default (warming it first); `no_cache` round-trips
-    the engine. Cached reads return current_balance_home_cents=null.
     Without limit/offset the body is the flat list internal consumers rely on;
     with either set it's the standard {items,total,limit,offset} envelope.
     """
@@ -111,17 +104,7 @@ def fetch_accounts(
         cfg,
         path=f"/{_RESOURCE}",
         params=params,
-        cache_read=lambda: cache_pkg.list_accounts(
-            include_archived=include_archived,
-            include_people=include_people,
-            limit=limit,
-            offset=offset,
-        ),
-        no_cache=no_cache,
-        force_live=include_deleted,
         verbose=verbose,
-        cold_start_notice=cold_start_notice,
-        notice_stream=notice_stream,
     )
 
 
@@ -138,11 +121,7 @@ def list_(
     offset: int | None = OFFSET_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/accounts. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine. Cached reads return
-    current_balance_home_cents=null; for current home balances run
-    `expense dashboard` or pass --no-cache.
+    """GET /v1/accounts.
 
     Example: expense accounts list --include-archived
     """
@@ -155,7 +134,6 @@ def list_(
         include_people=include_people,
         limit=limit,
         offset=offset,
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     _render_account_list(body, json_mode=json_output)
@@ -168,10 +146,7 @@ def get(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/accounts/{id}. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine. Cached reads return
-    current_balance_home_cents=null.
+    """GET /v1/accounts/{id}.
 
     Example: expense accounts get <account-id>
     """
@@ -180,8 +155,6 @@ def get(
         cfg,
         path=f"/{_RESOURCE}/{id_}",
         params=None,
-        cache_read=lambda: cache_pkg.get_account(id_),
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     render_record(body, json_mode=json_output)
@@ -219,8 +192,6 @@ def create(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
-        cache_after_write(ctx, client, cfg)
-
     if not json_output:
         typer.echo(f"Created: {new_id}")
     render_record(body, json_mode=json_output)
@@ -277,8 +248,6 @@ def opening_balance(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}/{account_id}/opening-balance", json_body=payload)
-        cache_after_write(ctx, client, cfg)
-
     if not json_output:
         typer.echo(f"Seeded opening balance: {new_id}")
     render_record(body, json_mode=json_output)
@@ -318,8 +287,6 @@ def update(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.put(f"/{_RESOURCE}/{id_}", json_body=payload)
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
 
 
@@ -351,8 +318,6 @@ def delete(
                     err=True,
                 )
             raise
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
 
 

@@ -1,7 +1,7 @@
 """Transactions screen — the posted ledger.
 
 Built on SectionScreen + the shared CursorList. Fetch-paged (PagedListMixin —
-real limit/offset against the engine/cache, sized to the terminal ≤20 rows;
+real limit/offset against the engine, sized to the terminal ≤20 rows;
 pgdn/. turns the page); `enter` opens the record in the editable
 QuickAddLogScreen. No `cl`
 glyph column (dropped per request); interactive filters and search land in a

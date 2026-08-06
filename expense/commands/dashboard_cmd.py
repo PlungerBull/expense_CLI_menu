@@ -3,7 +3,6 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.cache import ensure_synced
 from expense.commands._resource import (
     JSON_OPT,
     format_cents,
@@ -12,7 +11,7 @@ from expense.commands._resource import (
     render_table,
     render_totals,
 )
-from expense.context import get_no_cache, get_verbose
+from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
 
@@ -156,34 +155,18 @@ def fetch_dashboard(
     *,
     include_archived: bool = False,
     verbose: bool = False,
-    no_cache: bool = False,
-    warm: bool = True,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> dict:
     """GET /v1/dashboard → the raw engine body. Pure data, no rendering.
 
     Shared by the flat `dashboard` command and the TUI's Outstanding Amounts
     screen — the fetch/print split that lets both consume the same dict.
-
-    `warm` best-effort cold-starts the replica so the per-category hashtag
-    breakdown resolves names instead of raw UUIDs; it never lets a sync hiccup
-    break a dashboard we've already fetched. Skipped in stateless (`no_cache`)
-    mode, where name maps are empty by design. `notice_stream`/`cold_start_notice`
-    let a non-terminal caller (the TUI) silence the stderr sync chatter.
     """
     params: dict = {}
     if include_archived:
         params["include_archived"] = "true"
 
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
-        body = client.get("/dashboard", params=params or None)
-        if warm and not no_cache:
-            try:
-                ensure_synced(client, cfg, notice_stream=notice_stream)
-            except Exception:
-                pass
-    return body
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        return client.get("/dashboard", params=params or None)
 
 
 @handle_errors
@@ -205,7 +188,5 @@ def dashboard(
         cfg,
         include_archived=include_archived,
         verbose=get_verbose(ctx),
-        no_cache=get_no_cache(ctx),
-        warm=not json_output,
     )
     _render_dashboard(body, json_mode=json_output)

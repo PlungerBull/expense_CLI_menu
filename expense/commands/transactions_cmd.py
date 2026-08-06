@@ -4,7 +4,6 @@ from uuid import uuid4
 
 import typer
 
-from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     INCLUDE_DELETED_OPT,
@@ -13,7 +12,6 @@ from expense.commands._resource import (
     OFFSET_OPT,
     YES_OPT,
     build_update_payload,
-    cache_after_write,
     effective_limit,
     fetch_body,
     format_cents,
@@ -30,7 +28,7 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
-from expense.context import get_no_cache, get_verbose
+from expense.context import get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, error_haystack, handle_errors
 from expense.http import ExpenseClient
@@ -146,17 +144,12 @@ def fetch_transactions(
     limit: int | None = None,
     offset: int | None = None,
     include_deleted: bool = False,
-    no_cache: bool = False,
     verbose: bool = False,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> dict:
-    """GET /v1/transactions → the raw engine/replica body. Pure data, no render.
+    """GET /v1/transactions → the raw engine body. Pure data, no render.
 
     Shared by the flat `transactions list` command and the TUI's Transactions
-    screen. Reads the local replica by default (warming it first); `no_cache`
-    round-trips the engine. `cold_start_notice`/`notice_stream` let a
-    non-terminal caller (TUI) silence the stderr sync chatter.
+    screen.
     """
     params: dict = {}
     if account is not None:
@@ -181,30 +174,14 @@ def fetch_transactions(
         params["offset"] = offset
     if include_deleted:
         params["include_deleted"] = "true"
-    # Always signed: the replica stores debit_as_negative=true, so the
-    # stateless path must match or the two modes disagree on sign.
+    # Always signed: every CLI/TUI surface renders debits negative, so the
+    # request pins the flag rather than depending on the engine default.
     params["debit_as_negative"] = "true"
     return fetch_body(
         cfg,
         path=f"/{_RESOURCE}",
         params=params,
-        cache_read=lambda: cache_pkg.list_transactions(
-            account_id=account,
-            category_id=category,
-            hashtag_id=hashtag,
-            reconciliation_id=reconciliation,
-            date_from=date_from,
-            date_to=date_to,
-            cleared=cleared,
-            search=search,
-            limit=limit,
-            offset=offset,
-        ),
-        no_cache=no_cache,
-        force_live=include_deleted,
         verbose=verbose,
-        cold_start_notice=cold_start_notice,
-        notice_stream=notice_stream,
     )
 
 
@@ -231,10 +208,7 @@ def list_(
     include_deleted: bool = INCLUDE_DELETED_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/transactions. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine. Cached responses
-    omit `hashtag_ids` (matches engine list shape; that field is /sync-only).
+    """GET /v1/transactions.
 
     Example: expense transactions list --account-id <id> --from 2026-04-01 --to 2026-04-30
     """
@@ -253,7 +227,6 @@ def list_(
         limit=limit,
         offset=offset,
         include_deleted=include_deleted,
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     _render_transaction_list(body, json_mode=json_output)
@@ -266,10 +239,7 @@ def get(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/transactions/{id}. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine. Cached responses
-    omit `hashtag_ids` (matches engine get shape).
+    """GET /v1/transactions/{id}.
 
     See a transaction's activity history via
     'expense activity list --resource-type transaction --resource-id <id>'.
@@ -281,8 +251,6 @@ def get(
         cfg,
         path=f"/{_RESOURCE}/{id_}",
         params={"debit_as_negative": "true"},
-        cache_read=lambda: cache_pkg.get_transaction(id_),
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     render_record(body, json_mode=json_output)
@@ -340,8 +308,6 @@ def update(
                 if hint is not None:
                     typer.echo(hint, err=True)
             raise
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
 
 
@@ -364,8 +330,6 @@ def delete(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.delete(f"/{_RESOURCE}/{id_}")
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
     if not json_output:
         _print_warnings(body)
@@ -405,8 +369,6 @@ def restore(
                     err=True,
                 )
             raise
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
     if not json_output:
         _print_warnings(body)
@@ -462,8 +424,6 @@ def batch(
             if _is_batch_transfer_422(err):
                 typer.echo(_BATCH_TRANSFER_HINT, err=True)
             raise
-        cache_after_write(ctx, client, cfg)
-
     if json_output:
         typer.echo(json.dumps(body, indent=2))
         return

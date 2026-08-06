@@ -3,7 +3,6 @@ import json
 import typer
 
 from expense import config as config_module
-from expense.cache import ensure_synced
 from expense.commands._resource import (
     JSON_OPT,
     format_cents,
@@ -13,7 +12,7 @@ from expense.commands._resource import (
     render_totals,
 )
 from expense.commands.dashboard_cmd import hashtag_label
-from expense.context import get_no_cache, get_verbose
+from expense.context import get_verbose
 from expense.dates import parse_year_month
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -158,29 +157,11 @@ def fetch_single_month(
     year: int,
     month: int,
     verbose: bool = False,
-    no_cache: bool = False,
-    warm: bool = True,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> dict:
-    """GET /v1/reports/monthly for one month → the raw engine body. No rendering.
-
-    `warm` best-effort cold-starts the replica (after the report itself is
-    fetched) so the hashtag breakdown resolves names instead of raw UUIDs —
-    a sync hiccup never breaks a report we already have. Skipped in stateless
-    (`no_cache`) mode, where name maps are empty by design.
-    `notice_stream`/`cold_start_notice` let a non-terminal caller (the TUI)
-    silence the stderr sync chatter.
-    """
+    """GET /v1/reports/monthly for one month → the raw engine body. No rendering."""
     params = {"year": str(year), "month": str(month)}
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
-        body = client.get("/reports/monthly", params=params)
-        if warm and not no_cache:
-            try:
-                ensure_synced(client, cfg, notice_stream=notice_stream)
-            except Exception:
-                pass
-    return body
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        return client.get("/reports/monthly", params=params)
 
 
 def fetch_range(
@@ -189,17 +170,11 @@ def fetch_range(
     from_ym: tuple[int, int],
     to_ym: tuple[int, int],
     verbose: bool = False,
-    no_cache: bool = False,
-    warm: bool = False,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> dict:
     """GET /v1/reports/monthly for a month range → the raw engine body. No rendering.
 
     Range rules (inverted range, max span) are the engine's — invalid ranges
-    are sent as-is so its 422 surfaces. `warm` defaults off because the flat
-    range table shows no hashtag names; the TUI grid does, so it opts in
-    (same replica-warming semantics as `fetch_single_month`).
+    are sent as-is so its 422 surfaces.
     """
     params = {
         "from_year": str(from_ym[0]),
@@ -207,14 +182,8 @@ def fetch_range(
         "to_year": str(to_ym[0]),
         "to_month": str(to_ym[1]),
     }
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
-        body = client.get("/reports/monthly", params=params)
-        if warm and not no_cache:
-            try:
-                ensure_synced(client, cfg, notice_stream=notice_stream)
-            except Exception:
-                pass
-    return body
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        return client.get("/reports/monthly", params=params)
 
 
 def run_single_month(
@@ -225,7 +194,6 @@ def run_single_month(
     verbose: bool = False,
     json_mode: bool = False,
     show_hashtags: bool = True,
-    no_cache: bool = False,
 ) -> None:
     """Fetch + render for a single month — the flat command's whole body."""
     body = fetch_single_month(
@@ -233,9 +201,6 @@ def run_single_month(
         year=year,
         month=month,
         verbose=verbose,
-        no_cache=no_cache,
-        # Names only render in the human breakdown; JSON passes through raw.
-        warm=show_hashtags and not json_mode,
     )
     _render_single_month(body, json_mode=json_mode, show_hashtags=show_hashtags)
 
@@ -297,7 +262,6 @@ def monthly(
 
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
-    no_cache = get_no_cache(ctx)
 
     if date is not None:
         year, month = parse_year_month(date, param_hint="--date")
@@ -307,7 +271,6 @@ def monthly(
             month=month,
             verbose=verbose,
             json_mode=json_output,
-            no_cache=no_cache,
         )
         return
 

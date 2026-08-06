@@ -69,7 +69,7 @@ def test_transactions_screen_lists_and_opens_detail(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(TransactionsScreen())
             await wait_for(

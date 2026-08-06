@@ -272,9 +272,6 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
 - [ ] Connection errors exit with code 2 (`errors.py:85-86`), colliding with
   Click's usage-error 2 — scripts can't tell "bad flags" from "engine
   unreachable"; move to an unused code.
-- [ ] Cached `--search` doesn't escape `%`/`_` in `LIKE`
-  (`queries.py:317-322`) — `--search "100%"` wildcards on the replica;
-  verify engine semantics and match them.
 - [ ] `reconcile move --json` on the "No changes." early-return prints
   nothing at all (`reconcile_cmd.py:778-781`) — emit a JSON document.
 - [ ] Reports: `_render_range_table` hand-rolls the width/format loop the
@@ -285,8 +282,6 @@ five spots. Thin-wrapper rule: surface the engine's 422, don't pre-empt it.
 - [ ] `reconcile complete` inlines the hint-haystack scan that
   `transactions_cmd.py:104-117` wraps in `_update_hint_for`
   (`reconcile_cmd.py:571-583`) — hoist to `_resource.py`.
-- [ ] `_render_resource_counts`'s `label` param is dead at both call sites
-  (`sync_cmd.py:19-29`).
 - [ ] `_validate_source_choice` hand-rolls what an `Enum`-typed Typer option
   gives free (choices in `--help` + completion) (`reconcile_cmd.py:245-253`).
 - [ ] **[UI]** Inbox and transactions lists accept `--include-deleted` but

@@ -37,7 +37,7 @@ def test_resolve_palette_returns_raw_theme_hexes():
     """
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test():
             assert resolve_palette(app) == FALLBACK
             app.theme = "textual-dark"  # builtin themes are pre-registered
@@ -90,7 +90,7 @@ def test_theme_change_rebuilds_section_screens(monkeypatch):
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = AccountsScreen()
             orig_build = screen.build
@@ -111,7 +111,7 @@ def test_tui_runs_in_ansi_mode():
     """ansi_color=True is what makes the app paint the terminal's OWN background,
     so the app fill and the terminal's window padding are one surface (no seam).
     A refactor that drops the flag silently re-introduces the seam."""
-    assert ExpenseApp(no_cache=True).ansi_color is True
+    assert ExpenseApp().ansi_color is True
 
 
 def test_base_fills_are_terminal_transparent():

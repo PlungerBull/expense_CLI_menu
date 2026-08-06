@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import typer
 
-from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     INCLUDE_ARCHIVED_OPT,
@@ -13,7 +12,6 @@ from expense.commands._resource import (
     OFFSET_OPT,
     YES_OPT,
     build_update_payload,
-    cache_after_write,
     effective_limit,
     fetch_body,
     format_bool,
@@ -24,7 +22,7 @@ from expense.commands._resource import (
     require_yes,
     run_toggle,
 )
-from expense.context import get_no_cache, get_verbose
+from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
 
@@ -68,12 +66,9 @@ def fetch_hashtags(
     include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
-    no_cache: bool = False,
     verbose: bool = False,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> dict:
-    """GET /v1/hashtags → the raw engine/replica body. Pure data, no render.
+    """GET /v1/hashtags → the raw engine body. Pure data, no render.
 
     Shared by the flat `hashtags list` command and the TUI's Hashtags screen.
     """
@@ -90,16 +85,7 @@ def fetch_hashtags(
         cfg,
         path=f"/{_RESOURCE}",
         params=params,
-        cache_read=lambda: cache_pkg.list_hashtags(
-            include_archived=include_archived,
-            limit=limit,
-            offset=offset,
-        ),
-        no_cache=no_cache,
-        force_live=include_deleted,
         verbose=verbose,
-        cold_start_notice=cold_start_notice,
-        notice_stream=notice_stream,
     )
 
 
@@ -113,9 +99,7 @@ def list_(
     offset: int | None = OFFSET_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/hashtags. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine.
+    """GET /v1/hashtags.
 
     Example: expense hashtags list --include-archived
     """
@@ -127,7 +111,6 @@ def list_(
         include_deleted=include_deleted,
         limit=limit,
         offset=offset,
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     _render_hashtag_list(body, json_mode=json_output)
@@ -140,9 +123,7 @@ def get(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/hashtags/{id}. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine.
+    """GET /v1/hashtags/{id}.
 
     Example: expense hashtags get <hashtag-id>
     """
@@ -151,8 +132,6 @@ def get(
         cfg,
         path=f"/{_RESOURCE}/{id_}",
         params=None,
-        cache_read=lambda: cache_pkg.get_hashtag(id_),
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     render_record(body, json_mode=json_output)
@@ -180,8 +159,6 @@ def create(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
-        cache_after_write(ctx, client, cfg)
-
     if not json_output:
         typer.echo(f"Created: {new_id}")
     render_record(body, json_mode=json_output)
@@ -207,8 +184,6 @@ def update(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.put(f"/{_RESOURCE}/{id_}", json_body=payload)
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
 
 
@@ -235,8 +210,6 @@ def delete(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.delete(f"/{_RESOURCE}/{id_}")
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
 
 

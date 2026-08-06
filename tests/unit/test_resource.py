@@ -22,6 +22,9 @@ from expense.commands._resource import (
     format_hashtag_cell,
     format_month,
     items_of,
+    load_account_name_map,
+    load_category_name_map,
+    load_hashtag_name_map,
     redact_token,
     render_pagination_hint,
     render_record,
@@ -196,65 +199,134 @@ def test_format_month(value, expected):
 
 
 @respx.mock
-def test_fetch_body_no_cache_hits_engine_and_skips_cache_read(configured):
+def test_fetch_body_issues_one_live_get(configured):
     from expense import config as config_module
 
-    respx.get("https://api.example.com/v1/things", params={"limit": "5"}).mock(
+    route = respx.get("https://api.example.com/v1/things", params={"limit": "5"}).mock(
         return_value=httpx.Response(200, json={"items": [{"id": "a"}], "total": 1})
     )
-    cache_reads = []
     body = fetch_body(
         config_module.ensure_loaded(),
         path="/things",
         params={"limit": 5},
-        cache_read=lambda: cache_reads.append(1),
-        no_cache=True,
         verbose=False,
     )
     assert body == {"items": [{"id": "a"}], "total": 1}
-    assert cache_reads == []
+    assert route.call_count == 1
 
 
 @respx.mock
-def test_fetch_body_force_live_hits_engine_and_skips_cache_read(configured):
-    """--include-deleted routes live even in cache mode (backlog 1.4)."""
+def test_fetch_body_include_deleted_is_just_a_query_param(configured):
+    """No special routing left — every read is live, so --include-deleted is a param."""
     from expense import config as config_module
 
-    respx.get("https://api.example.com/v1/things", params={"include_deleted": "true"}).mock(
+    route = respx.get("https://api.example.com/v1/things", params={"include_deleted": "true"}).mock(
         return_value=httpx.Response(200, json={"items": [{"id": "a"}], "total": 1})
     )
-    cache_reads = []
     body = fetch_body(
         config_module.ensure_loaded(),
         path="/things",
         params={"include_deleted": "true"},
-        cache_read=lambda: cache_reads.append(1),
-        no_cache=False,
-        force_live=True,
         verbose=False,
     )
     assert body == {"items": [{"id": "a"}], "total": 1}
-    assert cache_reads == []
+    assert route.call_count == 1
 
 
-def test_fetch_body_cached_warms_replica_then_reads_cache(configured, monkeypatch):
+@respx.mock
+def test_fetch_body_empty_params_sends_no_query(configured):
     from expense import config as config_module
 
-    synced = []
-    monkeypatch.setattr(
-        "expense.commands._resource.ensure_synced",
-        lambda client, cfg, notice_stream=None: synced.append(1),
+    route = respx.get("https://api.example.com/v1/things").mock(
+        return_value=httpx.Response(200, json={"items": [], "total": 0})
     )
-    body = fetch_body(
-        config_module.ensure_loaded(),
-        path="/things",
-        params={"limit": 5},
-        cache_read=lambda: {"items": [], "total": 0},
-        no_cache=False,
-        verbose=False,
+    fetch_body(config_module.ensure_loaded(), path="/things", params={}, verbose=False)
+    assert route.calls.last.request.url.query == b""
+
+
+# ---------------------------------------------------------------------------
+# load_*_name_map — live reference lookups, `{}` on any failure
+# ---------------------------------------------------------------------------
+
+
+def _list_body(items: list[dict], total: int | None = None) -> httpx.Response:
+    body = {
+        "items": items,
+        "total": len(items) if total is None else total,
+        "limit": 200,
+        "offset": 0,
+    }
+    return httpx.Response(200, json=body)
+
+
+@respx.mock
+def test_load_account_name_map_fetches_live_with_archived_and_people(configured):
+    route = respx.get("https://api.example.com/v1/accounts").mock(
+        return_value=_list_body([{"id": "a1", "name": "BCP"}, {"id": "p1", "name": "Mom"}])
     )
-    assert body == {"items": [], "total": 0}
-    assert synced == [1]  # replica warmed exactly once, no engine GET issued
+    assert load_account_name_map() == {"a1": "BCP", "p1": "Mom"}
+
+    params = route.calls.last.request.url.params
+    assert params["include_archived"] == "true"
+    assert params["include_people"] == "true"
+    assert params["limit"] == "200"
+    assert params["offset"] == "0"
+
+
+@respx.mock
+def test_load_category_name_map_fetches_live(configured):
+    route = respx.get("https://api.example.com/v1/categories").mock(
+        return_value=_list_body([{"id": "c1", "name": "Food"}])
+    )
+    assert load_category_name_map() == {"c1": "Food"}
+    assert route.calls.last.request.url.params["include_archived"] == "true"
+
+
+@respx.mock
+def test_load_hashtag_name_map_fetches_live(configured):
+    route = respx.get("https://api.example.com/v1/hashtags").mock(
+        return_value=_list_body([{"id": "h1", "name": "trabajo"}])
+    )
+    assert load_hashtag_name_map() == {"h1": "trabajo"}
+    assert route.calls.last.request.url.params["include_archived"] == "true"
+
+
+@respx.mock
+def test_load_name_map_pages_through_every_row(configured):
+    first = [{"id": f"c{i}", "name": f"n{i}"} for i in range(200)]
+    second = [{"id": "c200", "name": "n200"}]
+    route = respx.get("https://api.example.com/v1/categories").mock(
+        side_effect=[_list_body(first, total=201), _list_body(second, total=201)]
+    )
+    out = load_category_name_map()
+    assert len(out) == 201
+    assert route.call_count == 2
+    assert route.calls[1].request.url.params["offset"] == "200"
+
+
+@respx.mock
+def test_load_name_map_skips_rows_without_a_string_id_and_name(configured):
+    respx.get("https://api.example.com/v1/categories").mock(
+        return_value=_list_body([{"id": "c1", "name": "Food"}, {"id": "c2"}, {"name": "orphan"}])
+    )
+    assert load_category_name_map() == {"c1": "Food"}
+
+
+def test_load_name_map_without_config_is_empty():
+    """No config → no engine to ask; renderers degrade to short ids, never raise."""
+    assert load_account_name_map() == {}
+    assert load_category_name_map() == {}
+    assert load_hashtag_name_map() == {}
+
+
+@respx.mock
+def test_load_name_map_on_engine_error_is_empty(configured):
+    respx.get("https://api.example.com/v1/categories").mock(
+        return_value=httpx.Response(
+            401, json={"error": {"code": "UNAUTHORIZED", "message": "nope", "fields": None}}
+        )
+    )
+    assert load_category_name_map() == {}
 
 
 # ---------------------------------------------------------------------------

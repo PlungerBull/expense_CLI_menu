@@ -10,9 +10,8 @@ from typing import Any
 import typer
 
 from expense import config as config_module
-from expense.cache import ensure_synced, refresh_after_write
 from expense.config import Config
-from expense.context import get_no_cache, get_no_sync_after, get_verbose
+from expense.context import get_verbose
 from expense.errors import EngineError
 from expense.http import ExpenseClient
 
@@ -26,9 +25,7 @@ LIMIT_OPT = typer.Option(
     help="Max rows per page (human output defaults to 20; --json sends no default).",
 )
 OFFSET_OPT = typer.Option(None, "--offset", help="Rows to skip (pagination).")
-INCLUDE_DELETED_OPT = typer.Option(
-    False, "--include-deleted", help="Include soft-deleted rows (always reads from the engine)."
-)
+INCLUDE_DELETED_OPT = typer.Option(False, "--include-deleted", help="Include soft-deleted rows.")
 INCLUDE_ARCHIVED_OPT = typer.Option(False, "--include-archived", help="Include archived rows.")
 YES_OPT = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt.")
 
@@ -224,70 +221,55 @@ def fetch_all_pages(
         offset += len(page)
 
 
+def _load_name_map(path: str, params: dict) -> dict[str, str]:
+    """Live id → name map over one reference-list endpoint. Empty on any failure.
+
+    The engine's responses are IDs-only, so renderers join against these maps
+    to show human names. An empty map is always safe — callers fall back to
+    short ids — which is why every failure (no config, engine down, auth)
+    degrades to `{}` instead of raising.
+    """
+    try:
+        cfg = config_module.ensure_loaded()
+        with ExpenseClient(cfg) as client:
+            items = fetch_all_pages(
+                lambda limit, offset: client.get(
+                    path, params={**params, "limit": limit, "offset": offset}
+                )
+            )
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for item in items:
+        rid = item.get("id")
+        name = item.get("name")
+        if isinstance(rid, str) and isinstance(name, str):
+            out[rid] = name
+    return out
+
+
 def load_account_name_map() -> dict[str, str]:
-    """Cache-backed account id → name map. Empty on any cache failure.
+    """Live account id → name map. Empty on any failure.
 
     Includes archived + people accounts so transaction/inbox rows can resolve
     references to retired accounts. Soft-deleted excluded.
     """
-    try:
-        from expense.cache import queries  # local import to keep _resource cheap to load
-    except Exception:
-        return {}
-    try:
-        items = queries.list_accounts(include_archived=True, include_people=True)
-    except Exception:
-        return {}
-    out: dict[str, str] = {}
-    for item in items or []:
-        aid = item.get("id")
-        name = item.get("name")
-        if isinstance(aid, str) and isinstance(name, str):
-            out[aid] = name
-    return out
+    return _load_name_map("/accounts", {"include_archived": "true", "include_people": "true"})
 
 
 def load_category_name_map() -> dict[str, str]:
-    """Cache-backed category id → name map. Empty on any cache failure."""
-    try:
-        from expense.cache import queries
-    except Exception:
-        return {}
-    try:
-        page = queries.list_categories(include_archived=True)
-    except Exception:
-        return {}
-    out: dict[str, str] = {}
-    for item in items_of(page):
-        cid = item.get("id")
-        name = item.get("name")
-        if isinstance(cid, str) and isinstance(name, str):
-            out[cid] = name
-    return out
+    """Live category id → name map. Empty on any failure."""
+    return _load_name_map("/categories", {"include_archived": "true"})
 
 
 def load_hashtag_name_map() -> dict[str, str]:
-    """Cache-backed hashtag id → name map. Empty on any cache failure.
+    """Live hashtag id → name map. Empty on any failure.
 
     The engine returns hashtag UUIDs in `hashtag_breakdown` rows and
     `hashtag_ids` columns; renderers join against this map to display human
     names like `Food + Club`. Empty map is safe — callers fall back to raw ids.
     """
-    try:
-        from expense.cache import queries
-    except Exception:
-        return {}
-    try:
-        page = queries.list_hashtags(include_archived=True)
-    except Exception:
-        return {}
-    out: dict[str, str] = {}
-    for item in items_of(page):
-        hid = item.get("id")
-        name = item.get("name")
-        if isinstance(hid, str) and isinstance(name, str):
-            out[hid] = name
-    return out
+    return _load_name_map("/hashtags", {"include_archived": "true"})
 
 
 def resolve_name(uuid_value: object, name_map: dict[str, str]) -> str:
@@ -384,38 +366,14 @@ def fetch_body(
     *,
     path: str,
     params: dict | None,
-    cache_read: Callable[[], Any],
-    no_cache: bool,
     verbose: bool,
-    force_live: bool = False,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> Any:
-    """One cache-vs-live resource read — the skeleton behind every `fetch_*`/`get`.
+    """One live resource read — the skeleton behind every `fetch_*`/`get`.
 
-    `no_cache` → live GET against the engine; otherwise warm the replica
-    (`ensure_synced`) and run `cache_read`, a thunk over the matching
-    `expense.cache.queries` call. Param building stays with the caller.
-    `force_live` routes a single read to the engine even in cache mode —
-    used by `--include-deleted`, whose rows can never be in the replica
-    (tombstones are purged at sync).
+    A plain GET against the engine; param building stays with the caller.
     """
-    if no_cache or force_live:
-        with ExpenseClient(cfg, verbose=verbose) as client:
-            return client.get(path, params=params or None)
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=cold_start_notice) as client:
-        ensure_synced(client, cfg, notice_stream=notice_stream)
-    return cache_read()
-
-
-def cache_after_write(ctx: typer.Context, client: ExpenseClient, cfg: Config) -> None:
-    """Post-write cache refresh — reads --no-cache / --no-sync-after off ctx."""
-    refresh_after_write(
-        client,
-        cfg,
-        no_cache=get_no_cache(ctx),
-        no_sync_after=get_no_sync_after(ctx),
-    )
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        return client.get(path, params=params or None)
 
 
 def require_yes(yes: bool, prompt_text: str) -> None:
@@ -518,7 +476,6 @@ def run_toggle(
             if hints and err.status in hints:
                 typer.echo(hints[err.status], err=True)
             raise
-        cache_after_write(ctx, client, cfg)
 
     if json_output:
         typer.echo(json.dumps(body, indent=2))

@@ -14,7 +14,6 @@ def _launch(monkeypatch, seen: dict) -> None:
     monkeypatch.setattr(tui_app.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(tui_app.sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr(tui_app, "get_verbose", lambda ctx: False)
-    monkeypatch.setattr(tui_app, "get_no_cache", lambda ctx: False)
     monkeypatch.setattr(tui_app.ExpenseApp, "run", lambda self, **kw: seen.update(kw))
     tui_app.run_world(ctx=None)
 

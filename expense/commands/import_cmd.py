@@ -11,7 +11,6 @@ from collections import Counter, defaultdict
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import cache_after_write
 from expense.context import get_verbose
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
@@ -188,10 +187,9 @@ def run_import(
     verbose = get_verbose(ctx)
     # Batches of up to `chunk_size` rows can take a while on a cold/slow engine;
     # give the read timeout plenty of headroom beyond the 60s default.
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True, timeout_read=300.0) as client:
+    with ExpenseClient(cfg, verbose=verbose, timeout_read=300.0) as client:
         res = apply_mod.resolve_or_create(client, plan)
         result = apply_mod.apply_plan(client, plan, res, chunk_size=chunk_size)
-        cache_after_write(ctx, client, cfg)
 
     _render_result(result, json_output=json_output)
     if result.tx_failed > 0 or result.resolve.resolve_failures:

@@ -494,7 +494,7 @@ def _fetch_all_txns(cfg, **kw) -> list[dict]:
     """Every matching transaction, paged at the engine cap.
 
     A single limit=500 request 422s live (cap is 200) and silently truncates
-    the checklist even cached; page through instead (backlog 3.3 → 6.4a).
+    the checklist; page through instead (backlog 3.3 → 6.4a).
     """
     return fetch_all_pages(
         lambda limit, offset: transactions_cmd.fetch_transactions(
@@ -741,15 +741,12 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
 
     # ---- assign / unassign ----------------------------------------------
     def on_check_list_toggled(self, event: CheckList.Toggled) -> None:
-        # The mixin queue sends one PUT at a time, in order (backlog 6.4b);
-        # refresh=False coalesces the replica sync into a single delta when
-        # the toggle burst drains (backlog 6.5a). Success is silent — the
-        # checklist toggle already shows the new state.
+        # The mixin queue sends one PUT at a time, in order (backlog 6.4b).
+        # Success is silent — the checklist toggle already shows the new state.
         self.run_write(
             "PUT",
             f"/transactions/{event.key}",
             json_body={"reconciliation_id": self._id if event.checked else None},
-            refresh=False,
             on_success=lambda: None,
             on_error=self._assign_failed,
         )

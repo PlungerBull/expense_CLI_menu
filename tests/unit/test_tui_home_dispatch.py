@@ -1,6 +1,6 @@
 """HomeScreen menu dispatch — every wired entry pushes its screen (backlog 6.3).
 
-The 14-branch elif in home.py had zero coverage: a typo'd branch would leave a
+The multi-branch elif in home.py had zero coverage: a typo'd branch would leave a
 menu entry dead with a green suite. Each case drives the real path — focus the
 OptionList, highlight the entry, press enter — and asserts the pushed screen.
 """
@@ -28,7 +28,6 @@ _CASES = [
     ("hashtags", home.HashtagsScreen),
     ("config", home.ConfigScreen),
     ("auth", home.AuthScreen),
-    ("sync", home.SyncScreen),
     ("activity", home.ActivityScreen),
     ("rates", home.RatesScreen),
     ("report", home.MonthlyReportScreen),
@@ -36,8 +35,8 @@ _CASES = [
 
 
 def _stub_loaders(monkeypatch):
-    """Kill every on-mount fetch: HomeScreen's stat worker, the 12 SectionScreen
-    workers (_load), and QuickAddLogScreen's own _load_entities worker."""
+    """Kill every on-mount fetch: HomeScreen's stat worker, every SectionScreen
+    worker (_load), and QuickAddLogScreen's own _load_entities worker."""
     monkeypatch.setattr(HomeScreen, "_load_stats", lambda self: None)
     monkeypatch.setattr(SectionScreen, "_load", lambda self: None)
     monkeypatch.setattr(QuickAddLogScreen, "_load_entities", lambda self: None)
@@ -55,7 +54,7 @@ def test_menu_dispatch(monkeypatch, kind, screen_cls):
     _stub_loaders(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await pilot.pause()
             await _select(app, pilot, kind)
@@ -84,7 +83,7 @@ def test_q_quits_from_home(monkeypatch):
     _stub_loaders(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await pilot.pause()
             assert isinstance(app.screen, HomeScreen)
@@ -99,7 +98,7 @@ def test_q_inert_off_home(monkeypatch):
     _stub_loaders(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await pilot.pause()
             await _select(app, pilot, "accounts")

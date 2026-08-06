@@ -44,7 +44,7 @@ def _run_list_screen(monkeypatch, screen_cls, fetch_mod, fetch_name, items, edit
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(screen_cls())
             await wait_for(

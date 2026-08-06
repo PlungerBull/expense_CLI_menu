@@ -1,4 +1,4 @@
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import httpx
 import pytest
@@ -14,7 +14,6 @@ def config():
     return Config(
         engine_url="https://api.example.com",
         token="ewe_pat_test123",
-        client_id=uuid4(),
         main_currency="USD",
     )
 
@@ -74,22 +73,6 @@ def test_authorization_absent_when_auth_false(config):
         client.get("/health", auth=False)
 
     assert "authorization" not in route.calls.last.request.headers
-
-
-@respx.mock
-def test_x_client_id_present_on_every_request(config):
-    route_me = respx.get("https://api.example.com/v1/auth/me").mock(
-        return_value=httpx.Response(200, json={})
-    )
-    route_health = respx.get("https://api.example.com/health").mock(
-        return_value=httpx.Response(200, json={"status": "ok"})
-    )
-    with ExpenseClient(config) as client:
-        client.get("/auth/me")
-        client.get("/health", auth=False)
-
-    assert route_me.calls.last.request.headers["X-Client-Id"] == str(config.client_id)
-    assert route_health.calls.last.request.headers["X-Client-Id"] == str(config.client_id)
 
 
 @respx.mock

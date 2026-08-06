@@ -79,7 +79,7 @@ def test_categories_view_collapse_hides_children():
 
 def test_app_launches_home_with_outstanding_option():
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await pilot.pause()
             assert isinstance(app.screen, HomeScreen)
@@ -112,7 +112,7 @@ def test_home_header_stat_cluster_populates_from_worker(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await pilot.pause()
             home = app.screen
@@ -129,7 +129,7 @@ def test_outstanding_screen_populates_and_tree_collapses(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(OutstandingScreen())
             await wait_for(

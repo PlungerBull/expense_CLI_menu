@@ -3,14 +3,14 @@
 > Build order inside the CLI: skeleton → auth → core CRUD → inbox flow → ledger → dashboard → reconciliations → sync → niche reads. Nothing is built client-side that isn't already live on the engine.
 >
 > Engine spec: [../../expense_world_engine/docs/engine-spec.md](../../expense_world_engine/docs/engine-spec.md)
-> API conventions: [../../expense_world_engine/docs/api-design-principles.md](../../expense_world_engine/docs/api-design-principles.md)
+> API conventions: engine `CLAUDE.md` + `engine-spec.md` (api-design-principles.md was retired with the engine's roadmap-era docs, 2026-08-04)
 > CLI spec: [cli-spec.md](cli-spec.md)
 
 ---
 
 ## Status
 
-Engine feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23); deployed to Render 2026-04, **relocated to the local deployment 2026-07-30** (`http://127.0.0.1:8000`, engine roadmap Step 11 + `deploy/local/README.md`; cloud mothballed). On top of auth, the engine also ships as part of the cross-cutting audit work: archive/unarchive on accounts, categories, hashtags; dashboard honors `include_archived` with lifetime-signed totals in `archived_accounts` / `archived_categories` / `archived_hashtags` panels; attach guard rejects `POST`/`PUT /v1/transactions` with 422 when `hashtag_ids` references an archived hashtag (and the equivalent for archived categories on transactions and pending inbox items); full `POST /v1/{resource}/{id}/restore` coverage on every soft-deletable resource; currencies locked at the schema to USD/PEN (no cross-rate math). Two operational tasks remain in engine [TODO.md](../../expense_world_engine/TODO.md): daily exchange-rate cron wiring + historical FX backfill — neither blocks CLI work. **All engine endpoints except `GET /health` are mounted under `/v1/`** — the CLI HTTP client's base path should be `<engine_url>/v1` with `/health` as the one special-case. CLI is Step 10 of the overall product roadmap ([../../expense_world_engine/docs/roadmap.md](../../expense_world_engine/docs/roadmap.md)).
+Engine feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23); deployed to Render 2026-04, **relocated to the local deployment 2026-07-30** (`http://127.0.0.1:8000`, engine roadmap Step 11 + `deploy/local/README.md`; cloud mothballed). On top of auth, the engine also ships as part of the cross-cutting audit work: archive/unarchive on accounts, categories, hashtags; dashboard honors `include_archived` with lifetime-signed totals in `archived_accounts` / `archived_categories` / `archived_hashtags` panels; attach guard rejects `POST`/`PUT /v1/transactions` with 422 when `hashtag_ids` references an archived hashtag (and the equivalent for archived categories on transactions and pending inbox items); full `POST /v1/{resource}/{id}/restore` coverage on every soft-deletable resource; currencies locked at the schema to USD/PEN (no cross-rate math). Two operational tasks remain in engine [TODO.md](../../expense_world_engine/TODO.md): daily exchange-rate cron wiring + historical FX backfill — neither blocks CLI work. **All engine endpoints except `GET /health` are mounted under `/v1/`** — the CLI HTTP client's base path should be `<engine_url>/v1` with `/health` as the one special-case. CLI is Step 10 of the overall product roadmap (the engine's roadmap-era docs were retired 2026-08-04; the build-phase table lives in engine `CLAUDE.md`).
 
 ---
 
@@ -189,7 +189,13 @@ The engine ships `sort_order`, `beginning_balance_source` (`"manual"` or `"chain
 
 ## Step 7 — Sync
 
-*Deliverable: cache-by-default CLI per [api-design-principles.md §3b](../../expense_world_engine/docs/api-design-principles.md). Shipped in two phases.*
+> ⛔ **Retired 2026-08-06.** Everything this step built — the SQLite replica, `expense sync`,
+> cache-by-default reads, the post-write refresh — was deleted when the engine deleted
+> `GET /v1/sync` (engine rework WP4). All reads are live against the loopback engine now.
+> Rationale and rejected alternatives: [decisions.md](decisions.md) "Delete the local replica".
+> The text below is kept as the historical record of what shipped and why.
+
+*Deliverable: cache-by-default CLI per the since-retired engine §3b replica standard. Shipped in two phases.*
 
 The CLI is **cache-by-default by design**, not stateless-by-default. The local SQLite replica is a committed deliverable (matches iOS, web, every interactive client per §3b) — it powers instant reads via a `GET /sync`-backed local store. The stateless mode is the explicit escape hatch via `--no-cache` per command or `EXPENSE_STATELESS=1` process-wide.
 

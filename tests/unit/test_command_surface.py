@@ -28,7 +28,6 @@ READ_COMMAND_LEAVES: set[tuple[str, ...]] = {
     ("dashboard",),
     ("ping",),
     ("whoami",),
-    ("sync",),
     ("config", "get"),
     ("auth", "bootstrap"),
     ("auth", "me"),
@@ -133,7 +132,7 @@ def _click_leaves(cmd, prefix=()):
 _CLICK_LEAVES = list(_click_leaves(_CLICK_ROOT))
 _CLICK_LEAF_IDS = [" ".join(path) for path, _ in _CLICK_LEAVES]
 
-# Examples may legitimately show root flags (e.g. --no-cache, --verbose).
+# Examples may legitimately show root flags (e.g. --verbose).
 _ROOT_FLAGS = {
     opt
     for param in _CLICK_ROOT.params

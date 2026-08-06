@@ -43,7 +43,7 @@ def test_archive_is_immediate_no_modal(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: [ACCOUNT])
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)
@@ -63,7 +63,7 @@ def test_unarchive_is_direct(fake_client, monkeypatch):
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
             await _wait_loaded(app, pilot)
@@ -83,7 +83,7 @@ def test_archive_toggle_keeps_cursor_on_row(fake_client, monkeypatch):
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)
@@ -106,7 +106,7 @@ def test_archive_toggle_restores_cursor_across_pages(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: accounts)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         # tall harness: rows-per-page adapt to the terminal since 2026-07-13;
         # 40 lines keeps the manage window at the 20-row cap, so a22 is page 2
         async with app.run_test(size=(120, 40)) as pilot:
@@ -130,7 +130,7 @@ def test_edit_prefills_and_puts(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: [ACCOUNT])
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
             await _wait_loaded(app, pilot)
@@ -153,7 +153,7 @@ def test_system_category_hides_archive_but_offers_edit(fake_client, monkeypatch)
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = CategoriesScreen()
             await app.push_screen(screen)
@@ -173,7 +173,7 @@ def test_hashtag_edit_puts(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", lambda *a, **k: [HASHTAG])
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(HashtagsScreen())
             await _wait_loaded(app, pilot)
@@ -193,7 +193,7 @@ def test_enter_is_a_noop(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: [ACCOUNT])
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)

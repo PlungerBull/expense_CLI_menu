@@ -32,20 +32,8 @@ from expense.tui.widgets.header import Breadcrumb
 
 
 def screen_fetch_kwargs(app) -> dict:
-    """The standard TUI read kwargs: replica mode + verbosity off the app,
-    cold-start notice silenced (screens render their own sync note).
-
-    Returns a fresh dict with a fresh StringIO each call — a shared stream
-    would interleave notices across concurrent fetches.
-    """
-    import io
-
-    return dict(
-        no_cache=app._no_cache,
-        verbose=app._verbose,
-        cold_start_notice=False,
-        notice_stream=io.StringIO(),
-    )
+    """The standard TUI read kwargs: verbosity off the app."""
+    return dict(verbose=app._verbose)
 
 
 @dataclass
@@ -56,7 +44,6 @@ class _QueuedWrite:
     success: str
     on_success: Callable[[], None] | None
     on_error: Callable[[str], None] | None
-    refresh: bool
 
 
 class EngineWriteMixin:
@@ -73,15 +60,11 @@ class EngineWriteMixin:
 
     A failed write **drops the queued remainder** — those intents were decided
     against a screen state the engine just contradicted; the error callback
-    typically resyncs. Writes queued with `refresh=False` coalesce their
-    replica refresh into a single delta sync when the queue drains
-    (backlog 6.5a) — after an error drain too, since earlier skipped-refresh
-    successes already changed engine state.
+    typically resyncs.
     """
 
     _write_queue: deque[_QueuedWrite] | None = None  # lazily created; UI-thread only
     _write_inflight: bool = False
-    _refresh_on_drain: bool = False
 
     def run_write(
         self,
@@ -92,12 +75,11 @@ class EngineWriteMixin:
         success: str = "Done.",
         on_success: Callable[[], None] | None = None,
         on_error: Callable[[str], None] | None = None,
-        refresh: bool = True,
     ) -> None:
         if self._write_queue is None:
             self._write_queue = deque()
         self._write_queue.append(
-            _QueuedWrite(method, path, json_body, success, on_success, on_error, refresh)
+            _QueuedWrite(method, path, json_body, success, on_success, on_error)
         )
         self._pump_writes()
 
@@ -111,14 +93,10 @@ class EngineWriteMixin:
     def _execute_write(self, item: _QueuedWrite) -> None:
         # Imports stay function-local: the test fixtures patch these module
         # attributes, and only a lazy lookup sees the patch.
-        import io
-
         from expense import config as config_module
-        from expense.cache import refresh_after_write
         from expense.http import ExpenseClient
 
         error: str | None = None
-        stale = False
         try:
             cfg = config_module.ensure_loaded()
             with ExpenseClient(cfg, verbose=self.app._verbose) as client:
@@ -130,26 +108,12 @@ class EngineWriteMixin:
                     client.delete(item.path)
                 else:
                     raise ValueError(f"unsupported write method: {item.method}")
-                if item.refresh:
-                    # Capture (don't discard) the refresh notice: content in the
-                    # stream means the post-write sync failed and the on-screen
-                    # replica is now stale — surface it, don't swallow (backlog §5).
-                    notice = io.StringIO()
-                    refresh_after_write(
-                        client,
-                        cfg,
-                        no_cache=self.app._no_cache,
-                        no_sync_after=False,
-                        notice_stream=notice,
-                    )
-                    stale = bool(notice.getvalue().strip())
         except Exception as exc:
             error = format_error(exc)
-        self.app.call_from_thread(self._write_finished, item, error, stale)
+        self.app.call_from_thread(self._write_finished, item, error)
 
-    def _write_finished(self, item: _QueuedWrite, error: str | None, stale: bool = False) -> None:
-        # UI thread: report the outcome, then pump the next write or, on a
-        # drained queue, run the coalesced refresh.
+    def _write_finished(self, item: _QueuedWrite, error: str | None) -> None:
+        # UI thread: report the outcome, then pump the next write.
         self._write_inflight = False
         if error is not None:
             if self._write_queue:
@@ -159,57 +123,12 @@ class EngineWriteMixin:
             else:
                 self.notify(error, title="Failed", severity="error")
         else:
-            if not item.refresh:
-                self._refresh_on_drain = True
             if item.on_success is not None:
                 item.on_success()
             else:
                 self._after_write(item.success)
-            if stale:
-                self._notify_stale_replica()
         if self._write_queue:
             self._pump_writes()
-        elif self._refresh_on_drain:
-            self._refresh_on_drain = False
-            self._drain_refresh()
-
-    def _notify_stale_replica(self) -> None:
-        """Warn that the write landed but the local copy didn't refresh (backlog §5)."""
-        self.notify(
-            "The change was written, but the local copy didn't refresh and may "
-            "be stale. Open Sync to refresh.",
-            title="Saved — cache not refreshed",
-            severity="warning",
-        )
-
-    @work(thread=True, group="engine-write")
-    def _drain_refresh(self) -> None:
-        import io
-
-        from expense import config as config_module
-        from expense.cache import refresh_after_write
-        from expense.http import ExpenseClient
-
-        stale = False
-        try:
-            cfg = config_module.ensure_loaded()
-            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
-                notice = io.StringIO()
-                refresh_after_write(
-                    client,
-                    cfg,
-                    no_cache=self.app._no_cache,
-                    no_sync_after=False,
-                    notice_stream=notice,
-                )
-                stale = bool(notice.getvalue().strip())
-        except Exception:
-            # config/client setup failed before the refresh ran — the replica
-            # may be stale. (A stale replica also self-heals on the next read's
-            # sync, but the user should know now.)
-            stale = True
-        if stale:
-            self.app.call_from_thread(self._notify_stale_replica)
 
     def _after_write(self, message: str) -> None:
         self.notify(message)
@@ -396,11 +315,6 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
         # worker, so check before painting or a superseded load can clobber
         # (or race) the fresh one's content swap.
         worker = get_current_worker()
-        if self._will_cold_start():
-            self.app.call_from_thread(
-                self._set_loading,
-                "Syncing your data — first run, this can take a moment…",
-            )
         try:
             data = self.fetch()
         except Exception as exc:  # surface engine/config errors in-app, don't crash
@@ -410,36 +324,6 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
         if worker.is_cancelled:
             return
         self.app.call_from_thread(self._show, data)
-
-    def _will_cold_start(self) -> bool:
-        """Cheap check: will the upcoming fetch trigger a full first-run sync?
-
-        Lets the screen swap the bare spinner for a "Syncing…" note so a slow
-        cold-start doesn't look like a hang. Best-effort; False on any doubt.
-        """
-        if getattr(self.app, "_no_cache", False):
-            return False
-        try:
-            from expense import config as config_module
-            from expense.cache import db, state
-
-            config_module.ensure_loaded()
-            conn = db.connect()
-            try:
-                cur = state.read(conn)
-            finally:
-                conn.close()
-            return cur.user_id is None or cur.sync_token is None
-        except Exception:
-            return False
-
-    async def _set_loading(self, message: str) -> None:
-        content = self.query_one("#content", VerticalScroll)
-        async with self._content_lock():
-            await content.remove_children()
-            await content.mount(
-                Vertical(Static(message, classes="sync-note"), LoadingIndicator(), id="loadbox")
-            )
 
     async def _show(self, data: object) -> None:
         self._data = data  # cache for theme re-render (see _on_theme_change)

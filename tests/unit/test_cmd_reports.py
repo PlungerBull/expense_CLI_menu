@@ -5,10 +5,8 @@ import httpx
 import respx
 from typer.testing import CliRunner
 
-from expense import config as config_module
-from expense.commands import reports_cmd
 from expense.commands.reports_cmd import app as reports_app
-from tests.unit.helpers import make_cli_app, sync_payload
+from tests.unit.helpers import make_cli_app
 
 cli_app = make_cli_app(reports_app, "reports")
 
@@ -123,28 +121,17 @@ RANGE_RESPONSE = {
 
 
 @respx.mock
-def test_monthly_single_cold_cache_warms_and_resolves_names(configured):
-    """A cold cache is warmed via GET /v1/sync so hashtag UUIDs render as names.
-
-    This is the bug the screenshot showed: with an empty replica the breakdown
-    fell back to raw ids. The report now triggers a cold-start sync first.
-    """
-    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+def test_monthly_single_resolves_hashtag_names_live(configured):
+    """The breakdown's hashtag UUIDs resolve against a live GET /v1/hashtags."""
+    hashtags_route = respx.get("https://api.example.com/v1/hashtags").mock(
         return_value=httpx.Response(
             200,
-            json=sync_payload(
-                hashtags=[
-                    {
-                        "id": "aaaa",
-                        "user_id": "u1",
-                        "name": "Groceries",
-                        "is_archived": False,
-                        "deleted_at": None,
-                        "sort_order": 1,
-                        "version": 1,
-                    }
-                ]
-            ),
+            json={
+                "items": [{"id": "aaaa", "name": "Groceries"}],
+                "total": 1,
+                "limit": 200,
+                "offset": 0,
+            },
         )
     )
     respx.get("https://api.example.com/v1/reports/monthly").mock(
@@ -152,25 +139,23 @@ def test_monthly_single_cold_cache_warms_and_resolves_names(configured):
     )
     result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-03"])
     assert result.exit_code == 0, result.output
-    assert sync_route.called
-    # The "aaaa" combo now resolves to its name instead of the raw id.
+    assert hashtags_route.called
     assert "Groceries" in result.output
 
 
 @respx.mock
-def test_monthly_single_no_cache_skips_warm(configured):
-    """no_cache (stateless) suppresses the warming sync entirely."""
-    sync_route = respx.get("https://api.example.com/v1/sync")
+def test_monthly_single_unresolvable_hashtag_falls_back_to_the_id(configured):
+    """No reference list reachable → the renderer degrades to the raw id, never fails."""
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=SINGLE_MONTH_RESPONSE)
     )
-    cfg = config_module.ensure_loaded()
-    reports_cmd.run_single_month(cfg, year=2026, month=3, no_cache=True)
-    assert not sync_route.called
+    result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-03"])
+    assert result.exit_code == 0, result.output
+    assert "aaaa" in result.output
 
 
 @respx.mock
-def test_monthly_single_happy(configured_synced):
+def test_monthly_single_happy(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=SINGLE_MONTH_RESPONSE)
     )
@@ -193,7 +178,7 @@ def test_monthly_single_happy(configured_synced):
 
 
 @respx.mock
-def test_monthly_single_json_passthrough(configured_synced):
+def test_monthly_single_json_passthrough(configured):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=SINGLE_MONTH_RESPONSE)
     )
@@ -203,7 +188,7 @@ def test_monthly_single_json_passthrough(configured_synced):
 
 
 @respx.mock
-def test_monthly_range_happy(configured_synced):
+def test_monthly_range_happy(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=RANGE_RESPONSE)
     )
@@ -226,7 +211,7 @@ def test_monthly_range_happy(configured_synced):
 
 
 @respx.mock
-def test_monthly_range_json_passthrough(configured_synced):
+def test_monthly_range_json_passthrough(configured):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(200, json=RANGE_RESPONSE)
     )
@@ -238,7 +223,7 @@ def test_monthly_range_json_passthrough(configured_synced):
 
 
 @respx.mock
-def test_monthly_no_args_errors_before_http(configured_synced):
+def test_monthly_no_args_errors_before_http(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(cli_app, ["reports", "monthly"])
     assert result.exit_code != 0
@@ -247,7 +232,7 @@ def test_monthly_no_args_errors_before_http(configured_synced):
 
 
 @respx.mock
-def test_monthly_both_forms_errors_before_http(configured_synced):
+def test_monthly_both_forms_errors_before_http(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(
         cli_app, ["reports", "monthly", "--date", "2026-03", "--from", "2025-11"]
@@ -258,7 +243,7 @@ def test_monthly_both_forms_errors_before_http(configured_synced):
 
 
 @respx.mock
-def test_monthly_partial_range_errors_before_http(configured_synced):
+def test_monthly_partial_range_errors_before_http(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(cli_app, ["reports", "monthly", "--from", "2025-11"])
     assert result.exit_code != 0
@@ -267,7 +252,7 @@ def test_monthly_partial_range_errors_before_http(configured_synced):
 
 
 @respx.mock
-def test_monthly_range_too_wide_sent_to_engine_422_surfaces(configured_synced):
+def test_monthly_range_too_wide_sent_to_engine_422_surfaces(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(
             422,
@@ -288,7 +273,7 @@ def test_monthly_range_too_wide_sent_to_engine_422_surfaces(configured_synced):
 
 
 @respx.mock
-def test_monthly_range_inverted_sent_to_engine_422_surfaces(configured_synced):
+def test_monthly_range_inverted_sent_to_engine_422_surfaces(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(
             422,
@@ -314,7 +299,7 @@ def test_monthly_range_inverted_sent_to_engine_422_surfaces(configured_synced):
 
 
 @respx.mock
-def test_monthly_out_of_range_month_sent_to_engine_422_surfaces(configured_synced):
+def test_monthly_out_of_range_month_sent_to_engine_422_surfaces(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(
             422,
@@ -339,7 +324,7 @@ def test_monthly_out_of_range_month_sent_to_engine_422_surfaces(configured_synce
 
 
 @respx.mock
-def test_monthly_invalid_date_shape_errors_before_http(configured_synced):
+def test_monthly_invalid_date_shape_errors_before_http(configured):
     route = respx.get("https://api.example.com/v1/reports/monthly")
     result = runner.invoke(cli_app, ["reports", "monthly", "--date", "2026-3"])
     assert result.exit_code != 0
@@ -348,7 +333,7 @@ def test_monthly_invalid_date_shape_errors_before_http(configured_synced):
 
 
 @respx.mock
-def test_monthly_engine_422_surfaces_validation_error(configured_synced):
+def test_monthly_engine_422_surfaces_validation_error(configured):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(
             422,
@@ -368,7 +353,7 @@ def test_monthly_engine_422_surfaces_validation_error(configured_synced):
 
 
 @respx.mock
-def test_monthly_engine_500(configured_synced):
+def test_monthly_engine_500(configured):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         return_value=httpx.Response(
             500,
@@ -381,7 +366,7 @@ def test_monthly_engine_500(configured_synced):
 
 
 @respx.mock
-def test_monthly_connection_error(configured_synced):
+def test_monthly_connection_error(configured):
     respx.get("https://api.example.com/v1/reports/monthly").mock(
         side_effect=httpx.ConnectError("refused")
     )

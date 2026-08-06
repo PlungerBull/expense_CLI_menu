@@ -4,11 +4,11 @@ import pytest
 import typer
 
 from expense.errors import (
-    CacheUnavailableError,
+    _ENVELOPE_ERRORS,
+    ConfigInvalidError,
     ConfigMissingError,
     EngineConnectionError,
     EngineError,
-    SyncContractError,
     error_haystack,
     format_error,
     handle_errors,
@@ -149,42 +149,23 @@ def test_render_config_missing_human():
     assert "config set" in output
 
 
-def test_render_cache_unavailable_human():
-    err = CacheUnavailableError("Local cache at /x is unavailable (database is locked).")
-    output, exit_code, use_stderr = render(err, json_mode=False)
-    assert exit_code == 4
-    assert use_stderr is True
-    assert output.startswith("Error:")
-    assert "database is locked" in output
-
-
-def test_render_cache_unavailable_json_envelope():
-    err = CacheUnavailableError("Local cache at /x is unavailable (database is locked).")
+def test_render_config_invalid_json_envelope():
+    err = ConfigInvalidError("Config file at /x is not valid JSON.")
     output, exit_code, _ = render(err, json_mode=True)
-    assert exit_code == 4
+    assert exit_code == 3
     envelope = json.loads(output)
-    assert envelope["error"]["code"] == "CACHE_UNAVAILABLE"
+    assert envelope["error"]["code"] == "CONFIG_INVALID"
     assert envelope["error"]["fields"] is None
 
 
-def test_render_sync_contract_human():
-    err = SyncContractError(
-        "Cannot derive user_id from /sync response. Run 'expense auth bootstrap' first."
-    )
-    output, exit_code, use_stderr = render(err, json_mode=False)
-    assert exit_code == 5
-    assert use_stderr is True
-    assert output.startswith("Error:")
-    assert "auth bootstrap" in output
-
-
-def test_render_sync_contract_json_envelope():
-    err = SyncContractError("Engine /sync response is missing sync_token; refusing to apply it.")
-    output, exit_code, _ = render(err, json_mode=True)
-    assert exit_code == 5
-    envelope = json.loads(output)
-    assert envelope["error"]["code"] == "SYNC_CONTRACT"
-    assert envelope["error"]["fields"] is None
+def test_envelope_error_families_are_exactly_connection_and_config():
+    """The handled families after the cache deletion — no CACHE_UNAVAILABLE (4),
+    no SYNC_CONTRACT (5); those exit codes no longer exist."""
+    assert _ENVELOPE_ERRORS == {
+        EngineConnectionError: ("CONNECTION_ERROR", 6),
+        ConfigMissingError: ("CONFIG_MISSING", 3),
+        ConfigInvalidError: ("CONFIG_INVALID", 3),
+    }
 
 
 def test_format_error_engine_error_with_fields():
@@ -282,14 +263,14 @@ def test_handle_errors_catches_config_missing():
     assert exc.value.exit_code == 3
 
 
-def test_handle_errors_catches_sync_contract():
+def test_handle_errors_catches_config_invalid():
     @handle_errors
     def cmd(json_output: bool = False):
-        raise SyncContractError("broken contract")
+        raise ConfigInvalidError("bad config")
 
     with pytest.raises(typer.Exit) as exc:
         cmd()
-    assert exc.value.exit_code == 5
+    assert exc.value.exit_code == 3
 
 
 def test_handle_errors_propagates_unexpected():

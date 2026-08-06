@@ -148,7 +148,7 @@ def test_monthly_report_screen_renders_and_slides_window(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(MonthlyReportScreen(end=(2025, 12)))
             await wait_for(

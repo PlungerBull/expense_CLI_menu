@@ -1,30 +1,36 @@
 """Phase 2 System screen tests — Config + Auth & profile (fake client)."""
 
 import asyncio
-from uuid import uuid4
+import io
 
-from expense.cache import SyncSummary
+from rich.console import Console
+from textual.widgets import Static
+
 from expense.config import Config
 from expense.tui.app import ExpenseApp
-from expense.tui.screens.modals import ConfirmModal, SnapshotModal
+from expense.tui.screens.modals import SnapshotModal
 from expense.tui.screens.system import (
     ActivityScreen,
     AuthScreen,
     ConfigScreen,
     RatesScreen,
-    SyncScreen,
-    _delta_table,
     _redact_token,
-    _short_token,
 )
 from tests.unit.helpers import wait_for
 
 CFG = Config(
     engine_url="https://engine.example",
     token="ewe_pat_abcd1234wxyz",
-    client_id=uuid4(),
     main_currency="PEN",
 )
+
+
+def _screen_text(container) -> str:
+    """Every Static under `container`, rendered through a Rich console."""
+    con = Console(file=io.StringIO(), width=100)
+    for child in container.query(Static):
+        con.print(child.content)
+    return con.file.getvalue()
 
 
 def test_redact_token():
@@ -33,24 +39,22 @@ def test_redact_token():
     assert _redact_token("ewe_pat_abcd1234wxyz") == "ewe_pat_****wxyz"
 
 
-def test_cache_status_wording():
-    """Three honest states — a read error is NOT 'not synced yet' (backlog §5)."""
-    from expense.tui.screens.system import _cache_status
-    from expense.tui.theme import FALLBACK
+def test_config_screen_shows_only_the_engine_connection(monkeypatch):
+    """Engine url, token, main currency — and nothing else. The client-id and
+    cache-status rows went with the replica (2026-08-06)."""
+    monkeypatch.setattr("expense.config.load", lambda: CFG)
 
-    assert _cache_status("ready", FALLBACK).plain == "ready (synced)"
-    assert _cache_status("empty", FALLBACK).plain == "not synced yet"
-    assert _cache_status("error", FALLBACK).plain == "unreadable — retry, or run with --no-cache"
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = ConfigScreen()
+            await app.push_screen(screen)
+            await wait_for(pilot, lambda: bool(app.screen.query("#card")))
+            card = _screen_text(app.screen.query_one("#card"))
+            assert "engine url" in card and "token" in card and "main currency" in card
+            assert "client id" not in card and "cache" not in card
 
-
-def test_read_cache_state_flags_error_on_unreadable(monkeypatch):
-    """A locked/corrupt replica reads as 'error', never a benign 'empty' (backlog §5)."""
-    from expense.tui.screens.system import _read_cache_state
-
-    monkeypatch.setattr(
-        "expense.cache.db.connect", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("locked"))
-    )
-    assert _read_cache_state(object()) == "error"
+    asyncio.run(scenario())
 
 
 def test_config_screen_reads_and_saves(monkeypatch):
@@ -59,7 +63,7 @@ def test_config_screen_reads_and_saves(monkeypatch):
     monkeypatch.setattr("expense.config.save", lambda c: saved.update(cfg=c))
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ConfigScreen()
             await app.push_screen(screen)
@@ -83,7 +87,7 @@ def test_config_screen_rejects_bad_engine_url(monkeypatch):
     monkeypatch.setattr(ConfigScreen, "notify", lambda self, message, **kw: notices.append(message))
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ConfigScreen()
             await app.push_screen(screen)
@@ -113,7 +117,7 @@ def test_auth_provisioned_shows_identity(fake_client, monkeypatch):
     _patch_auth(fake_client, monkeypatch, me=me)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = AuthScreen()
             await app.push_screen(screen)
@@ -137,7 +141,7 @@ def test_auth_not_provisioned_bootstraps(fake_client, monkeypatch):
     monkeypatch.setattr("expense.dates.detect_timezone", lambda *a, **k: "America/Lima")
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = AuthScreen()
             await app.push_screen(screen)
@@ -169,7 +173,7 @@ def test_bootstrap_undetectable_timezone_notifies_not_crash(fake_client, monkeyp
     monkeypatch.setattr(AuthScreen, "notify", lambda self, message, **kw: notices.append(message))
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = AuthScreen()
             await app.push_screen(screen)
@@ -187,99 +191,8 @@ def test_bootstrap_undetectable_timezone_notifies_not_crash(fake_client, monkeyp
 
 
 # --------------------------------------------------------------------------
-# System reads — Sync · Activity · Rates
+# System reads — Activity · Rates
 # --------------------------------------------------------------------------
-
-
-def test_short_token():
-    assert _short_token(None) == "(none)"
-    assert _short_token("abc123") == "abc123"  # short tokens pass through
-    assert _short_token("a1f3c9e7b2d4f6") == "a1f3c9…d4f6"
-
-
-def test_delta_table_cold_start_only_inserts():
-    # cold_start populates only inserts; missing update/tombstone dicts read as 0.
-    s = SyncSummary(kind="cold_start", inserts={"transactions": 5}, settings_changed=True)
-    t = _delta_table(s)
-    assert t.row_count == 7  # 6 resources + settings
-
-
-def test_sync_screen_disabled_under_no_cache(monkeypatch):
-    monkeypatch.setattr("expense.config.ensure_loaded", lambda: CFG)
-
-    async def scenario():
-        app = ExpenseApp(no_cache=True)
-        async with app.run_test() as pilot:
-            screen = SyncScreen()
-            await app.push_screen(screen)
-            await wait_for(pilot, lambda: bool(app.screen.query(".legend")))
-            # guard: pressing sync under --no-cache never touches the engine.
-            called = []
-            monkeypatch.setattr("expense.cache.delta_sync", lambda *a, **k: called.append(1))
-            screen.action_sync()
-            await pilot.pause(0.05)
-            assert called == []
-
-    asyncio.run(scenario())
-
-
-def test_sync_screen_delta_refresh(fake_client, monkeypatch):
-    monkeypatch.setattr("expense.config.ensure_loaded", lambda: CFG)
-    # keep fetch() off disk: pretend there's no cache row yet.
-    monkeypatch.setattr(
-        "expense.cache.db.connect", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no db"))
-    )
-    summary = SyncSummary(kind="delta", inserts={"transactions": 2}, updates={"transactions": 1})
-    monkeypatch.setattr("expense.cache.delta_sync", lambda *a, **k: summary)
-
-    async def scenario():
-        app = ExpenseApp(no_cache=False)
-        async with app.run_test() as pilot:
-            screen = SyncScreen()
-            await app.push_screen(screen)
-            await wait_for(pilot, lambda: bool(app.screen.query(".legend")))
-            screen.action_sync()
-            await wait_for(pilot, lambda: screen._last is not None)
-            assert screen._last is summary
-            assert screen._last.kind == "delta"
-
-    asyncio.run(scenario())
-
-
-def test_full_rebuild_confirms_first(fake_client, monkeypatch):
-    """`f` opens a confirm (backlog 4.1): enter cancels, y runs cold_start."""
-    monkeypatch.setattr("expense.config.ensure_loaded", lambda: CFG)
-    monkeypatch.setattr(
-        "expense.cache.db.connect", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no db"))
-    )
-    summary = SyncSummary(kind="cold_start", inserts={"transactions": 9})
-    calls: list = []
-
-    def fake_cold_start(*a, **k):
-        calls.append(1)
-        return summary
-
-    monkeypatch.setattr("expense.cache.cold_start", fake_cold_start)
-
-    async def scenario():
-        app = ExpenseApp(no_cache=False)
-        async with app.run_test() as pilot:
-            screen = SyncScreen()
-            await app.push_screen(screen)
-            await wait_for(pilot, lambda: bool(app.screen.query(".legend")))
-            await pilot.press("f")  # real key: covers routing
-            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
-            await pilot.press("enter")  # safe default → cancels
-            await wait_for(pilot, lambda: app.screen is screen)
-            await pilot.pause(0.05)
-            assert calls == []
-            await pilot.press("f")
-            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
-            await pilot.press("y")
-            await wait_for(pilot, lambda: screen._last is summary)
-            assert calls == [1]
-
-    asyncio.run(scenario())
 
 
 def test_system_screens_inherit_escape_and_r(monkeypatch):
@@ -287,7 +200,7 @@ def test_system_screens_inherit_escape_and_r(monkeypatch):
     monkeypatch.setattr("expense.config.load", lambda: CFG)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ConfigScreen()
             await app.push_screen(screen)
@@ -299,7 +212,10 @@ def test_system_screens_inherit_escape_and_r(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_activity_screen_lists_and_opens_snapshot(monkeypatch):
+def test_activity_screen_lists_and_opens_snapshot(fake_client, monkeypatch):
+    """fetch() resolves every row's display name through ONE engine client, so
+    build() (UI thread) never does HTTP. The row's account is routed here; an
+    unrouted one would degrade to the 8-char short id."""
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: CFG)
     items = [
         {
@@ -317,9 +233,10 @@ def test_activity_screen_lists_and_opens_snapshot(monkeypatch):
         "expense.commands.activity_cmd.fetch_activity",
         lambda *a, **k: {"items": items, "total": 1},
     )
+    fake_client.get_responses["/accounts/acc-1234-5678"] = {"name": "BCP Soles"}
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test(size=(120, 40)) as pilot:
             screen = ActivityScreen()
             await app.push_screen(screen)
@@ -327,6 +244,14 @@ def test_activity_screen_lists_and_opens_snapshot(monkeypatch):
 
             await wait_for(pilot, lambda: bool(app.screen.query(CursorList)))
             assert screen._by_id.get("a1") is items[0]
+            assert screen._cells["a1"] == [
+                "2026-07-02",
+                "14:03:07",
+                "UPDATED",
+                "user",
+                "accounts",
+                "BCP Soles",
+            ]
             # real enter key (not a direct handler call) so this covers routing.
             await pilot.press("enter")
             await wait_for(pilot, lambda: isinstance(app.screen, SnapshotModal))
@@ -339,18 +264,23 @@ def test_activity_screen_lists_and_opens_snapshot(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_activity_resolves_singular_resource_types(monkeypatch):
+def test_activity_resolves_singular_resource_types(fake_client):
     # The engine writes resource_type in the SINGULAR ("transaction", …); the
-    # resolver must map those (and the older plural forms) to cache lookups.
+    # resolver must map those (and the older plural forms) to the collection
+    # path it reads live.
     import expense.commands.activity_cmd as ac
 
-    monkeypatch.setattr("expense.cache.queries.get_transaction", lambda _id: {"title": "Groceries"})
-    monkeypatch.setattr("expense.cache.queries.get_account", lambda _id: {"name": "BCP Soles"})
-    assert ac._resolve_resource_name("transaction", "abc-123") == "Groceries"
-    assert ac._resolve_resource_name("expense_transactions", "abc-123") == "Groceries"  # alias
-    assert ac._resolve_resource_name("account", "def-456") == "BCP Soles"
-    # unknown type → short id, never a crash
-    assert ac._resolve_resource_name("user", "0123456789ab") == "01234567"
+    fake_client.get_responses["/transactions/abc-123"] = {"title": "Groceries"}
+    fake_client.get_responses["/accounts/def-456"] = {"name": "BCP Soles"}
+    assert ac._resolve_resource_name("transaction", "abc-123", fake_client) == "Groceries"
+    alias = ac._resolve_resource_name("expense_transactions", "abc-123", fake_client)
+    assert alias == "Groceries"
+    assert ac._resolve_resource_name("account", "def-456", fake_client) == "BCP Soles"
+    # unknown type → short id, never a crash (and never an engine read)
+    assert ac._resolve_resource_name("user", "0123456789ab", fake_client) == "01234567"
+    assert not any(path.startswith("/users") for _, path in fake_client.requests)
+    # a routed miss (deleted record → 404) also degrades to the short id
+    assert ac._resolve_resource_name("account", "0123456789ab", fake_client) == "01234567"
 
 
 def test_rates_screen_lists_history(monkeypatch):
@@ -371,7 +301,7 @@ def test_rates_screen_lists_history(monkeypatch):
     monkeypatch.setattr("expense.commands.rates_cmd.fetch_rates_history", fake_history)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         # tall harness: rows-per-page adapt to the terminal since 2026-07-13;
         # 35 lines puts rates (chrome 11 + two legends 4) at the 20-row cap
         async with app.run_test(size=(120, 35)) as pilot:
@@ -403,7 +333,7 @@ def test_rates_screen_date_filter_refetches(monkeypatch):
     monkeypatch.setattr("expense.commands.rates_cmd.fetch_rates_history", fake_history)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = RatesScreen()
             await app.push_screen(screen)

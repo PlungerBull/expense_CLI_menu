@@ -96,7 +96,7 @@ DASHBOARD_WITH_ARCHIVED = {
 
 
 @respx.mock
-def test_dashboard_happy(configured_synced):
+def test_dashboard_happy(configured):
     route = respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(200, json=DASHBOARD_RESPONSE)
     )
@@ -124,7 +124,7 @@ def test_dashboard_happy(configured_synced):
 
 
 @respx.mock
-def test_dashboard_include_archived(configured_synced):
+def test_dashboard_include_archived(configured):
     route = respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(200, json=DASHBOARD_WITH_ARCHIVED)
     )
@@ -146,7 +146,7 @@ def test_dashboard_include_archived(configured_synced):
 
 
 @respx.mock
-def test_dashboard_json_passthrough(configured_synced):
+def test_dashboard_json_passthrough(configured):
     respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(200, json=DASHBOARD_RESPONSE)
     )
@@ -156,7 +156,7 @@ def test_dashboard_json_passthrough(configured_synced):
 
 
 @respx.mock
-def test_dashboard_settings_missing_422(configured_synced):
+def test_dashboard_settings_missing_422(configured):
     respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(
             422,
@@ -175,7 +175,7 @@ def test_dashboard_settings_missing_422(configured_synced):
 
 
 @respx.mock
-def test_dashboard_handles_empty_collections(configured_synced):
+def test_dashboard_handles_empty_collections(configured):
     payload = {
         "month": {"year": 2026, "month": 4},
         "bank_accounts": [],
@@ -205,7 +205,7 @@ def test_dashboard_handles_empty_collections(configured_synced):
 
 
 @respx.mock
-def test_dashboard_404_surfaces_engine_error(configured_synced):
+def test_dashboard_404_surfaces_engine_error(configured):
     respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(
             404,
@@ -218,7 +218,7 @@ def test_dashboard_404_surfaces_engine_error(configured_synced):
 
 
 @respx.mock
-def test_dashboard_500_surfaces_engine_error(configured_synced):
+def test_dashboard_500_surfaces_engine_error(configured):
     respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(
             500,
@@ -231,7 +231,7 @@ def test_dashboard_500_surfaces_engine_error(configured_synced):
 
 
 @respx.mock
-def test_dashboard_connection_error(configured_synced):
+def test_dashboard_connection_error(configured):
     respx.get("https://api.example.com/v1/dashboard").mock(
         side_effect=httpx.ConnectError("refused")
     )
@@ -241,7 +241,7 @@ def test_dashboard_connection_error(configured_synced):
 
 
 @respx.mock
-def test_dashboard_401_surfaces_config_set_hint(configured_synced):
+def test_dashboard_401_surfaces_config_set_hint(configured):
     respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(
             401,

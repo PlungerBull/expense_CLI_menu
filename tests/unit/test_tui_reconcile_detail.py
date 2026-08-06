@@ -123,7 +123,7 @@ def test_draft_lists_assigned_checked_plus_available(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -141,7 +141,7 @@ def test_toggle_puts_reconciliation_id(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -179,7 +179,7 @@ def test_rapid_toggles_serialize_puts_in_order(fake_client, monkeypatch):
     fake_client.put = slow_put
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -210,7 +210,7 @@ def test_toggle_error_drops_queued_intents_and_resyncs(fake_client, monkeypatch)
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -227,13 +227,13 @@ def test_toggle_error_drops_queued_intents_and_resyncs(fake_client, monkeypatch)
     asyncio.run(scenario())
 
 
-def test_toggle_burst_syncs_replica_once_on_drain(fake_client, monkeypatch):
-    """N queued toggles fire N PUTs but one delta sync when the queue drains,
-    not one per toggle (backlog 6.5a)."""
+def test_toggle_burst_puts_every_toggle_in_order(fake_client, monkeypatch):
+    """A burst of toggles sends one PUT per toggle, in the order pressed —
+    including a re-toggle of the same row (t1 out, then back in)."""
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -245,9 +245,11 @@ def test_toggle_burst_syncs_replica_once_on_drain(fake_client, monkeypatch):
             screen._list._cursor = 0
             screen._list.action_toggle()  # t1 → back in
             await wait_for(pilot, lambda: len(fake_client.puts) == 3)
-            await wait_for(pilot, lambda: fake_client.refreshes == 1)
-            await pilot.pause(0.1)  # window for any (wrong) extra refreshes
-            assert fake_client.refreshes == 1
+            assert fake_client.puts == [
+                ("/transactions/t1", {"reconciliation_id": None}),
+                ("/transactions/t2", {"reconciliation_id": "r1"}),
+                ("/transactions/t1", {"reconciliation_id": "r1"}),
+            ]
 
     asyncio.run(scenario())
 
@@ -282,7 +284,7 @@ def test_rapid_reloads_keep_one_fresh_checklist(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.transactions_cmd.fetch_transactions", fake_fetch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(completed))
             await app.push_screen(screen)
@@ -317,7 +319,7 @@ def test_complete_confirms_then_posts(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -336,7 +338,7 @@ def test_completed_is_read_only(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(completed))
             await app.push_screen(screen)
@@ -365,7 +367,7 @@ def test_delete_completed_surfaces_engine_409(fake_client, monkeypatch):
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(completed))
             await app.push_screen(screen)
@@ -404,7 +406,7 @@ def test_complete_with_zero_assigned_surfaces_engine_422(fake_client, monkeypatc
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -430,7 +432,7 @@ def test_revert_on_draft_posts_idempotently(fake_client, monkeypatch):
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -451,7 +453,7 @@ def test_revert_posts(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(completed))
             await app.push_screen(screen)
@@ -471,7 +473,7 @@ def test_revert_key_is_u(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(completed))
             await app.push_screen(screen)
@@ -506,7 +508,7 @@ def test_r_refreshes_record_by_id_and_never_writes(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.reconcile_cmd.fetch_reconciliation", fake_get)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(completed))
             await app.push_screen(screen)
@@ -538,7 +540,7 @@ def test_r_refresh_dismisses_when_record_gone(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.reconcile_cmd.fetch_reconciliation", gone)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -554,7 +556,7 @@ def test_confirm_modal_enter_cancels(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -574,7 +576,7 @@ def test_q_inert_inside_confirm_modal(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)
@@ -606,7 +608,7 @@ def test_detail_fetch_error_notifies_not_crash(fake_client, monkeypatch):
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationDetailScreen(dict(DRAFT))
             await app.push_screen(screen)

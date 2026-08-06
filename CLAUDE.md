@@ -14,7 +14,7 @@ Implications for every decision in this repo:
 
 - **The CLI is a contract validator.** Each command we ship is a real-world test of an engine endpoint. If a 422 hint, sign convention, idempotency replay, or field-locking semantic is wrong, we want to find out via CLI use, not via mobile users.
 - **No CLI-only shortcuts.** Anything that would only make sense for a CLI user (e.g. parsing engine-side logic client-side because "the CLI doesn't need pagination") has to be rejected. The pattern has to generalize to the next client.
-- **Sync, idempotency, error envelope, sign convention, date handling are shared infrastructure.** They were designed multi-client from day one (`X-Client-Id`, RFC 3339, signed amounts, structured error envelope) — the CLI uses them faithfully so iOS and web inherit working patterns, not just specs.
+- **Idempotency, error envelope, sign convention, date handling are shared infrastructure.** They were designed multi-client from day one (RFC 3339, signed amounts, structured error envelope) — the CLI uses them faithfully so iOS and web inherit working patterns, not just specs.
 - **What stays CLI-specific:** [expense/dates.py](expense/dates.py) (CLI-only date forgiveness), [expense/_editor.py](expense/_editor.py) (terminal editor flow for `reconcile reorder`), `~/.expense-config` (filesystem token storage). Mobile and web will solve these problems differently and that's fine — the engine doesn't see the difference.
 
 10,000-user scale is **not** a near-term goal of this repo. The end-state of this CLI is "feature-complete + a power-user surface for the same product non-developers will use via mobile/web." Distribution, multi-tenant scaling, billing, onboarding, localization — all of that lands on web/iOS, not here.
@@ -24,14 +24,13 @@ Implications for every decision in this repo:
 | Doc | What it contains | Location |
 |---|---|---|
 | [docs/cli-spec.md](docs/cli-spec.md) | Command groups, output conventions, open questions | Local |
-| [docs/cli-runtime.md](docs/cli-runtime.md) | CLI runtime behavior — sync model, write semantics, X-Client-Id lifecycle, cache phasing | Local |
+| [docs/cli-runtime.md](docs/cli-runtime.md) | CLI runtime behavior — read/write semantics, error handling, working against the live engine | Local |
 | [docs/roadmap.md](docs/roadmap.md) | Step-by-step CLI build order + per-step status | Local |
 | [docs/tui-plan.md](docs/tui-plan.md) | Textual TUI (`expense world`) — architecture, phases, keymap contract, status | Local |
 | [docs/polish-backlog.md](docs/polish-backlog.md) | The **active** polish/quality backlog (currently the 2026-07-06 best-practices review; the worked-off 2026-07-02 review lives in git history at `2d42482`) | Local |
 | [docs/decisions.md](docs/decisions.md) | Decision record — why the big calls were made, **including rejected alternatives**; index links whys that live elsewhere | Local |
 | [docs/mockups/](docs/mockups/) | HTML mockups — the approval gate for every screen and table | Local |
 | `engine-spec.md` | Every endpoint, every business rule — the API contract the CLI consumes | [../expense_world_engine/docs/engine-spec.md](../expense_world_engine/docs/engine-spec.md) |
-| `api-design-principles.md` | Request/response conventions (error shape, null-over-omission, idempotency, sign) | [../expense_world_engine/docs/api-design-principles.md](../expense_world_engine/docs/api-design-principles.md) |
 | `design-philosophy.md` | Product vision shared across all clients | [../expense_world_engine/docs/design-philosophy.md](../expense_world_engine/docs/design-philosophy.md) |
 | `lessons-*.md` | UX lessons from YNAB, Lunch Money, TickTick, Todoist, Splitwise | [../expense_world_engine/docs/](../expense_world_engine/docs/) |
 
@@ -43,19 +42,18 @@ Docs must outlive any one contributor, session, or AI model. Three durability ru
 
 - **Single branch — `main` only.** This repo has exactly one branch; no feature branches exist. Commit and push straight to `main` (this overrides any default "branch first" habit). CI runs on push to `main`; if a change needs isolating, use a throwaway git worktree, not a branch that outlives the work.
 - **Install:** `pip install -e ".[dev]" -c constraints.txt` — entry point is `expense` (TUI via `expense world`). `constraints.txt` pins the direct deps CI installs; refresh = bump a pin, land on `main` on green CI.
-- **Test:** `pytest tests/unit` (fast, respx-mocked, hermetic — an autouse fixture in [tests/unit/conftest.py](tests/unit/conftest.py) redirects `EXPENSE_CONFIG`/`EXPENSE_CACHE`; never bypass it). `tests/contract/` hits the **live engine** (the local deployment, since 2026-07-30), gated on `PYTEST_LIVE=1` (+ `EXPENSE_PAT`) — never set casually.
-- **Lint/format/types:** `ruff check . && ruff format .` plus scoped `mypy` (permissive, `[tool.mypy]` covers `http.py`/`config.py`/`errors.py`/`cache/` — widen as modules get annotated). CI (matrix 3.11/3.12/3.13, deps pinned via `constraints.txt`) enforces ruff check + format, mypy, and `pytest tests/unit --cov` (coverage reported, not gated); pre-commit runs gitleaks + ruff `--fix` + ruff-format + mypy. Line length 100, target py311.
+- **Test:** `pytest tests/unit` (fast, respx-mocked, hermetic — an autouse fixture in [tests/unit/conftest.py](tests/unit/conftest.py) redirects `EXPENSE_CONFIG`; never bypass it). `tests/contract/` hits the **live engine** (the local deployment, since 2026-07-30), gated on `PYTEST_LIVE=1` (+ `EXPENSE_PAT`) — never set casually.
+- **Lint/format/types:** `ruff check . && ruff format .` plus scoped `mypy` (permissive, `[tool.mypy]` covers `http.py`/`config.py`/`errors.py` — widen as modules get annotated). CI (matrix 3.11/3.12/3.13, deps pinned via `constraints.txt`) enforces ruff check + format, mypy, and `pytest tests/unit --cov` (coverage reported, not gated); pre-commit runs gitleaks + ruff `--fix` + ruff-format + mypy. Line length 100, target py311.
 - **Careful running live:** plain `expense …` commands use the developer's real `~/.expense-config` and hit the live engine — since 2026-07-30 that's the local deployment (`127.0.0.1:8000`, engine repo `deploy/local/`), and it is the one true ledger. Don't run writes ad hoc. Full ops guide — isolation levers, PAT provisioning, what the contract suite actually does: [docs/cli-runtime.md](docs/cli-runtime.md) "Working against the live engine".
-- **Env vars:** `EXPENSE_CONFIG`, `EXPENSE_CACHE` (path overrides), `EXPENSE_STATELESS=1` (bypass cache), `EXPENSE_NO_SYNC_AFTER=1` (skip post-write refresh), `PYTEST_LIVE=1` (contract tests).
+- **Env vars:** `EXPENSE_CONFIG` (config path override), `PYTEST_LIVE=1` (contract tests).
 
 ## Tech stack
 
 - **Language:** Python 3.11+
 - **CLI framework:** Typer · **TUI framework:** Textual · **HTTP client:** httpx
 - **Importer:** `expense import` (.xlsx via `openpyxl`, optional extra `[import]`) — package [expense/import_/](expense/import_/)
-- **Config storage:** `~/.expense-config` (chmod 600)
-- **Local cache (committed deliverable, not optional):** SQLite under `~/.expense-cache.sqlite3` per [api-design-principles.md §3b](../expense_world_engine/docs/api-design-principles.md) — cache-by-default, stateless escape hatch via `--no-cache` / `EXPENSE_STATELESS=1`. See [docs/cli-runtime.md](docs/cli-runtime.md).
-- **Sync architecture — server-first, not local-first.** Writes go engine-direct over HTTPS; the local SQLite is a read-through replica only, never the origin of a write. No offline write queue (that's iOS-only per §3b; see [docs/cli-runtime.md](docs/cli-runtime.md)). Why: single source of truth = no conflict resolution, no CRDTs, no per-row vector clocks — every client inherits the same simple `POST → wait → done` contract.
+- **Config storage:** `~/.expense-config` (chmod 600) — the CLI's only local state
+- **No local cache.** All reads and writes are live calls against the loopback engine. The Step-7b SQLite replica was deleted 2026-08-06 together with the engine's `GET /sync` (engine rework WP4) — see [docs/decisions.md](docs/decisions.md) "Delete the local replica". No offline write queue either (a per-client commitment for a future mobile client, never inherited). Why: single source of truth = no conflict resolution, no staleness, no CRDTs — every client inherits the same simple `request → wait → done` contract.
 
 ## Non-negotiable conventions
 

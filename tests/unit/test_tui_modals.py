@@ -35,7 +35,7 @@ _MODALS = [
 
 def test_every_modal_box_renders_with_size():
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test(size=(100, 40)) as pilot:
             for make_modal in _MODALS:
                 modal = make_modal()

@@ -21,7 +21,7 @@ def _enter(screen, text):
 
 def _run(fake_client, screen, steps):
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(screen)
             await pilot.pause(0.05)
@@ -56,7 +56,7 @@ def test_new_account_bank_only_with_currency(fake_client):
 
 def test_new_account_required_name_blocks_submit(fake_client):
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = NewAccountScreen()
             await app.push_screen(screen)

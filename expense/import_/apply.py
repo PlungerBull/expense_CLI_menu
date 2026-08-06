@@ -375,7 +375,7 @@ def apply_plan(
                 )
         except EngineConnectionError as err:
             # Stop sending, but return normally so the caller still renders the
-            # summary of committed chunks (cache_after_write is already best-effort).
+            # summary of committed chunks.
             remaining = len(items) - chunk_index * chunk_size
             result.tx_failed += remaining
             result.failures.append(

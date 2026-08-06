@@ -43,89 +43,85 @@ def _short_id(resource_id: object) -> str:
 
 # The engine writes activity `resource_type` in the singular ("transaction",
 # "account", …). Map both the engine's actual strings and the older plural
-# guesses to a canonical kind so name resolution is robust to either.
-_RESOURCE_KIND = {
-    "transaction": "transaction",
-    "expense_transactions": "transaction",
-    "account": "account",
-    "accounts": "account",
-    "category": "category",
-    "categories": "category",
-    "hashtag": "hashtag",
-    "hashtags": "hashtag",
+# guesses to the resource's collection path so name resolution is robust to
+# either.
+_RESOURCE_PATH = {
+    "transaction": "transactions",
+    "expense_transactions": "transactions",
+    "account": "accounts",
+    "accounts": "accounts",
+    "category": "categories",
+    "categories": "categories",
+    "hashtag": "hashtags",
+    "hashtags": "hashtags",
     "inbox": "inbox",
     "inbox_items": "inbox",
-    "reconciliation": "reconciliation",
-    "reconciliations": "reconciliation",
+    "reconciliation": "reconciliations",
+    "reconciliations": "reconciliations",
 }
 
 
-def _resolve_resource_name(resource_type: object, resource_id: object) -> str:
-    """Look up a human name for the row via the local cache replica.
+def _display_name(path: str, row: dict, resource_id: str, client: ExpenseClient) -> str:
+    """The human handle for one fetched row, per resource kind."""
+    if path in ("transactions", "inbox"):
+        return row.get("title") or row.get("description") or _short_id(resource_id)
+    if path == "hashtags":
+        name = row.get("name")
+        return f"#{name}" if name else _short_id(resource_id)
+    if path == "reconciliations":
+        date = row.get("statement_date") or row.get("date")
+        account_id = row.get("account_id")
+        account_name = None
+        if isinstance(account_id, str):
+            try:
+                account_name = client.get(f"/accounts/{account_id}").get("name")
+            except EngineError:
+                account_name = None
+        if isinstance(date, str) and account_name:
+            return f"{date[:10]} / {account_name}"
+        if isinstance(date, str):
+            return date[:10]
+        if account_name:
+            return account_name
+        return _short_id(resource_id)
+    return row.get("name") or _short_id(resource_id)
 
-    Returns the short 8-char UUID prefix on any cache miss / error so deleted
-    or never-synced records still have a usable handle.
+
+def _resolve_resource_name(
+    resource_type: object, resource_id: object, client: ExpenseClient
+) -> str:
+    """Look up a human name for the row via a live engine read.
+
+    Returns the short 8-char UUID prefix on any miss / error so deleted
+    records still have a usable handle.
     """
     if not isinstance(resource_id, str) or not resource_id:
         return "—"
     if not isinstance(resource_type, str):
         return _short_id(resource_id)
-    kind = _RESOURCE_KIND.get(resource_type)
-    if kind is None:
+    path = _RESOURCE_PATH.get(resource_type)
+    if path is None:
         return _short_id(resource_id)
     try:
-        from expense.cache import queries
-    except Exception:
-        return _short_id(resource_id)
-
-    try:
-        if kind == "transaction":
-            row = queries.get_transaction(resource_id)
-            return row.get("title") or row.get("description") or _short_id(resource_id)
-        if kind == "account":
-            row = queries.get_account(resource_id)
-            return row.get("name") or _short_id(resource_id)
-        if kind == "category":
-            row = queries.get_category(resource_id)
-            return row.get("name") or _short_id(resource_id)
-        if kind == "hashtag":
-            row = queries.get_hashtag(resource_id)
-            name = row.get("name")
-            return f"#{name}" if name else _short_id(resource_id)
-        if kind == "inbox":
-            row = queries.get_inbox(resource_id)
-            return row.get("title") or row.get("description") or _short_id(resource_id)
-        if kind == "reconciliation":
-            row = queries.get_reconciliation(resource_id)
-            date = row.get("statement_date") or row.get("date")
-            account_id = row.get("account_id")
-            account_name = None
-            if isinstance(account_id, str):
-                try:
-                    account_row = queries.get_account(account_id)
-                    account_name = account_row.get("name")
-                except EngineError:
-                    account_name = None
-            if isinstance(date, str) and account_name:
-                return f"{date[:10]} / {account_name}"
-            if isinstance(date, str):
-                return date[:10]
-            if account_name:
-                return account_name
-            return _short_id(resource_id)
+        row = client.get(f"/{path}/{resource_id}")
     except EngineError:
         return _short_id(resource_id)
     except Exception:
         return _short_id(resource_id)
+    if not isinstance(row, dict):
+        return _short_id(resource_id)
+    try:
+        return _display_name(path, row, resource_id, client)
+    except Exception:
+        return _short_id(resource_id)
 
-    return _short_id(resource_id)
 
-
-def activity_display_cells(item: dict) -> list[str]:
+def activity_display_cells(item: dict, client: ExpenseClient) -> list[str]:
     """The 6 human cells for one activity row: date, time, action, actor, type, resource.
 
     Shared by the CLI table renderer and the TUI Activity list screen so both
-    resolve resource names and map action codes identically.
+    resolve resource names and map action codes identically. `client` is an
+    open engine client — callers rendering many rows share one connection.
     """
     date_part, time_part = _split_date_time(item.get("created_at"))
     return [
@@ -134,11 +130,11 @@ def activity_display_cells(item: dict) -> list[str]:
         _action_label(item.get("action")),
         str(item.get("actor_type") or "—"),
         str(item.get("resource_type") or "—"),
-        _resolve_resource_name(item.get("resource_type"), item.get("resource_id")),
+        _resolve_resource_name(item.get("resource_type"), item.get("resource_id"), client),
     ]
 
 
-def _render_activity_rows(items: list[dict]) -> None:
+def _render_activity_rows(items: list[dict], client: ExpenseClient) -> None:
     """Render activity rows as a 6-column table (Date · Time · Action · Actor · Type · Resource).
 
     Module-level so alternate front doors (e.g. the TUI) can reuse it. Snapshots
@@ -150,7 +146,7 @@ def _render_activity_rows(items: list[dict]) -> None:
     for item in items:
         if not isinstance(item, dict):
             continue
-        rows.append(dict(zip(keys, activity_display_cells(item), strict=True)))
+        rows.append(dict(zip(keys, activity_display_cells(item, client), strict=True)))
     render_table(
         headers={
             "date": "Date",
@@ -164,7 +160,7 @@ def _render_activity_rows(items: list[dict]) -> None:
     )
 
 
-def _render_list(body: object, *, json_mode: bool) -> None:
+def _render_list(body: object, *, json_mode: bool, cfg, verbose: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
@@ -172,7 +168,8 @@ def _render_list(body: object, *, json_mode: bool) -> None:
     if not items:
         typer.echo("(no activity)")
         return
-    _render_activity_rows(items)
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        _render_activity_rows(items, client)
     render_pagination_hint(body, items)
 
 
@@ -239,4 +236,4 @@ def list_(
         offset=offset,
         verbose=get_verbose(ctx),
     )
-    _render_list(body, json_mode=json_output)
+    _render_list(body, json_mode=json_output, cfg=cfg, verbose=get_verbose(ctx))

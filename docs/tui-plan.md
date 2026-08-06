@@ -1,5 +1,10 @@
 # Interactive TUI — Implementation Plan
 
+> Historical note (2026-08-06): every mention of the SQLite replica, `ensure_synced`,
+> the Sync screen, or cold-start notices below describes machinery deleted with the
+> engine's `/sync` — see [decisions.md](decisions.md) "Delete the local replica".
+> The phase record is kept as shipped.
+>
 > Status: **in progress (Step 10)** — Phases 0–2 shipped (Phase 2 closed 2026-07-08
 > with the Monthly report screen); Phase 3 partially delivered early via the 2026-07-02 quality-review backlog §4
 > (2026-07-05/06, all eight items closed: keymap contract, theme-resolved semantic colors,
@@ -47,7 +52,7 @@ The hard, finance-critical layer already exists and is reused as-is:
 | Already built (reused) | New (the TUI) |
 |---|---|
 | Engine HTTP client, idempotency, error envelope (`expense/http.py`) | Textual app shell, screen stack, key bindings |
-| SQLite replica, `ensure_synced`, name maps (`expense/cache/`) | Header / breadcrumb / keybar widgets |
+| Live reads + name maps (`expense/commands/_resource.py`; the SQLite replica this row originally named was deleted 2026-08-06 — [decisions.md](decisions.md) "Delete the local replica") | Header / breadcrumb / keybar widgets |
 | Data shaping — the dicts renderers consume | List, tree, chip, and form screens |
 | Business rules (engine-side) + 422 envelope | Loading / empty / error states |
 | Command implementations & fetch/print split (`expense/commands/`) | Neutral theme token file |

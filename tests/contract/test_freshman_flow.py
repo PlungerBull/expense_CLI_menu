@@ -6,7 +6,7 @@ Walks a brand-new user through the exact path Step 9 gate criterion 4 calls out:
     → accounts create → categories create → log → dashboard → cleanup
 
 Hits the live engine. Gated on PYTEST_LIVE=1 and EXPENSE_PAT.
-Redirects EXPENSE_CONFIG and EXPENSE_CACHE to a temp dir so the developer's
+Redirects EXPENSE_CONFIG to a temp dir so the developer's
 real install is untouched.
 
 Uses a USD account regardless of the user's main_currency — the engine has
@@ -36,7 +36,6 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("EXPENSE_CONFIG", str(tmp_path / "config"))
-    monkeypatch.setenv("EXPENSE_CACHE", str(tmp_path / "cache.sqlite3"))
     return tmp_path
 
 

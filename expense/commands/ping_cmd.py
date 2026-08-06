@@ -23,7 +23,7 @@ def ping(
     verbose = get_verbose(ctx)
 
     start = time.monotonic()
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+    with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.get("/health", auth=False)
     elapsed = time.monotonic() - start
 

@@ -5,7 +5,7 @@ import typer
 
 from expense import config as config_module
 from expense import dates
-from expense.commands._resource import JSON_OPT, YES_OPT, cache_after_write, require_yes
+from expense.commands._resource import JSON_OPT, YES_OPT, require_yes
 from expense.config import Config
 from expense.context import get_verbose
 from expense.errors import EngineError, handle_errors
@@ -116,9 +116,8 @@ def bootstrap(
 
     payload = {"display_name": display_name, "timezone": timezone}
 
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+    with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post("/auth/bootstrap", json_body=payload)
-        cache_after_write(ctx, client, cfg)
 
     _cache_main_currency(cfg, body.get("settings", {}))
     _render_user_and_settings(body, json_mode=json_output)
@@ -128,7 +127,7 @@ def _me_impl(ctx: typer.Context, json_output: bool) -> None:
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
-    with ExpenseClient(cfg, verbose=verbose, cold_start_notice=True) as client:
+    with ExpenseClient(cfg, verbose=verbose) as client:
         try:
             body = client.get("/auth/me")
         except EngineError as err:
@@ -197,7 +196,6 @@ def profile(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.put("/auth/profile", json_body=payload)
-        cache_after_write(ctx, client, cfg)
 
     _render_user_only(body, json_mode=json_output)
 
@@ -265,7 +263,6 @@ def settings(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.put("/auth/settings", json_body=payload)
-        cache_after_write(ctx, client, cfg)
 
     if "main_currency" in payload:
         _cache_main_currency(cfg, body)

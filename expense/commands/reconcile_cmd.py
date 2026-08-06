@@ -5,7 +5,6 @@ from uuid import uuid4
 import typer
 
 from expense import _editor
-from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     INCLUDE_DELETED_OPT,
@@ -14,7 +13,6 @@ from expense.commands._resource import (
     OFFSET_OPT,
     YES_OPT,
     build_update_payload,
-    cache_after_write,
     effective_limit,
     fetch_all_pages,
     fetch_body,
@@ -30,7 +28,7 @@ from expense.commands._resource import (
     resolve_name,
     run_toggle,
 )
-from expense.context import get_no_cache, get_verbose
+from expense.context import get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, error_haystack, handle_errors
 from expense.http import ExpenseClient
@@ -77,16 +75,12 @@ def fetch_reconciliations(
     include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
-    no_cache: bool = False,
     verbose: bool = False,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> dict:
-    """GET /v1/reconciliations → the raw engine/replica body. Pure data, no render.
+    """GET /v1/reconciliations → the raw engine body. Pure data, no render.
 
     Shared by the flat `reconcile list` command and the TUI's Reconciliations
-    screen. Reads the local replica by default (warming it first); `no_cache`
-    round-trips the engine. Rows are ordered by `sort_order` (the chain order).
+    screen. Rows are ordered by `sort_order` (the chain order).
     """
     params: dict = {}
     if account_id is not None:
@@ -101,16 +95,7 @@ def fetch_reconciliations(
         cfg,
         path=f"/{_RESOURCE}",
         params=params,
-        cache_read=lambda: cache_pkg.list_reconciliations(
-            account_id=account_id,
-            limit=limit,
-            offset=offset,
-        ),
-        no_cache=no_cache,
-        force_live=include_deleted,
         verbose=verbose,
-        cold_start_notice=cold_start_notice,
-        notice_stream=notice_stream,
     )
 
 
@@ -120,37 +105,28 @@ def fetch_reconciliation(
     *,
     limit: int | None = None,
     offset: int | None = None,
-    no_cache: bool = False,
     verbose: bool = False,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> dict:
-    """GET /v1/reconciliations/{id} → the raw engine/replica body. Pure data.
+    """GET /v1/reconciliations/{id} → the raw engine body. Pure data.
 
     Shared by the flat `reconcile get` command and the TUI detail screen's
     refresh, which must fetch by id — scanning the collection stops at one
     page and falsely reported later records as deleted (backlog 6.2b).
-    Missing record → EngineError(status=404) on both the cache and live paths.
+    Missing record → EngineError(status=404).
     """
     params: dict = {}
     if limit is not None:
         params["limit"] = str(limit)
     if offset is not None:
         params["offset"] = str(offset)
-    # Always signed: the replica stores debit_as_negative=true, so the
-    # stateless path must match or the two modes disagree on sign.
+    # Always signed: every CLI/TUI surface renders debits negative, so the
+    # request pins the flag rather than depending on the engine default.
     params["debit_as_negative"] = "true"
     return fetch_body(
         cfg,
         path=f"/{_RESOURCE}/{id_}",
         params=params,
-        cache_read=lambda: cache_pkg.get_reconciliation(
-            id_, embedded_limit=limit, embedded_offset=offset
-        ),
-        no_cache=no_cache,
         verbose=verbose,
-        cold_start_notice=cold_start_notice,
-        notice_stream=notice_stream,
     )
 
 
@@ -305,9 +281,7 @@ def list_(
     offset: int | None = OFFSET_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/reconciliations. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine.
+    """GET /v1/reconciliations.
 
     Example: expense reconcile list --account-id <account-id>
     """
@@ -319,7 +293,6 @@ def list_(
         include_deleted=include_deleted,
         limit=limit,
         offset=offset,
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     _render_reconciliation_list(body, json_mode=json_output)
@@ -338,9 +311,7 @@ def get(
     offset: int | None = OFFSET_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/reconciliations/{id}. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine.
+    """GET /v1/reconciliations/{id}.
 
     Example: expense reconcile get <id> --limit 100
     """
@@ -350,7 +321,6 @@ def get(
         id_,
         limit=limit,
         offset=offset,
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     _render_reconciliation_detail(body, json_mode=json_output)
@@ -425,8 +395,6 @@ def create(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
-        cache_after_write(ctx, client, cfg)
-
     if not json_output:
         typer.echo(f"Created: {new_id}")
     render_record(body, json_mode=json_output, skip=("transactions",))
@@ -492,8 +460,6 @@ def update(
             elif _is_field_locked_422(err):
                 typer.echo(_FIELD_LOCKED_HINT, err=True)
             raise
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output, skip=("transactions",))
 
 
@@ -526,8 +492,6 @@ def delete(
             if err.status == 409:
                 typer.echo(_DELETE_LOCKED_HINT, err=True)
             raise
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output, skip=("transactions",))
 
 
@@ -602,8 +566,6 @@ def complete(
                 ):
                     typer.echo(_COMPLETE_EMPTY_HINT, err=True)
             raise
-        cache_after_write(ctx, client, cfg)
-
     if json_output:
         typer.echo(json.dumps(body, indent=2))
     else:
@@ -789,8 +751,6 @@ def move(
             f"/accounts/{account_id}/reconciliations/order",
             json_body={"ordered_ids": new_order},
         )
-        cache_after_write(ctx, client, cfg)
-
     _render_reorder_response(body, json_mode=json_output)
 
 
@@ -930,6 +890,4 @@ def reorder(
             f"/accounts/{account_id}/reconciliations/order",
             json_body={"ordered_ids": new_order},
         )
-        cache_after_write(ctx, client, cfg)
-
     _render_reorder_response(body, json_mode=False)

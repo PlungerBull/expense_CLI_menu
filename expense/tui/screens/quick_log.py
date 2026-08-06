@@ -102,7 +102,7 @@ def amount_to_text(cents: int) -> str:
 
 def _name_map(rows: list) -> dict[str, str]:
     """id → name from fetched rows (system + archived included, like the
-    cache-backed load_*_name_map helpers these replace for this form)."""
+    load_*_name_map helpers these replace for this form)."""
     return {
         r["id"]: r["name"]
         for r in rows
@@ -207,8 +207,7 @@ class QuickAddLogScreen(FormScreen):
             kw = screen_fetch_kwargs(self.app)
             # one superset fetch per resource (include_archived) feeds both the
             # active-only suggestion pools and the full name maps — three
-            # queries, not six (backlog 6.5b); in --no-cache mode the maps now
-            # come from live data instead of the empty replica
+            # queries, not six (backlog 6.5b)
             accts = items_of(
                 accounts_cmd.fetch_accounts(cfg, include_people=True, include_archived=True, **kw)
             )

@@ -5,7 +5,7 @@ import sys
 import typer
 from textual.app import App
 
-from expense.context import get_no_cache, get_verbose
+from expense.context import get_verbose
 from expense.tui.screens.home import HomeScreen
 from expense.tui.theme import DEFAULT_THEME, THEMES
 
@@ -13,16 +13,16 @@ from expense.tui.theme import DEFAULT_THEME, THEMES
 class ExpenseApp(App):
     """Root app: registers themes and hosts the screen stack.
 
-    `verbose` / `no_cache` are read off the typer context and handed to engine
-    fetches (run in worker threads by each screen) so the TUI honors `--verbose`
-    and stateless mode just like the flat commands.
+    `verbose` is read off the typer context and handed to engine fetches
+    (run in worker threads by each screen) so the TUI honors `--verbose`
+    just like the flat commands.
     """
 
     CSS_PATH = "app.tcss"
     # no app-level `q` — it would fire from inside ConfirmModal and every list
     # (letters bubble to the App). HomeScreen binds q; ctrl+q quits everywhere.
 
-    def __init__(self, *, verbose: bool = False, no_cache: bool = False) -> None:
+    def __init__(self, *, verbose: bool = False) -> None:
         # ansi_color=True makes Textual paint the terminal's OWN default
         # background (SGR 49) instead of our fixed hex, so the app fill and the
         # terminal's window padding are one continuous surface — no seam — and it
@@ -32,7 +32,6 @@ class ExpenseApp(App):
         # foreground back to $foreground. Rationale + scope: docs/decisions.md.
         super().__init__(ansi_color=True)
         self._verbose = verbose
-        self._no_cache = no_cache
 
     def get_default_screen(self) -> HomeScreen:
         return HomeScreen()
@@ -62,4 +61,4 @@ def run_world(ctx: typer.Context) -> None:
     # native text-selection/copy is suppressed). Disabling it makes the app
     # ignore the mouse and restores native select-to-copy. Every affordance has
     # a full keyboard path; see docs/decisions.md.
-    ExpenseApp(verbose=get_verbose(ctx), no_cache=get_no_cache(ctx)).run(mouse=False)
+    ExpenseApp(verbose=get_verbose(ctx)).run(mouse=False)

@@ -362,7 +362,7 @@ def _drive_transactions(size: tuple[int, int], calls: list, checks) -> None:
     async def scenario():
         from expense.tui.screens.transactions import TransactionsScreen
 
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test(size=size) as pilot:
             screen = TransactionsScreen()
             await app.push_screen(screen)
@@ -440,6 +440,9 @@ def test_inbox_filter_change_resets_page(monkeypatch):
     calls = []
 
     def fake_inbox(cfg, *, ready=False, overdue=False, limit=None, offset=None, **kw):
+        # Every load also issues an unpaged ready=True probe (the `rdy` glyph).
+        # It carries no offset — that is how `_filter_calls` tells the probe
+        # apart from the paged filter fetch this test is about.
         calls.append({"ready": ready, "offset": offset})
         items = [{"id": f"d{i}", "title": f"Draft {i}", "status": 1} for i in range(limit or 20)]
         return {"items": items, "total": 60, "limit": limit, "offset": offset}
@@ -452,7 +455,10 @@ def test_inbox_filter_change_resets_page(monkeypatch):
     async def scenario():
         from expense.tui.screens.inbox import InboxScreen
 
-        app = ExpenseApp(no_cache=True)  # no_cache: the ready-glyph second fetch is skipped
+        def _filter_calls():
+            return [c for c in calls if c["offset"] is not None]
+
+        app = ExpenseApp()
         # 35 lines: inbox chrome + legend take 13, so the 20 cap still applies
         async with app.run_test(size=(120, 35)) as pilot:
             screen = InboxScreen()
@@ -462,10 +468,10 @@ def test_inbox_filter_change_resets_page(monkeypatch):
                 lambda: screen.query(CursorList) and not screen.query("#content LoadingIndicator"),
             )
             await pilot.press("pagedown")
-            await wait_for(pilot, lambda: any(c["offset"] == 20 for c in calls))
+            await wait_for(pilot, lambda: any(c["offset"] == 20 for c in _filter_calls()))
             await pilot.press("f")  # all → ready; offset must reset
-            await wait_for(pilot, lambda: any(c["ready"] for c in calls))
-            ready_call = next(c for c in calls if c["ready"])
+            await wait_for(pilot, lambda: any(c["ready"] for c in _filter_calls()))
+            ready_call = next(c for c in _filter_calls() if c["ready"])
             assert ready_call["offset"] == 0 and screen._page == 0
 
     asyncio.run(scenario())

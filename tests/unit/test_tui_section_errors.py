@@ -33,7 +33,7 @@ def test_fetch_error_renders_banner(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", boom)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
             await wait_for(pilot, lambda: app.screen.query(".error"))
@@ -57,7 +57,7 @@ def test_action_reload_recovers_after_error(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", flaky)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
             await wait_for(pilot, lambda: app.screen.query(".error"))
@@ -70,7 +70,7 @@ def test_action_reload_recovers_after_error(fake_client, monkeypatch):
 
 
 def test_run_write_failure_notifies_and_skips_after_write(fake_client, monkeypatch):
-    """A failing write toasts title='Failed' and never fires success/refresh/reload.
+    """A failing write toasts title='Failed' and never fires the success/reload path.
 
     Archive lives on the Manage list itself (`a` on the cursor row, immediate),
     which shares EngineWriteMixin.run_write with every screen — same failure path.
@@ -83,7 +83,7 @@ def test_run_write_failure_notifies_and_skips_after_write(fake_client, monkeypat
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
             await wait_for(
@@ -99,6 +99,5 @@ def test_run_write_failure_notifies_and_skips_after_write(fake_client, monkeypat
             assert "CONFLICT — cannot archive" in message
             assert kw.get("title") == "Failed" and kw.get("severity") == "error"
             assert len(seen) == 1  # no success toast, no reload (_after_write skipped)
-            assert fake_client.refreshes == 0  # refresh_after_write never reached
 
     asyncio.run(scenario())

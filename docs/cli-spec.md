@@ -2,7 +2,7 @@
 
 > The `expense_CLI_menu` is the Hands. A Python (Typer) terminal interface that talks to the `expense_world_engine` via its HTTPS API. Every command is a thin wrapper around engine endpoints — no business logic lives in the CLI.
 >
-> Engine spec: [../../expense_world_engine/docs/engine-spec.md](../../expense_world_engine/docs/engine-spec.md) | Architecture: [../../expense_world_engine/docs/api-design-principles.md](../../expense_world_engine/docs/api-design-principles.md)
+> Engine spec: [../../expense_world_engine/docs/engine-spec.md](../../expense_world_engine/docs/engine-spec.md) — request/response conventions (error shape, null-over-omission, idempotency, sign) live in the engine's CLAUDE.md and engine-spec.md since the api-design-principles doc was retired (engine commit b75482b, 2026-08-04)
 > Roadmap: [roadmap.md](roadmap.md)
 
 ---
@@ -47,8 +47,9 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 |---|---|
 | `engine_url` | Base URL of the engine (local profile: `http://127.0.0.1:8000`; mothballed cloud: `https://expense-world-engine.onrender.com`) |
 | `token` | PAT (prefix `ewe_pat_`). Sent verbatim as `Authorization: Bearer <token>`. |
-| `client_id` | Persistent UUID used as `X-Client-Id` for sync checkpoints (auto-generated on first run) |
-| `main_currency` | Cached from `/v1/auth/me` for offline formatting hints |
+| `main_currency` | Mirrored from `/v1/auth/me` for formatting hints |
+
+(A legacy `client_id` field may linger in configs written before 2026-08-06; it is ignored on load. It keyed the deleted `/sync` checkpoints — see [decisions.md](decisions.md) "Delete the local replica".)
 
 ---
 
@@ -131,12 +132,6 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `rates list [--date YYYY-MM-DD] [--limit N] [--offset N]` → `GET /v1/exchange-rates/history`
   (stored daily rates, newest first, one row per pair per day; exact-day filter, no fallback).
 
-### `expense sync`
-- `sync` (bare) — delta sync against the local SQLite replica (`~/.expense-cache.sqlite3`); cold-starts automatically on first run. Prints per-resource counts.
-- `sync --full` — cold start: wipe + full pull + rebuild cache.
-- `sync --no-cache` (root flag) — stateless wildcard `*` snapshot; cache untouched.
-- The cache is **default-on**; runtime detail (phasing, cold-start rules, tombstones) lives in [cli-runtime.md](cli-runtime.md).
-
 ### `expense health` / `expense ping`
 - `ping` → `GET /health`. Connectivity + auth sanity check.
 
@@ -156,8 +151,6 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 | `--json` | every read command | Raw engine response, passed through verbatim |
 | `--yes` / `-y` | every destructive command (delete, revert, clear) | Skip confirmation prompt |
 | `--verbose` | every command (root flag) | Print HTTP request/response for debugging |
-| `--no-cache` | every command (root flag) | Stateless mode: bypass the SQLite replica, hit the engine directly (`EXPENSE_STATELESS=1` equivalent) |
-| `--no-sync-after` | every write (root flag) | Skip the post-write cache refresh (`EXPENSE_NO_SYNC_AFTER=1` equivalent) — for batch scripts |
 | `--include-archived` | every `list` on resources that support archive | Include archived rows |
 | `--include-deleted` | every `list` | Include soft-deleted rows (recovery view) |
 
@@ -168,7 +161,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - **Tables** — Default rendering for every `<resource> list` flow. Plain ASCII columns, header row + separator dashes, two-space gap between columns. Built via the shared helpers in [expense/commands/_resource.py](../expense/commands/_resource.py): `render_table(headers, rows, *, align_right)`, `pad_left`, `pad_right`, `visible_len`. Per-resource columns are chosen for at-a-glance scannability, not field-by-field completeness — the verbose key:value dump remains the `<resource> get <id>` view, and `--json` keeps raw passthrough.
   - **Process rule:** before adding a new `list` renderer (or new columns to an existing one), propose the column set explicitly and get user sign-off. Never invent columns from the engine response shape alone — the user has the final say on what's scannable. The recommended workflow is the HTML mockup pattern used for Step 9.5.9/9.5.10 tables: dump the available fields, propose a short list with rationale, iterate, then implement.
   - **Color swatches** — When a column carries a `#RRGGBB` value, render as a 2-char ANSI 24-bit block via `color_swatch(hex, color=color_supported())`. `color_supported()` gates on `sys.stdout.isatty()` + the `NO_COLOR` env var ([no-color.org](https://no-color.org)). Non-TTY (pipe, file, test) falls back to the hex string so output stays grep-able.
-  - **Name resolution** — ID columns on `inbox` / `transactions` / `reports` resolve to human names via cache-backed maps (`load_account_name_map`, `load_category_name_map`, `load_hashtag_name_map`). Unresolvable IDs fall back silently to the first 8 chars (e.g. `de37af15`); null IDs render as `—`. No warning on miss — the cache is the source of truth, missing means out-of-sync.
+  - **Name resolution** — ID columns on `inbox` / `transactions` / `reports` resolve to human names via live reference-list maps (`load_account_name_map`, `load_category_name_map`, `load_hashtag_name_map`). Unresolvable IDs fall back silently to the first 8 chars (e.g. `de37af15`); null IDs render as `—`. No warning on miss — a name-map hiccup must never break a listing.
   - **Truncation** — Free-text columns (`title`, `description`) truncate at 24 visible chars with a trailing `…`. The full value is still in `get` / `--json`.
 - **Pagination (human mode)** — every `<resource> list` defaults to `--limit 20` (`DEFAULT_PAGE_ROWS` in [expense/commands/_resource.py](../expense/commands/_resource.py); the TUI windows at min(20, what fits the terminal) since 2026-07-13, with 20 as its cap and pre-layout fallback); when more rows exist, `render_pagination_hint` appends `(showing 20 of 133; pass --offset 20 --limit 20 for more)`. Explicit `--limit`/`--offset` always win. `--json` sends **no** default limit — the request and body stay exactly what the flags say. `accounts list` carries the same flags (the engine pages `/accounts` despite the spec's flat-list wording — gap noted at commit `4ef5c55`). Decided 2026-07-11 (TUI side amended 2026-07-13); rationale + rejected alternatives in [decisions.md](decisions.md).
 - **Amounts** — currency symbol prefix (`S/ 8,420.50`, `$5,200.00`). Native + home currency shown side-by-side when they differ. Outflows prefixed with `-`.
@@ -189,4 +182,4 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - Shell completions (zsh, bash, fish)
 - `expense import csv` — CSV variant of the shipped `.xlsx` importer, only if a real migration needs it (see [roadmap.md](roadmap.md) Post-Step-9 ergonomics)
 
-*(Resolved and moved above: `expense world` shipped as a command — see its group entry; the local SQLite cache shipped cache-by-default through Step 7b.3 — see [cli-runtime.md](cli-runtime.md).)*
+*(Resolved and moved above: `expense world` shipped as a command — see its group entry. The local SQLite cache shipped cache-by-default through Step 7b.3, then was deleted 2026-08-06 with the engine's `/sync` — see [decisions.md](decisions.md) "Delete the local replica".)*

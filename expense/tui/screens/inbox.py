@@ -2,7 +2,7 @@
 
 Built on SectionScreen (breadcrumb/card/worker) + the shared CursorList. Data
 comes from the shared `inbox_cmd.fetch_inbox`; the per-row `rdy` glyph reuses
-the cache's exact "ready" predicate (a second `fetch_inbox(ready=True)` query)
+the engine's exact "ready" predicate (a second `fetch_inbox(ready=True)` query)
 rather than reimplementing it. `f` cycles the filter, `p` promotes and `d`
 deletes (each via a ConfirmModal), and `enter` opens the item in the editable
 QuickAddLogScreen.
@@ -92,13 +92,10 @@ class InboxScreen(PagedListMixin, SectionScreen):
             )
         )
         items = items_of(body)
-        # Mark readiness with the engine's own predicate (cache ready filter),
-        # not a reimplementation. Skipped in stateless mode (no cache filter).
-        ready_ids: set = set()
-        if not self.app._no_cache:
-            rb = inbox_cmd.fetch_inbox(cfg, ready=True, **kw)
-            ritems = items_of(rb)
-            ready_ids = {it.get("id") for it in ritems}
+        # Mark readiness with the engine's own predicate (a second ready=True
+        # query), not a reimplementation.
+        rb = inbox_cmd.fetch_inbox(cfg, ready=True, **kw)
+        ready_ids: set = {it.get("id") for it in items_of(rb)}
         return {
             "items": items,
             "ready_ids": ready_ids,

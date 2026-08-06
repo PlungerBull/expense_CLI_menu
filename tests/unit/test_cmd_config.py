@@ -1,5 +1,5 @@
 import json
-from uuid import UUID
+from uuid import uuid4
 
 import pytest
 from typer.testing import CliRunner
@@ -17,13 +17,6 @@ def tmp_config(tmp_path, monkeypatch):
     yield config_path
 
 
-@pytest.fixture
-def tmp_cache(tmp_path, monkeypatch):
-    cache_path = tmp_path / "cache.sqlite3"
-    monkeypatch.setenv("EXPENSE_CACHE", str(cache_path))
-    yield cache_path
-
-
 def test_set_creates_config_on_first_run(tmp_config):
     result = runner.invoke(
         app,
@@ -35,7 +28,6 @@ def test_set_creates_config_on_first_run(tmp_config):
     cfg = config_module.load()
     assert cfg.engine_url == "https://api.example.com"
     assert cfg.token == "ewe_pat_abc"
-    assert isinstance(cfg.client_id, UUID)
 
 
 def test_set_requires_engine_url_on_first_run(tmp_config):
@@ -43,19 +35,45 @@ def test_set_requires_engine_url_on_first_run(tmp_config):
     assert result.exit_code != 0
 
 
-def test_set_preserves_client_id_on_update(tmp_config):
+def test_set_preserves_untouched_fields_on_update(tmp_config):
     runner.invoke(
         app,
-        ["set", "--engine-url", "https://api.example.com", "--token", "ewe_pat_abc"],
+        [
+            "set",
+            "--engine-url",
+            "https://api.example.com",
+            "--token",
+            "ewe_pat_abc",
+            "--main-currency",
+            "PEN",
+        ],
     )
-    first = config_module.load()
 
     runner.invoke(app, ["set", "--token", "ewe_pat_new"])
     second = config_module.load()
 
-    assert second.client_id == first.client_id
     assert second.token == "ewe_pat_new"
     assert second.engine_url == "https://api.example.com"
+    assert second.main_currency == "PEN"
+
+
+def test_set_over_a_legacy_client_id_config(tmp_config):
+    """Configs written before the sync deletion still carry client_id — `set`
+    must update them, not choke, and must not write the dead key back."""
+    tmp_config.write_text(
+        json.dumps(
+            {
+                "engine_url": "https://api.example.com",
+                "token": "ewe_pat_old",
+                "client_id": str(uuid4()),
+            }
+        )
+    )
+
+    result = runner.invoke(app, ["set", "--token", "ewe_pat_new"])
+    assert result.exit_code == 0, result.output
+    assert config_module.load().token == "ewe_pat_new"
+    assert "client_id" not in json.loads(tmp_config.read_text())
 
 
 @pytest.mark.parametrize("bad_url", ["example.com", "ftp://example.com", "https://"])
@@ -156,56 +174,6 @@ def test_clear_with_yes_flag(tmp_config):
     result = runner.invoke(app, ["clear", "--yes"])
     assert result.exit_code == 0
     assert not tmp_config.exists()
-
-
-def test_set_token_change_wipes_cache(tmp_config, tmp_cache):
-    """A different PAT may be a different user — the replica must not survive (backlog 1.1)."""
-    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
-    tmp_cache.touch()
-
-    result = runner.invoke(app, ["set", "--token", "ewe_pat_b"])
-    assert result.exit_code == 0, result.output
-    assert "cache cleared" in result.output.lower()
-    assert not tmp_cache.exists()
-
-
-def test_set_engine_url_change_wipes_cache(tmp_config, tmp_cache):
-    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
-    tmp_cache.touch()
-
-    result = runner.invoke(app, ["set", "--engine-url", "https://y.com"])
-    assert result.exit_code == 0, result.output
-    assert not tmp_cache.exists()
-
-
-def test_set_main_currency_only_preserves_cache(tmp_config, tmp_cache):
-    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
-    tmp_cache.touch()
-
-    result = runner.invoke(app, ["set", "--main-currency", "PEN"])
-    assert result.exit_code == 0, result.output
-    assert "cache cleared" not in result.output.lower()
-    assert tmp_cache.exists()
-
-
-def test_set_same_token_preserves_cache(tmp_config, tmp_cache):
-    """Re-setting the identical token must not force a pointless cold start."""
-    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
-    tmp_cache.touch()
-
-    result = runner.invoke(app, ["set", "--token", "ewe_pat_a"])
-    assert result.exit_code == 0, result.output
-    assert tmp_cache.exists()
-
-
-def test_clear_wipes_cache(tmp_config, tmp_cache):
-    runner.invoke(app, ["set", "--engine-url", "https://x.com", "--token", "ewe_pat_a"])
-    tmp_cache.touch()
-
-    result = runner.invoke(app, ["clear", "--yes"])
-    assert result.exit_code == 0, result.output
-    assert "cache cleared" in result.output.lower()
-    assert not tmp_cache.exists()
 
 
 def test_clear_no_file_is_idempotent(tmp_config):

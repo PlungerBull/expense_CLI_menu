@@ -35,7 +35,6 @@ from expense.tui.screens.system import (
     AuthScreen,
     ConfigScreen,
     RatesScreen,
-    SyncScreen,
 )
 from expense.tui.screens.transactions import TransactionsScreen
 from expense.tui.theme import Palette, resolve_palette
@@ -59,7 +58,6 @@ _MENU: list[tuple[str | None, str]] = [
     (None, "System"),
     ("config", "Config"),
     ("auth", "Auth & profile"),
-    ("sync", "Sync"),
     ("activity", "Activity"),
     ("rates", "Rates"),
 ]
@@ -79,7 +77,6 @@ _SCREENS: dict[str, type[Screen]] = {
     "hashtags": HashtagsScreen,
     "config": ConfigScreen,
     "auth": AuthScreen,
-    "sync": SyncScreen,
     "activity": ActivityScreen,
     "rates": RatesScreen,
 }

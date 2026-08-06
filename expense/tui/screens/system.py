@@ -1,24 +1,18 @@
 """System screens — Config, Auth & profile, and the system reads (Phase 2).
 
-Config: read view of engine URL / token (masked) / client id / main currency /
-cache state; `e` edits the engine URL, `t` sets the token (both write
-~/.expense-config). Auth & profile: identity + settings from GET /auth/me; `b`
-bootstraps (provisions the user record), `m` sets the main currency (PUT
-/auth/settings, which triggers the engine's home-currency recalc).
+Config: read view of engine URL / token (masked) / main currency; `e` edits
+the engine URL, `t` sets the token (both write ~/.expense-config). Auth &
+profile: identity + settings from GET /auth/me; `b` bootstraps (provisions the
+user record), `m` sets the main currency (PUT /auth/settings).
 
-System reads (the last three sections before TUI parity):
-  Sync     — status of the local replica + `s` sync (delta) / `f` full rebuild
-             (confirms first: a long re-download, though never engine data loss).
+System reads:
   Activity — engine-direct audit log; `enter` shows one entry's before/after.
   Rates    — reference FX lookup (conversion on writes is automatic engine-side).
 """
 
-import sys
-
 from rich import box
 from rich.table import Table
 from rich.text import Text
-from textual import work
 from textual.widget import Widget
 from textual.widgets import Static
 
@@ -27,7 +21,6 @@ from expense.currencies import SUPPORTED_CURRENCIES
 from expense.errors import format_error
 from expense.tui.screens._base import PagedListMixin, SectionScreen
 from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
-from expense.tui.theme import Palette, resolve_palette
 from expense.tui.widgets.cursor_list import CursorList
 
 
@@ -40,7 +33,7 @@ def _kv_table(rows: list[tuple[str, object]]) -> Table:
     t.add_column("k", style="dim")
     t.add_column("v")
     for key, value in rows:
-        # a pre-styled Text (e.g. the cache-status cell) passes through; the rest stringify
+        # a pre-styled Text passes through; the rest stringify
         cell = (
             value
             if isinstance(value, Text)
@@ -48,39 +41,6 @@ def _kv_table(rows: list[tuple[str, object]]) -> Table:
         )
         t.add_row(key, cell)
     return t
-
-
-def _cache_status(state: str, palette: Palette) -> Text:
-    """Render the replica's health as a colored status cell.
-
-    Three honest states — a read error is NOT the same as a fresh, never-synced
-    replica, so it gets its own wording and color instead of masquerading as
-    "not synced yet" (backlog §5). Color goes through the theme palette.
-    """
-    if state == "ready":
-        return Text("ready (synced)", style=palette.success)
-    if state == "error":
-        return Text("unreadable — retry, or run with --no-cache", style=palette.warning)
-    return Text("not synced yet", style="dim")
-
-
-def _read_cache_state(app) -> str:
-    """'ready' | 'empty' | 'error' — the replica's health for the status row.
-
-    A locked/corrupt read (any exception from connect/read) yields 'error' with
-    a stderr breadcrumb under -v, never a silent 'empty' (backlog §5)."""
-    from expense.cache import db, state
-
-    try:
-        conn = db.connect()
-        try:
-            return "ready" if state.read(conn).sync_token is not None else "empty"
-        finally:
-            conn.close()
-    except Exception as exc:
-        if getattr(app, "_verbose", False):
-            print(f"cache unreadable: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return "error"
 
 
 class ConfigScreen(SectionScreen):
@@ -98,8 +58,7 @@ class ConfigScreen(SectionScreen):
     def fetch(self) -> dict:
         from expense import config as config_module
 
-        cfg = config_module.load()
-        return {"cfg": cfg, "cache_state": _read_cache_state(self.app)}
+        return {"cfg": config_module.load()}
 
     def build(self, data: dict) -> list[Widget]:
         self._cfg = data["cfg"]
@@ -107,12 +66,10 @@ class ConfigScreen(SectionScreen):
         rows = [
             ("engine url", getattr(cfg, "engine_url", None)),
             ("token", _redact_token(getattr(cfg, "token", None))),
-            ("client id", getattr(cfg, "client_id", None)),
             ("main currency", getattr(cfg, "main_currency", None)),
-            ("cache", _cache_status(data["cache_state"], resolve_palette(self.app))),
         ]
         return [
-            Static(Text("Config — engine connection & local state"), classes="section-title"),
+            Static(Text("Config — engine connection"), classes="section-title"),
             Static(_kv_table(rows)),
             Static(
                 Text(
@@ -305,182 +262,8 @@ class AuthScreen(SectionScreen):
 
 
 # ---------------------------------------------------------------------------
-# System reads — Sync · Activity · Rates
+# System reads — Activity · Rates
 # ---------------------------------------------------------------------------
-
-
-def _short_token(token: str | None) -> str:
-    if not token:
-        return "(none)"
-    if len(token) <= 12:
-        return token
-    return f"{token[:6]}…{token[-4:]}"
-
-
-class SyncScreen(SectionScreen):
-    """The local-replica status + refresh controls.
-
-    Sync normally runs on its own after every write; this screen exists for
-    the cross-client case (data changed elsewhere) and for a manual full
-    rebuild. Reuses `cache.delta_sync` / `cache.cold_start` — no logic here.
-    """
-
-    crumb = ("System", "Sync")
-    CARD_WIDTH = 80
-    BINDINGS = [
-        ("s", "sync", "Sync"),
-        ("f", "full", "Full rebuild"),
-    ]
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._last = None  # last SyncSummary from an in-app run
-
-    def fetch(self) -> dict:
-        from expense.cache import cache_path, db, state
-
-        info: dict = {"sync_token": None, "last_synced_at": None, "cache_state": "empty"}
-        try:
-            info["cache_path"] = str(cache_path())
-        except Exception:
-            info["cache_path"] = None
-        if getattr(self.app, "_no_cache", False):
-            info["disabled"] = True
-            return info
-        try:
-            conn = db.connect()
-            try:
-                cur = state.read(conn)
-            finally:
-                conn.close()
-            info["sync_token"] = cur.sync_token
-            info["last_synced_at"] = cur.last_synced_at
-            info["cache_state"] = "ready" if cur.sync_token is not None else "empty"
-        except Exception as exc:
-            # A locked/corrupt read is distinct from a fresh replica (backlog §5).
-            info["cache_state"] = "error"
-            if getattr(self.app, "_verbose", False):
-                print(f"cache unreadable: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return info
-
-    def build(self, data: dict) -> list[Widget]:
-        widgets: list[Widget] = [
-            Static(Text("Sync — refresh the local copy from the engine"), classes="section-title"),
-        ]
-        if data.get("disabled"):
-            widgets.append(
-                Static(
-                    Text(
-                        "Cache is disabled (--no-cache / EXPENSE_STATELESS). Nothing to sync.",
-                        style="dim",
-                    ),
-                    classes="legend",
-                )
-            )
-            return widgets
-        rows = [
-            ("last synced", data.get("last_synced_at") or "never"),
-            ("sync token", _short_token(data.get("sync_token"))),
-            ("cache file", data.get("cache_path")),
-            ("state", _cache_status(data.get("cache_state", "empty"), resolve_palette(self.app))),
-        ]
-        widgets.append(Static(_kv_table(rows)))
-        if self._last is not None:
-            widgets.append(
-                Static(
-                    Text(
-                        "rebuilt" if self._last.kind == "cold_start" else "last run — delta applied"
-                    ),
-                    classes="section-title",
-                )
-            )
-            widgets.append(Static(_delta_table(self._last)))
-        widgets.append(
-            Static(
-                Text(
-                    "s sync · f full rebuild · engine is the source of truth",
-                    style="dim",
-                ),
-                classes="legend",
-            )
-        )
-        return widgets
-
-    def action_sync(self) -> None:
-        self._run_sync(full=False)
-
-    def action_full(self) -> None:
-        # confirms not because data is at risk (replica only; next read
-        # auto-cold-starts) but because an f=Filter slip buys a long re-download
-        def _cb(confirmed: bool | None) -> None:
-            if confirmed:
-                self._run_sync(full=True)
-
-        self.app.push_screen(
-            ConfirmModal(
-                "Rebuild local cache?",
-                "Deletes ~/.expense-cache.sqlite3 and re-downloads everything — "
-                "no engine data is touched, but it can take a while.",
-            ),
-            _cb,
-        )
-
-    @work(thread=True, exclusive=True)
-    def _run_sync(self, *, full: bool) -> None:
-        from expense import cache as cache_pkg
-        from expense import config as config_module
-        from expense.http import ExpenseClient
-
-        if getattr(self.app, "_no_cache", False):
-            self.app.call_from_thread(
-                self.notify, "Cache is disabled; nothing to sync.", severity="warning"
-            )
-            return
-        cfg = config_module.ensure_loaded()
-        try:
-            with ExpenseClient(cfg, verbose=self.app._verbose, cold_start_notice=False) as client:
-                summary = (
-                    cache_pkg.cold_start(client, cfg) if full else cache_pkg.delta_sync(client, cfg)
-                )
-        except Exception as exc:
-            self.app.call_from_thread(
-                self.notify, format_error(exc), title="Sync failed", severity="error"
-            )
-            return
-        self.app.call_from_thread(self._synced, summary)
-
-    def _synced(self, summary) -> None:
-        self._last = summary
-        verb = "Rebuilt cache" if summary.kind == "cold_start" else "Refreshed"
-        self.notify(f"{verb}. token {_short_token(summary.sync_token)}")
-        self._load()
-
-
-def _delta_table(summary) -> Table:
-    """Per-resource added/changed/removed counts from a SyncSummary.
-
-    Cold-start populates only `inserts`; the missing update/tombstone dicts
-    read as 0, which is correct (a fresh cache has nothing to change/remove).
-    """
-    from expense.cache import RESOURCE_KEYS
-
-    t = Table(box=box.SIMPLE, pad_edge=False)
-    t.add_column("resource", style="dim")
-    t.add_column("added", justify="right")
-    t.add_column("changed", justify="right")
-    t.add_column("removed", justify="right")
-    for key in RESOURCE_KEYS:
-        ins = summary.inserts.get(key, 0)
-        upd = summary.updates.get(key, 0)
-        tomb = summary.tombstones.get(key, 0)
-        t.add_row(key, f"+{ins}", f"~{upd}", f"−{tomb}")
-    t.add_row(
-        "settings",
-        "replaced" if summary.settings_changed else "unchanged",
-        "",
-        "",
-    )
-    return t
 
 
 _ACTIVITY_HEADERS = ["Date", "Time", "Action", "Actor", "Type", "Record"]
@@ -500,36 +283,40 @@ class ActivityScreen(PagedListMixin, SectionScreen):
     def __init__(self) -> None:
         super().__init__()
         self._by_id: dict = {}
+        self._cells: dict = {}
 
     def list_extra_lines(self) -> int:
         return 2  # the "most recent first · ↵ view" legend below (margin-top 1 + text)
 
     def fetch(self) -> dict:
+        # Name resolution is a live engine read per row, so the cells are
+        # computed here in the worker thread — build() must never do HTTP.
         from expense import config as config_module
         from expense.commands import activity_cmd
+        from expense.http import ExpenseClient
 
         cfg = config_module.ensure_loaded()
         body = self.fetch_page_body(
             lambda pkw: activity_cmd.fetch_activity(cfg, verbose=self.app._verbose, **pkw)
         )
-        return {"items": items_of(body)}
+        rows: list[tuple[str, list[str]]] = []
+        by_id: dict = {}
+        with ExpenseClient(cfg, verbose=self.app._verbose) as client:
+            for i, item in enumerate(items_of(body)):
+                if not isinstance(item, dict):
+                    continue
+                key = item.get("id") or f"row-{i}"
+                by_id[key] = item
+                rows.append((key, activity_cmd.activity_display_cells(item, client)))
+        return {"rows": rows, "by_id": by_id}
 
     def build(self, data: dict) -> list[Widget]:
-        from expense.commands import activity_cmd
-
-        items = data["items"]
-        self._by_id = {}
-        rows = []
-        for i, item in enumerate(items):
-            if not isinstance(item, dict):
-                continue
-            key = item.get("id") or f"row-{i}"
-            self._by_id[key] = item
-            rows.append((key, activity_cmd.activity_display_cells(item)))
+        self._by_id = data["by_id"]
+        self._cells = dict(data["rows"])
         return [
             CursorList(
                 _ACTIVITY_HEADERS,
-                rows,
+                data["rows"],
                 empty="(no activity)",
                 title="Activity — who changed what, and when",
                 page_size=self.page_rows,
@@ -545,10 +332,11 @@ class ActivityScreen(PagedListMixin, SectionScreen):
         item = self._by_id.get(event.key)
         if not item:
             return
-        from expense.commands import activity_cmd
-
-        cells = activity_cmd.activity_display_cells(item)
-        title = f"{cells[2]} · {cells[4]} · {cells[5]}"  # ACTION · type · record
+        cells = self._cells.get(event.key) or []
+        if len(cells) >= 6:
+            title = f"{cells[2]} · {cells[4]} · {cells[5]}"  # ACTION · type · record
+        else:
+            title = "Activity"
         self.app.push_screen(
             SnapshotModal(title, item.get("before_snapshot"), item.get("after_snapshot"))
         )

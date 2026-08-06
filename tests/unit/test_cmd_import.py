@@ -15,7 +15,7 @@ from expense.import_ import plan as plan_mod
 from expense.import_.parse import OpeningRow, ParsedRow
 from expense.import_.reader import RawRow, SheetData
 from tests.unit.helpers import ENGINE_URL as BASE
-from tests.unit.helpers import make_cli_app, sync_payload
+from tests.unit.helpers import make_cli_app
 
 runner = CliRunner()
 
@@ -607,8 +607,8 @@ def test_dry_run_json_emits_plan(configured, monkeypatch):
 
 
 @respx.mock
-def test_apply_happy_path_syncs_cache(configured_synced, monkeypatch):
-    """`import --apply` wires cache_after_write: the post-write delta sync fires."""
+def test_apply_happy_path_writes_and_nothing_else(configured, monkeypatch):
+    """`import --apply` ends at the last write — no post-write refresh of any kind."""
     monkeypatch.setattr(
         import_cmd,
         "read_workbook",
@@ -624,15 +624,10 @@ def test_apply_happy_path_syncs_cache(configured_synced, monkeypatch):
     respx.post(f"{BASE}/v1/transactions/batch").mock(
         return_value=httpx.Response(201, json={"created": []})
     )
-    sync_route = respx.get(f"{BASE}/v1/sync").mock(
-        return_value=httpx.Response(200, json=sync_payload())
-    )
-
     result = runner.invoke(cli_app, ["import", "whatever.xlsx", "--apply"])
     assert result.exit_code == 0, result.output
     assert "Transactions: created 1" in result.output
-    assert sync_route.called  # cache_after_write ran (import_cmd.py:145)
-    assert "Cache refresh failed" not in result.output  # and it succeeded
+    assert not [c for c in respx.calls if c.request.url.path == "/v1/sync"]
 
 
 @respx.mock

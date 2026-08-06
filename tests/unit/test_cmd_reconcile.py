@@ -3,15 +3,11 @@ import re
 from uuid import UUID
 
 import httpx
-import pytest
 import respx
 from typer.testing import CliRunner
 
-from expense import config as config_module
-from expense.cache import db as cache_db
-from expense.cache import state as cache_state
 from expense.commands.reconcile_cmd import app as reconcile_app
-from tests.unit.helpers import insert_reconciliation, insert_transaction, make_cli_app, sync_payload
+from tests.unit.helpers import make_cli_app
 
 cli_app = make_cli_app(reconcile_app, "reconcile")
 
@@ -95,79 +91,6 @@ DETAIL_EMPTY_TRANSACTIONS = {
 }
 
 
-@pytest.fixture
-def cache_populated(configured):
-    cfg = config_module.ensure_loaded()
-    conn = cache_db.connect()
-    try:
-        insert_reconciliation(conn, {**RECON_DRAFT_RESPONSE, "user_id": "u1"})
-        insert_reconciliation(conn, {**RECON_MANUAL_RESPONSE, "user_id": "u1"})
-
-        insert_transaction(
-            conn,
-            {
-                "id": "tx-001",
-                "user_id": "u1",
-                "title": "Lunch",
-                "amount_cents": -1500,
-                "account_id": RECON_DRAFT_RESPONSE["account_id"],
-                "category_id": "cat-food",
-                "reconciliation_id": RECON_DRAFT_RESPONSE["id"],
-                "date": "2026-04-15",
-                "version": 1,
-                "updated_at": "2026-04-15T12:05:00Z",
-                "created_at": "2026-04-15T12:05:00Z",
-                "deleted_at": None,
-            },
-        )
-        insert_transaction(
-            conn,
-            {
-                "id": "tx-002",
-                "user_id": "u1",
-                "title": "Coffee",
-                "amount_cents": -500,
-                "account_id": RECON_DRAFT_RESPONSE["account_id"],
-                "category_id": "cat-food",
-                "reconciliation_id": RECON_DRAFT_RESPONSE["id"],
-                "date": "2026-04-14",
-                "version": 1,
-                "updated_at": "2026-04-14T08:00:00Z",
-                "created_at": "2026-04-14T08:00:00Z",
-                "deleted_at": None,
-            },
-        )
-        insert_transaction(
-            conn,
-            {
-                "id": "tx-003",
-                "user_id": "u1",
-                "title": "Cab",
-                "amount_cents": -2000,
-                "account_id": RECON_DRAFT_RESPONSE["account_id"],
-                "category_id": "cat-transport",
-                "reconciliation_id": RECON_DRAFT_RESPONSE["id"],
-                "date": "2026-04-13",
-                "version": 1,
-                "updated_at": "2026-04-13T09:00:00Z",
-                "created_at": "2026-04-13T09:00:00Z",
-                "deleted_at": None,
-            },
-        )
-
-        cache_state.write_identity(
-            conn,
-            user_id="u1",
-            client_id=str(cfg.client_id),
-            engine_url=cfg.engine_url,
-            token_fingerprint=cache_state.token_fingerprint(cfg.token),
-        )
-        cache_state.write_token(conn, "tok-populated")
-    finally:
-        conn.close()
-    yield
-
-
 @respx.mock
 def test_list_happy_with_account_filter(configured):
     route = respx.get("https://api.example.com/v1/reconciliations").mock(
@@ -175,7 +98,7 @@ def test_list_happy_with_account_filter(configured):
     )
     result = runner.invoke(
         cli_app,
-        ["--no-cache", "reconcile", "list", "--account-id", "22222222-2222-2222-2222-222222222222"],
+        ["reconcile", "list", "--account-id", "22222222-2222-2222-2222-222222222222"],
     )
     assert result.exit_code == 0, result.output
     for header in (
@@ -209,7 +132,7 @@ def test_list_empty(configured):
     respx.get("https://api.example.com/v1/reconciliations").mock(
         return_value=httpx.Response(200, json={"items": [], "total": 0, "limit": 50, "offset": 0})
     )
-    result = runner.invoke(cli_app, ["--no-cache", "reconcile", "list"])
+    result = runner.invoke(cli_app, ["reconcile", "list"])
     assert result.exit_code == 0, result.output
     assert "(no reconciliations)" in result.output
 
@@ -219,7 +142,7 @@ def test_list_json_passthrough(configured):
     respx.get("https://api.example.com/v1/reconciliations").mock(
         return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    result = runner.invoke(cli_app, ["--no-cache", "reconcile", "list", "--json"])
+    result = runner.invoke(cli_app, ["reconcile", "list", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.output) == LIST_RESPONSE
 
@@ -231,7 +154,7 @@ def test_get_with_transactions_window(configured):
     ).mock(return_value=httpx.Response(200, json=DETAIL_WITH_TRANSACTIONS))
     result = runner.invoke(
         cli_app,
-        ["--no-cache", "reconcile", "get", "11111111-1111-1111-1111-111111111111", "--limit", "1"],
+        ["reconcile", "get", "11111111-1111-1111-1111-111111111111", "--limit", "1"],
     )
     assert result.exit_code == 0, result.output
     assert "Statement April 2026" in result.output
@@ -250,9 +173,7 @@ def test_get_empty_transactions_hint(configured):
     respx.get(
         "https://api.example.com/v1/reconciliations/11111111-1111-1111-1111-111111111111"
     ).mock(return_value=httpx.Response(200, json=DETAIL_EMPTY_TRANSACTIONS))
-    result = runner.invoke(
-        cli_app, ["--no-cache", "reconcile", "get", "11111111-1111-1111-1111-111111111111"]
-    )
+    result = runner.invoke(cli_app, ["reconcile", "get", "11111111-1111-1111-1111-111111111111"])
     assert result.exit_code == 0, result.output
     assert "(no transactions assigned)" in result.output
     assert "transactions update <tx-id> --reconciliation-id" in result.output
@@ -266,7 +187,7 @@ def test_get_404(configured):
             json={"error": {"code": "NOT_FOUND", "message": "Not found", "fields": None}},
         )
     )
-    result = runner.invoke(cli_app, ["--no-cache", "reconcile", "get", "missing"])
+    result = runner.invoke(cli_app, ["reconcile", "get", "missing"])
     assert result.exit_code == 1
     assert "NOT_FOUND" in result.output
 
@@ -987,8 +908,7 @@ def test_reorder_year_filter(configured, monkeypatch):
 
 
 @respx.mock
-def test_list_include_deleted_reads_live_without_no_cache(cache_populated):
-    """--include-deleted rows exist only engine-side — cache mode must route live (backlog 1.4)."""
+def test_list_include_deleted_param(configured):
     deleted = {
         **RECON_MANUAL_RESPONSE,
         "id": "99999999-9999-9999-9999-999999999999",
@@ -1004,94 +924,36 @@ def test_list_include_deleted_reads_live_without_no_cache(cache_populated):
     assert route.calls.last.request.url.params.get("include_deleted") == "true"
 
 
-def test_list_replica_path(cache_populated):
-    with respx.mock(base_url="https://api.example.com", assert_all_called=False) as router:
-        recon_route = router.get("/v1/reconciliations")
-        result = runner.invoke(cli_app, ["reconcile", "list"])
-    assert result.exit_code == 0, result.output
-    assert "Statement April 2026" in result.output
-    assert not recon_route.called
-
-
-def test_list_replica_account_filter(cache_populated):
-    with respx.mock(base_url="https://api.example.com"):
-        result = runner.invoke(
-            cli_app,
-            ["reconcile", "list", "--account-id", RECON_DRAFT_RESPONSE["account_id"], "--json"],
-        )
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["total"] == 2
-    assert all(
-        item["account_id"] == RECON_DRAFT_RESPONSE["account_id"] for item in payload["items"]
-    )
-
-
-def test_get_replica_path_with_embedded_transactions(cache_populated):
-    with respx.mock(base_url="https://api.example.com"):
-        result = runner.invoke(
-            cli_app,
-            ["reconcile", "get", RECON_DRAFT_RESPONSE["id"], "--json"],
-        )
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["id"] == RECON_DRAFT_RESPONSE["id"]
-    assert payload["transactions_total"] == 3
-    assert len(payload["transactions"]) == 3
-    assert [t["id"] for t in payload["transactions"]] == ["tx-001", "tx-002", "tx-003"]
-    assert payload["transactions_truncated"] is False
-
-
-def test_get_replica_path_with_pagination(cache_populated):
-    with respx.mock(base_url="https://api.example.com"):
-        result = runner.invoke(
-            cli_app,
-            ["reconcile", "get", RECON_DRAFT_RESPONSE["id"], "--limit", "1", "--json"],
-        )
-    assert result.exit_code == 0
-    payload = json.loads(result.output)
-    assert payload["transactions_total"] == 3
-    assert payload["transactions_limit"] == 1
-    assert payload["transactions_offset"] == 0
-    assert len(payload["transactions"]) == 1
-    assert payload["transactions_truncated"] is True
-
-
-def test_get_replica_not_found(cache_populated):
-    with respx.mock(base_url="https://api.example.com"):
-        result = runner.invoke(cli_app, ["reconcile", "get", "missing"])
-    assert result.exit_code == 1
-    assert "NOT_FOUND" in result.output
-
-
 @respx.mock
-def test_list_auto_cold_start_when_cache_empty(configured):
-    sync_route = respx.get("https://api.example.com/v1/sync").mock(
+def test_list_resolves_account_name_from_live_accounts(configured):
+    """The Account column joins account_id against the live accounts list."""
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=LIST_RESPONSE)
+    )
+    accounts_route = respx.get("https://api.example.com/v1/accounts").mock(
         return_value=httpx.Response(
-            200, json=sync_payload(reconciliations=[{**RECON_DRAFT_RESPONSE, "user_id": "u1"}])
+            200,
+            json={
+                "items": [{"id": RECON_DRAFT_RESPONSE["account_id"], "name": "BCP Soles"}],
+                "total": 1,
+                "limit": 200,
+                "offset": 0,
+            },
         )
     )
-    recon_route = respx.get("https://api.example.com/v1/reconciliations")
     result = runner.invoke(cli_app, ["reconcile", "list"])
     assert result.exit_code == 0, result.output
-    assert sync_route.called
-    assert not recon_route.called
+    assert accounts_route.called
+    assert "BCP Soles" in result.output
 
 
 @respx.mock
-def test_create_triggers_post_write_sync(cache_populated):
-    """Step 7b.3: a successful reconcile write fires a follow-up GET /sync."""
-    respx.post("https://api.example.com/v1/reconciliations").mock(
-        return_value=httpx.Response(201, json=RECON_DRAFT_RESPONSE)
+def test_list_unresolvable_account_degrades_to_short_id(configured):
+    """A reference list the engine won't serve must not break the table."""
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=LIST_RESPONSE)
     )
-    sync_route = respx.get("https://api.example.com/v1/sync").mock(
-        return_value=httpx.Response(
-            200, json=sync_payload(reconciliations=[{**RECON_DRAFT_RESPONSE, "user_id": "u1"}])
-        )
-    )
-    result = runner.invoke(
-        cli_app,
-        ["reconcile", "create", "--account-id", "acct-id", "--name", "April"],
-    )
+    result = runner.invoke(cli_app, ["reconcile", "list"])
     assert result.exit_code == 0, result.output
-    assert sync_route.called
+    assert "22222222" in result.output
+    assert "BCP Soles" not in result.output

@@ -39,7 +39,7 @@ class CategoriesScreen(ResourceListScreen):
     RESOURCE = "categories"
 
     def fetch_items(self, cfg, **kw):
-        # All pages, not the cache/engine default page: the 20-row window needs
+        # All pages, not the engine default page: the 20-row window needs
         # the full set for an honest "page 2 of N" (2026-07-11 pagination).
         from expense.commands._resource import fetch_all_pages
 

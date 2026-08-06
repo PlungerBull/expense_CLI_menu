@@ -3,7 +3,7 @@ from uuid import uuid4
 import typer
 
 from expense import config as config_module
-from expense.commands._resource import JSON_OPT, cache_after_write, render_record
+from expense.commands._resource import JSON_OPT, render_record
 from expense.context import get_verbose
 from expense.dates import now_local_iso, to_canonical_aware
 from expense.errors import EngineError, handle_errors
@@ -124,7 +124,6 @@ def log(
                     err=True,
                 )
             raise
-        cache_after_write(ctx, client, cfg)
 
     if not json_output:
         typer.echo(f"Created: {new_id}")

@@ -77,7 +77,7 @@ def test_new_reconciliation_chained_omits_begin(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = NewReconciliationScreen()
             await app.push_screen(screen)
@@ -103,7 +103,7 @@ def test_new_reconciliation_manual_includes_begin(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = NewReconciliationScreen()
             await app.push_screen(screen)
@@ -152,7 +152,7 @@ def test_reconciliations_browse_account_first(monkeypatch):
     _patch_browse(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationsScreen()
             await app.push_screen(screen)
@@ -178,7 +178,7 @@ def test_highlight_from_batches_pane_does_not_switch_account(monkeypatch):
     _patch_browse(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationsScreen()
             await app.push_screen(screen)
@@ -218,7 +218,7 @@ def test_reconciliations_list_pages_past_engine_cap(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = ReconciliationsScreen()
             await app.push_screen(screen)
@@ -249,7 +249,7 @@ def test_new_reconciliation_fetch_error_notifies_not_crash(fake_client, monkeypa
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = NewReconciliationScreen()
             await app.push_screen(screen)

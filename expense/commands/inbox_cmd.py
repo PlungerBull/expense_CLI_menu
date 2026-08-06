@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import typer
 
-from expense import cache as cache_pkg
 from expense import config as config_module
 from expense.commands._resource import (
     INCLUDE_DELETED_OPT,
@@ -12,7 +11,6 @@ from expense.commands._resource import (
     OFFSET_OPT,
     YES_OPT,
     build_update_payload,
-    cache_after_write,
     effective_limit,
     fetch_body,
     format_cents,
@@ -27,7 +25,7 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
-from expense.context import get_no_cache, get_verbose
+from expense.context import get_verbose
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
@@ -96,17 +94,11 @@ def fetch_inbox(
     include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
-    no_cache: bool = False,
     verbose: bool = False,
-    cold_start_notice: bool = True,
-    notice_stream=None,
 ) -> dict:
-    """GET /v1/inbox → the raw engine/replica body. Pure data, no rendering.
+    """GET /v1/inbox → the raw engine body. Pure data, no rendering.
 
-    Shared by the flat `inbox list` command and the TUI's Inbox screen. Reads the
-    local replica by default (warming it first); `no_cache` round-trips the
-    engine. `cold_start_notice`/`notice_stream` let a non-terminal caller (TUI)
-    silence the stderr sync chatter.
+    Shared by the flat `inbox list` command and the TUI's Inbox screen.
     """
     params: dict = {}
     if ready:
@@ -119,24 +111,14 @@ def fetch_inbox(
         params["limit"] = limit
     if offset is not None:
         params["offset"] = offset
-    # Always signed: the replica stores debit_as_negative=true, so the
-    # stateless path must match or the two modes disagree on sign.
+    # Always signed: every CLI/TUI surface renders debits negative, so the
+    # request pins the flag rather than depending on the engine default.
     params["debit_as_negative"] = "true"
     return fetch_body(
         cfg,
         path=f"/{_RESOURCE}",
         params=params,
-        cache_read=lambda: cache_pkg.list_inbox(
-            ready=ready,
-            overdue=overdue,
-            limit=limit,
-            offset=offset,
-        ),
-        no_cache=no_cache,
-        force_live=include_deleted,
         verbose=verbose,
-        cold_start_notice=cold_start_notice,
-        notice_stream=notice_stream,
     )
 
 
@@ -151,9 +133,7 @@ def list_(
     offset: int | None = OFFSET_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/inbox. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine.
+    """GET /v1/inbox.
 
     Example: expense inbox list --ready
     """
@@ -166,7 +146,6 @@ def list_(
         include_deleted=include_deleted,
         limit=limit,
         offset=offset,
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     _render_inbox_list(body, json_mode=json_output)
@@ -179,9 +158,7 @@ def get(
     id_: str = typer.Argument(..., metavar="ID"),
     json_output: bool = JSON_OPT,
 ) -> None:
-    """GET /v1/inbox/{id}. Reads from the local replica by default.
-
-    Pass --no-cache (root flag) to round-trip the engine.
+    """GET /v1/inbox/{id}.
 
     Example: expense inbox get <inbox-id>
     """
@@ -190,8 +167,6 @@ def get(
         cfg,
         path=f"/{_RESOURCE}/{id_}",
         params={"debit_as_negative": "true"},
-        cache_read=lambda: cache_pkg.get_inbox(id_),
-        no_cache=get_no_cache(ctx),
         verbose=get_verbose(ctx),
     )
     render_record(body, json_mode=json_output)
@@ -256,8 +231,6 @@ def add(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
-        cache_after_write(ctx, client, cfg)
-
     if not json_output:
         typer.echo(f"Created: {new_id}")
     render_record(body, json_mode=json_output)
@@ -300,8 +273,6 @@ def update(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.put(f"/{_RESOURCE}/{id_}", json_body=payload)
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
 
 
@@ -324,8 +295,6 @@ def delete(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.delete(f"/{_RESOURCE}/{id_}")
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
 
 
@@ -354,8 +323,6 @@ def restore(
                     err=True,
                 )
             raise
-        cache_after_write(ctx, client, cfg)
-
     render_record(body, json_mode=json_output)
 
 
@@ -387,8 +354,6 @@ def promote(
                     err=True,
                 )
             raise
-        cache_after_write(ctx, client, cfg)
-
     if not json_output:
         typer.echo(f"Created transaction: {new_transaction_id}")
     render_record(body, json_mode=json_output)

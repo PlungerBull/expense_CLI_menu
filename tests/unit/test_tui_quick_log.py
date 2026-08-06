@@ -96,7 +96,7 @@ def test_load_entities_three_superset_queries(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", rec("hashtags", HASHTAGS))
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
@@ -115,7 +115,7 @@ def test_edit_with_null_hashtag_ref_renders_dash_not_crash(fake_client, monkeypa
     record = {**TXN, "hashtag_ids": ["h1", None]}
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen(record=record, resource="transactions")
             await app.push_screen(screen)
@@ -132,7 +132,7 @@ def test_quick_log_normal_flow_submits_payload(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
@@ -160,7 +160,7 @@ def test_quick_log_transfer_flow_submits_pair(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
@@ -194,7 +194,7 @@ def test_to_amount_flip_pins_engine_opposite_sign_rule(fake_client, monkeypatch)
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
@@ -217,7 +217,7 @@ def test_to_amount_flip_negative_when_amount_positive(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
@@ -238,7 +238,7 @@ def test_quick_log_guards_double_submit(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
@@ -273,7 +273,7 @@ def test_edit_prefills_and_puts_only_changed_fields(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
@@ -298,7 +298,7 @@ def test_edit_add_hashtag_puts_merged_hashtag_ids(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
@@ -320,7 +320,7 @@ def test_edit_no_changes_does_not_submit(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
@@ -350,7 +350,7 @@ def test_quick_log_rejects_zero_and_unknown_account(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
@@ -380,7 +380,7 @@ def test_quick_log_fetch_error_notifies_not_crash(fake_client, monkeypatch):
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
@@ -406,7 +406,7 @@ def test_quick_log_fetch_error_uses_canonical_renderer(fake_client, monkeypatch)
     )
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)

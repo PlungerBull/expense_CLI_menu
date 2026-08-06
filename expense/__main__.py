@@ -16,7 +16,6 @@ from expense.commands import (
     rates_cmd,
     reconcile_cmd,
     reports_cmd,
-    sync_cmd,
     transactions_cmd,
 )
 from expense.context import AppContext
@@ -38,27 +37,9 @@ def main(
         "-v",
         help="Print HTTP request/response to stderr (Authorization redacted).",
     ),
-    no_cache: bool = typer.Option(
-        False,
-        "--no-cache",
-        envvar="EXPENSE_STATELESS",
-        help=(
-            "Bypass the local replica; reads go straight to the engine. "
-            "Stateless mode for CSV imports, CI, scripts."
-        ),
-    ),
-    no_sync_after: bool = typer.Option(
-        False,
-        "--no-sync-after",
-        envvar="EXPENSE_NO_SYNC_AFTER",
-        help=(
-            "Skip the post-write delta sync. Useful when batching many writes "
-            "in a script that runs `expense sync` once at the end."
-        ),
-    ),
 ) -> None:
     """The Hands — expense_world_engine CLI."""
-    ctx.obj = AppContext(verbose=verbose, no_cache=no_cache, no_sync_after=no_sync_after)
+    ctx.obj = AppContext(verbose=verbose)
 
 
 @app.command()
@@ -85,7 +66,6 @@ app.command("ping")(ping_cmd.ping)
 app.command("whoami")(auth_cmd.whoami)
 app.command("log")(log_cmd.log)
 app.command("dashboard")(dashboard_cmd.dashboard)
-app.command("sync")(sync_cmd.sync)
 app.command("import")(import_cmd.run_import)
 app.command("world")(world_command)
 

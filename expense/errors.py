@@ -37,15 +37,6 @@ class ConfigInvalidError(Exception):
     pass
 
 
-class CacheUnavailableError(Exception):
-    """The local replica can't be opened right now (locked/unopenable, not corrupt)."""
-
-
-class SyncContractError(Exception):
-    """The engine's /sync response violated its own contract (missing sync_token,
-    or no derivable user_id). Not retryable client-side."""
-
-
 def error_haystack(err: EngineError) -> str:
     """Lowercased message + string field values, for keyword hint-scanning.
 
@@ -92,8 +83,6 @@ _ENVELOPE_ERRORS: dict[type[Exception], tuple[str, int]] = {
     EngineConnectionError: ("CONNECTION_ERROR", 6),
     ConfigMissingError: ("CONFIG_MISSING", 3),
     ConfigInvalidError: ("CONFIG_INVALID", 3),
-    CacheUnavailableError: ("CACHE_UNAVAILABLE", 4),
-    SyncContractError: ("SYNC_CONTRACT", 5),
 }
 
 # Everything handle_errors catches — registering a type in _ENVELOPE_ERRORS

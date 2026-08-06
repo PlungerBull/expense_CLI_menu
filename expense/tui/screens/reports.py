@@ -158,7 +158,6 @@ class MonthlyReportScreen(SectionScreen):
             cfg,
             from_ym=shift_month(*self._end, -(WINDOW_MONTHS - 1)),
             to_ym=self._end,
-            warm=True,  # grid sub-rows show hashtag names; gated off in no_cache
             **screen_fetch_kwargs(self.app),
         )
         return {

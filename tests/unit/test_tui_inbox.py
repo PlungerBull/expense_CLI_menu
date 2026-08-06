@@ -70,7 +70,7 @@ def test_pressing_f_cycles_filter_and_reloads(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)  # skips the ready-set second fetch
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(InboxScreen())
             await wait_for(
@@ -109,7 +109,7 @@ def test_inbox_screen_lists_and_opens_detail(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)  # skips the ready-set second fetch
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(InboxScreen())
             # worker fetched + populate mounted the list

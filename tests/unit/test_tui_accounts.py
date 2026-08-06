@@ -62,7 +62,7 @@ def test_accounts_screen_lists_and_edits(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
-        app = ExpenseApp(no_cache=True)
+        app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
             await wait_for(
