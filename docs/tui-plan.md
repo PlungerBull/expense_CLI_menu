@@ -3,7 +3,9 @@
 > Historical note (2026-08-06): every mention of the SQLite replica, `ensure_synced`,
 > the Sync screen, or cold-start notices below describes machinery deleted with the
 > engine's `/sync` — see [decisions.md](decisions.md) "Delete the local replica".
-> The phase record is kept as shipped.
+> The phase record is kept as shipped. TUI-specific observations from that deletion
+> (what changed in `expense/tui/`, behavior notes, test-infra patterns) are collected
+> for the TUI developer in [tui-decache-notes.md](tui-decache-notes.md).
 >
 > Status: **in progress (Step 10)** — Phases 0–2 shipped (Phase 2 closed 2026-07-08
 > with the Monthly report screen); Phase 3 partially delivered early via the 2026-07-02 quality-review backlog §4
