@@ -71,6 +71,7 @@ expense/tui/
   theme.py          # Palette + resolve_palette(app) — semantic colors, theme-resolved (§4.2)
   widgets/
     header.py       # Breadcrumb — slim section header (home banner lives in home.py)
+                    #   + rate_alert() — the `!` staleness mark both headers share (§3.1)
     cells.py        # cell renderers: color swatch, sign-colored right-aligned amount_cell
     cursor_list.py  # CursorList — arrow-key list (home menu, pickers)
     checklist.py    # CheckList — multi-select (hashtag picker)
@@ -101,6 +102,31 @@ the UI never blocks. The shipped pattern: read screens subclass `SectionScreen`
 ([_base.py](../expense/tui/screens/_base.py)) and override `fetch()` (runs in the
 worker, e.g. calls `reports_cmd.fetch_range(...)`) + `build(data)`; writes go through
 `EngineWriteMixin.run_write` in its own worker group.
+
+### 3.1 The header rate alert (2026-08-13)
+
+Every header carries a `!` when today has no exchange rate of its own — meaning every
+home-currency figure on screen is priced at an older day's rate. Owner decision
+2026-08-13; the deliberately-sensitive trigger was chosen over a 2-day grace period,
+so it also shows on an ordinary morning before the engine's fetch job has run.
+
+- **No new engine surface.** `GET /exchange-rates` already returns the day you asked
+  about (`date`) and the day it actually used (`rate_date`); the whole signal is
+  `rate_date < date`. That one comparison covers every failure mode — provider down,
+  Mac asleep, job crashed, or a rate the engine refused as implausible. Contract:
+  engine-spec.md "Staleness: `rate_date` is the signal". `rates_cmd.rate_is_stale`
+  applies it; `fetch_rate_staleness` adds the `404` case (no rate at all → stale).
+- **App-owned, fetched once per launch.** `ExpenseApp.rate_stale` holds `True` /
+  `False` / `None`, filled by one worker on mount. It lives on the app because the
+  indicator is in every header and screens come and go: a screen pushed after the
+  fetch reads the value itself, while one already mounted is repainted (breadcrumbs
+  by query, home via its `repaint_header` hook — home builds its own header).
+- **`None` renders nothing.** Offline, unconfigured, pre-fetch, or an unexpected body
+  shape all mean "don't know", and an indicator that fires when it cannot reach the
+  engine is reporting on the connection, not on the rate. Warning-colored, not error:
+  a carried-forward rate is the engine's designed fallback.
+- Guards: [tests/unit/test_rate_alert.py](../tests/unit/test_rate_alert.py) — the
+  comparison, the error handling, both header hosts, and the app wiring end to end.
 
 ## 4. Theming — neutral, swappable
 

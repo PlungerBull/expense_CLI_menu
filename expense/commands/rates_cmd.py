@@ -12,7 +12,7 @@ from expense.commands._resource import (
     render_table,
 )
 from expense.context import get_verbose
-from expense.errors import handle_errors
+from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
 
 app = typer.Typer(help="Exchange rates.", no_args_is_help=True)
@@ -60,6 +60,46 @@ def fetch_rate(
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         return client.get("/exchange-rates", params=params)
+
+
+def rate_is_stale(body: dict) -> bool | None:
+    """True when the requested day has no rate row of its own.
+
+    Engine contract, `engine-spec.md` "Staleness: `rate_date` is the signal":
+    `GET /exchange-rates` returns both the day you asked about (`date`) and the
+    day of the row it actually used (`rate_date`), and `rate_date < date` means
+    the figure is being carried forward. That one comparison covers every way
+    rate ingestion can fail — provider down, machine asleep, job crashed, or a
+    rate refused as implausible by the engine's plausibility guard — which is
+    why the engine exposes no bespoke staleness field for a client to read.
+
+    Returns None when the body carries no usable pair of dates. That is the
+    "don't know" answer, and callers must render nothing rather than guess: a
+    shape change should go quiet, never cry wolf.
+
+    String comparison is deliberate — both fields are ISO `YYYY-MM-DD`, which
+    sorts lexicographically, and parsing them would only add a failure mode.
+    """
+    asked, used = body.get("date"), body.get("rate_date")
+    if not isinstance(asked, str) or not isinstance(used, str):
+        return None
+    return used < asked
+
+
+def fetch_rate_staleness(cfg, *, target: str, verbose: bool = False) -> bool | None:
+    """Whether today's rate for `target` is missing — True/False, or None if unknown.
+
+    A `404` is the same condition at its extreme (no rate at all on or before
+    today) and counts as stale, per the engine spec. Every other engine error is
+    a question about the engine rather than about the rate, so it answers None.
+
+    Connection and config failures are deliberately not caught here: only the
+    caller knows whether going quiet is the right response to being offline.
+    """
+    try:
+        return rate_is_stale(fetch_rate(cfg, target=target, verbose=verbose))
+    except EngineError as err:
+        return True if err.status == 404 else None
 
 
 def fetch_rates_history(

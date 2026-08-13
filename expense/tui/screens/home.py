@@ -38,6 +38,7 @@ from expense.tui.screens.system import (
 )
 from expense.tui.screens.transactions import TransactionsScreen
 from expense.tui.theme import Palette, resolve_palette
+from expense.tui.widgets.header import RATE_ALERT_GAP, rate_alert
 
 _BANNER = "◈  EXPENSE WORLD"
 
@@ -138,17 +139,31 @@ def _stat_cluster(stats: dict | None, palette: Palette | None) -> Text:
     return Text.assemble(*parts)
 
 
-def _build_header(stats: dict | None, palette: Palette | None) -> Table:
+def _build_header(
+    stats: dict | None, palette: Palette | None, rate_stale: bool | None = None
+) -> Table:
     """Wordmark (left) + stat cluster (right), one line, full width.
 
     `expand=True` with a `ratio=1` left column and a right-justified column pins
     the cluster to the terminal's right edge — the same idiom the section tables
     use. `no_wrap` keeps it on one line; overflow truncates rather than wraps.
+
+    The rate alert trails the cluster, so it sits in the same place as on the
+    section screens (far right of the header) despite the two being built
+    differently. It is empty unless the rate is known-stale — see `rate_alert`.
     """
     grid = Table(box=None, expand=True, pad_edge=False, show_header=False)
     grid.add_column(ratio=1, no_wrap=True)
     grid.add_column(justify="right", no_wrap=True)
-    grid.add_row(Text(_BANNER, style="bold"), _stat_cluster(stats, palette))
+
+    right = _stat_cluster(stats, palette)
+    alert = rate_alert(rate_stale, palette)
+    if alert.plain:
+        if right.plain:
+            right.append(RATE_ALERT_GAP)
+        right.append_text(alert)
+
+    grid.add_row(Text(_BANNER, style="bold"), right)
     return grid
 
 
@@ -198,7 +213,20 @@ class HomeScreen(Screen):
 
     def _rerender(self) -> None:
         palette = resolve_palette(self.app)
-        self.query_one("#brand", Static).update(_build_header(self._stats, palette))
+        self.query_one("#brand", Static).update(
+            _build_header(self._stats, palette, getattr(self.app, "rate_stale", None))
+        )
+
+    def repaint_header(self) -> None:
+        """The app's hook for when `rate_stale` lands (see `ExpenseApp`).
+
+        Home builds its own header instead of using `Breadcrumb`, so it cannot
+        be repainted by the app's blanket breadcrumb refresh. The two fetches
+        race — dashboard stats and rate status — and whichever finishes second
+        must not paint away the first, which is why both go through `_rerender`
+        against the current app state rather than through their own update.
+        """
+        self._rerender()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         screen_cls = _SCREENS.get(event.option.id or "")
