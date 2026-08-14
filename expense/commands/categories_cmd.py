@@ -150,7 +150,7 @@ def get(
 def create(
     ctx: typer.Context,
     name: str = typer.Option(..., "--name", help="Category name (case-insensitive unique)."),
-    color: str = typer.Option(..., "--color", help="Color hint (free-form string)."),
+    color: str = typer.Option(..., "--color", help="6-digit hex color, e.g. #3b82f6. Required."),
     sort_order: int | None = typer.Option(None, "--sort-order"),
     json_output: bool = JSON_OPT,
 ) -> None:
@@ -183,7 +183,7 @@ def update(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
     name: str | None = typer.Option(None, "--name"),
-    color: str | None = typer.Option(None, "--color"),
+    color: str | None = typer.Option(None, "--color", help="6-digit hex color, e.g. #3b82f6."),
     sort_order: int | None = typer.Option(None, "--sort-order"),
     json_output: bool = JSON_OPT,
 ) -> None:

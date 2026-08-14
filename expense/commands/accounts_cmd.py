@@ -168,7 +168,9 @@ def create(
     currency_code: str = typer.Option(
         ..., "--currency-code", help="ISO 4217 currency code (e.g. USD, PEN)."
     ),
-    color: str | None = typer.Option(None, "--color", help="Color hint (free-form string)."),
+    color: str | None = typer.Option(
+        None, "--color", help="6-digit hex color, e.g. #3b82f6. Omit for the default blue."
+    ),
     sort_order: int | None = typer.Option(None, "--sort-order"),
     json_output: bool = JSON_OPT,
 ) -> None:
@@ -259,7 +261,7 @@ def update(
     ctx: typer.Context,
     id_: str = typer.Argument(..., metavar="ID"),
     name: str | None = typer.Option(None, "--name"),
-    color: str | None = typer.Option(None, "--color"),
+    color: str | None = typer.Option(None, "--color", help="6-digit hex color, e.g. #3b82f6."),
     sort_order: int | None = typer.Option(None, "--sort-order"),
     currency_code: str | None = typer.Option(
         None,
