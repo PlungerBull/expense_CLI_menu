@@ -13,17 +13,29 @@
 > closed items and phases get **deleted** from this file — git history is the
 > archive. Items marked **[UI]** change something the user sees and need a
 > mockup/proposal pass before implementation (CLAUDE.md "Mock every screen").
+>
+> **Phase-opening sketch (rule added 2026-08-16, user decision).** Before any
+> work starts on a phase, produce a **sketch** — an HTML page in
+> [mockups/](mockups/) — showing what the phase will change and how the
+> affected screens/commands will look after it, and present it for review
+> together with the phase's decision questions (each explained in plain user
+> terms, never assumed). This applies to every phase, not only ones with
+> **[UI]** items: even a pure-removal phase changes what the user sees.
+> (Phase 2's sketch was produced retroactively the same day:
+> [mockups/expense-world-phase2-sketch.html](mockups/expense-world-phase2-sketch.html).)
 
 **Why phases:** the 2026-08 engine rework (transfers deleted, read-time
 currency, reconciliation de-chaining, schema slimming) removed or changed
-endpoints the CLI and TUI still call. Phases 2–4 restore a working CLI/TUI —
+endpoints the CLI and TUI still call. Phases 3–4 restore a working CLI/TUI —
 everything in them is **live-broken today** (422s, 404s, or unhandled `null`s).
 Phase 5 verifies against the live engine; Phase 6 builds the new engine
 capability the clients don't surface yet; Phase 7 closes residual doc
 alignment; Phase 8 is pre-existing polish, schedulable anytime.
 (Phase 1 — the mechanical deletions: exchange-rate purge, settings slimming,
 categories/hashtags archive, inbox restore, tx-delete warnings — closed
-2026-08-15 and deleted per the rule above; see git history.)
+2026-08-15; Phase 2 — the transfer-feature removal, items 2.1–2.5 — closed
+2026-08-16, with the optional 2.6 convenience re-parked under Phase 8 below;
+both deleted per the rule above, see git history.)
 
 **Baseline at merge time (2026-08-15):** 900 unit tests, 899 green — the one
 failure was the doc-link guard catching the engine's retired `TODO.md`, fixed
@@ -41,36 +53,6 @@ cited by date — read the entry before starting the item; it has the full
 contract detail and engine references.
 
 ---
-
-## Phase 2 — transfer feature removal
-
-[Entry 2026-08-10 "the transfer feature is removed".] No request may carry a
-`transfer` object; `@Transfer`/`@Debt` are gone; `category_id` is
-unconditionally required; **`transfer_transaction_id` is gone from responses**,
-so the TUI's transfer-leg detection is dead code, not just unused.
-
-- [ ] **2.1** Remove `log --transfer --to-account-id --to-amount` and the
-  payload build (`log_cmd.py:101-108`).
-- [ ] **2.2** Remove the TUI transfer sub-flow in `quick_log.py`: the
-  conditional transfer fields, `_commit_to_amount` auto-sign, the
-  opposite-sign mid-form guard, the transfer payload (`:478-489`), and the
-  `transfer_transaction_id` field locks (`:171-174` — the field no longer
-  arrives, so the locks never fire; the engine's field-lock 422s are the
-  backstop).
-- [ ] **2.3** Remove the batch "no transfers" pre-check remnants and any
-  `transfer` mentions in `transactions_cmd.py` help text; always send
-  `category_id` on creates (omission is now a plain "Field required" 422).
-- [ ] **2.4** Sweep `@Transfer`/`@Debt` references (categories screens,
-  docstrings, cli-spec.md §categories line 83 — system categories shrink to
-  `@Opening` only).
-- [ ] **2.5** Docs: retire cli-spec.md's "TUI transfer To-amount auto-sign"
-  sanctioned exception (line 32) and the `log --transfer` line (95); add a
-  superseding note to the decisions.md sign-convention/transfer entries; brief
-  retirement note in tui-plan.md where the transfer sub-flow is described as
-  shipped.
-- [ ] **2.6 [UI]** *Optional, later:* a client-side "move between accounts"
-  convenience = two ordinary `POST /transactions` calls. New UX → mockup
-  first. Not needed for parity; park it.
 
 ## Phase 3 — reconciliation de-chaining (the biggest chunk)
 
@@ -193,6 +175,9 @@ Phases 1–7.
 - [ ] `reconcile complete` inlines the hint-haystack scan that
   `transactions_cmd.py:104-117` wraps in `_update_hint_for` — hoist to
   `_resource.py`. (`complete` survives de-chaining.)
+- [ ] **[UI]** *Optional (re-parked from Phase 2.6, 2026-08-16):* a
+  client-side "move between accounts" convenience = two ordinary
+  `POST /transactions` calls. New UX → mockup first. Not needed for parity.
 - [ ] **[UI]** Inbox and transactions lists accept `--include-deleted` but
   render no Deleted column (accounts/reconcile have one) — proposed-columns
   mockup first. *(No longer rides any cache decision — the replica is gone;

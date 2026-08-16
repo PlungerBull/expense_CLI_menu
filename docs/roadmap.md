@@ -102,7 +102,7 @@ Mirrors engine Step 4 (core CRUD), extended with the archive/unarchive/restore v
 2. `expense inbox list` supports `--ready` (excludes items missing required fields or pointing at archived categories) and `--include-deleted`.
 3. `expense inbox get` / `update` / `delete` / `restore`.
 4. `expense inbox promote <id>` → `POST /v1/inbox/{id}/promote`. On 422, pretty-print the missing/blocking fields and suggest the fix.
-5. `expense log` — direct ledger entry, single transaction. All required fields supplied as flags. Transfer creation (`--transfer --to-account`) is deferred to Step 4 alongside the rest of the transactions surface.
+5. `expense log` — direct ledger entry, single transaction. All required fields supplied as flags. Transfer creation (`--transfer --to-account`) was deferred to Step 4 alongside the rest of the transactions surface *(and later removed with the feature — see the Step 4 banner)*.
 
 **Verify:** add an incomplete inbox item, try to promote (expect a helpful error). Fill in, promote, confirm transaction appears in `expense transactions list` and inbox item is soft-deleted. Archive the category referenced by a ready inbox item and confirm `inbox list --ready` no longer surfaces it.
 
@@ -127,6 +127,13 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 ---
 
 ## Step 4 — Transactions
+
+> ⚠️ **Partially retired 2026-08-16 (backlog Phase 2).** The engine deleted the
+> transfer feature 2026-08-10 ([client-breaking-changes.md](client-breaking-changes.md)),
+> so every transfer item below — `log --transfer` (item 5), the transfer-pair
+> edit guard (item 3), the batch transfer rejection (item 6), and the transfer
+> half of **Verify** — is shipped history, since removed. A move between
+> accounts is now two ordinary transactions. The rest of the step stands.
 
 *Deliverable: full ledger management including batch and restore.*
 
@@ -516,9 +523,9 @@ The TUI is a new **client** of the same engine-integration layer (HTTP client, S
 List screens for Inbox, Transactions, Accounts, Categories, Hashtags (chips); interactive `▼/▶` category tree on Outstanding Amounts; record detail modals; loading/empty/error states. Every read surface browsable.
 
 ### Step 10.P2 — Write flows (shipped — closed 2026-07-08)
-Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared, hashtag multi-select, conditional transfer sub-flow, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
+Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared, hashtag multi-select, conditional transfer sub-flow *(retired 2026-08-16 with the engine's transfer removal)*, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
 
-**Shipped so far:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile, and the **System reads (Sync · Activity · Rates)** screens ([expense/tui/screens/system.py](../expense/tui/screens/system.py) — wired as three direct System-group entries in [home.py](../expense/tui/screens/home.py); enabling refactor was the `fetch_activity` / `fetch_rate` extractions on the flat commands). Two bugs surfaced and were fixed while landing these: (1) the shared modal CSS only centered `RecordModal`, so `SnapshotModal` (Activity's before/after detail) collapsed invisibly in the top-left — the `align: center middle` rule now covers every modal screen; (2) activity name resolution matched plural `resource_type` strings (`expense_transactions`, …) but the engine writes them **singular** (`transaction`, `account`, …), so the Resource column always fell back to the UUID prefix — `_resolve_resource_name` now maps the engine's real strings (fixing the flat `expense activity list` too).
+**Shipped so far:** Log/quick-add (+ transfer, retired 2026-08-16), edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile, and the **System reads (Sync · Activity · Rates)** screens ([expense/tui/screens/system.py](../expense/tui/screens/system.py) — wired as three direct System-group entries in [home.py](../expense/tui/screens/home.py); enabling refactor was the `fetch_activity` / `fetch_rate` extractions on the flat commands). Two bugs surfaced and were fixed while landing these: (1) the shared modal CSS only centered `RecordModal`, so `SnapshotModal` (Activity's before/after detail) collapsed invisibly in the top-left — the `align: center middle` rule now covers every modal screen; (2) activity name resolution matched plural `resource_type` strings (`expense_transactions`, …) but the engine writes them **singular** (`transaction`, `account`, …), so the Resource column always fell back to the UUID prefix — `_resolve_resource_name` now maps the engine's real strings (fixing the flat `expense activity list` too).
 **Closed 2026-07-08 with the final screen:** the **Monthly report** — a sliding **4-month grid** (categories × months, `▼/▶` hashtag rows, `[`/`]` slide the window), *not* the originally-sketched single-month view, which would have duplicated Outstanding Amounts (why + rejected alternatives: [decisions.md](decisions.md)). Enabling refactor was the `fetch_single_month`/`fetch_range`/`build_range_grid` extractions on the flat `reports` command. Every home-menu entry is now wired — no `"soon"` stubs remain. Detail: [tui-plan.md](tui-plan.md) Phase 2.
 
 **Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before code** (per [CLAUDE.md](../CLAUDE.md) "Mock every screen before building it").
