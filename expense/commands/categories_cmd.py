@@ -30,7 +30,7 @@ from expense.http import ExpenseClient
 app = typer.Typer(help="Categories.", no_args_is_help=True)
 
 _RESOURCE = "categories"
-_SYSTEM_HINT = "System categories (@Debt, @Transfer) cannot be modified."
+_SYSTEM_HINT = "The system category (@Opening) can be renamed but not deleted."
 
 
 def _render_category_list(body: dict, *, json_mode: bool) -> None:

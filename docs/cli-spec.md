@@ -81,7 +81,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `categories get <id>`
 - `categories create`, `update`, `delete`, `restore`
 - Category archive was removed engine-side (2026-08-06 schema slimming) — accounts are the only archivable resource.
-- System categories (`@Debt`, `@Transfer`, `@Opening`) cannot be deleted — the engine's 403 surfaces as a friendly message. (Renames are allowed; the engine resolves them by `system_key`.)
+- The system category (`@Opening` — the only one since the 2026-08-10 transfer removal deleted `@Debt`/`@Transfer`) cannot be deleted — the engine's 403 surfaces as a friendly message. (Renames are allowed; the engine resolves it by `system_key`.)
 
 ### `expense hashtags`
 - Same shape as categories: `list`, `get`, `create`, `update`, `delete`, `restore`. Hashtag archive was removed with the same 2026-08-06 slimming.

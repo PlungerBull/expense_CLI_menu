@@ -1,9 +1,9 @@
 """Categories screen — spending buckets.
 
 Color swatch + system-lock marker. `n` creates; `e` edits the cursor row
-(prefilled EditCategoryScreen). `enter` does nothing. System categories
-(@Transfer, @Debt) can be renamed/recolored (the engine keys them by
-`system_key`, not name) but cannot be deleted. Category archive was removed
+(prefilled EditCategoryScreen). `enter` does nothing. The system category
+(@Opening) can be renamed/recolored (the engine keys it by `system_key`,
+not name) but cannot be deleted. Category archive was removed
 engine-side (2026-08-06 schema slimming) — only accounts archive now.
 """
 
@@ -33,7 +33,7 @@ class CategoriesScreen(ResourceListScreen):
     TITLE = "Categories — buckets for every transaction"
     HEADERS = _HEADERS
     EMPTY = "(no categories)"
-    LEGEND = "system categories (@Transfer, @Debt) can be renamed but not deleted"
+    LEGEND = "the system category (@Opening) can be renamed but not deleted"
     RESOURCE = "categories"
 
     def fetch_items(self, cfg, **kw):

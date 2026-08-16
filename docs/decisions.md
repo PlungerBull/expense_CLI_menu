@@ -81,6 +81,8 @@ Rules for this file:
 ## Manage detail: system categories are editable, not immutable (2026-07-07)
 
 > **Superseded in part (2026-08-15, backlog 1.3).** The engine's 2026-08-06 schema slimming deleted category/hashtag archive entirely, so the hide-`a`-on-system-categories mechanics below are moot — categories no longer have an `a` binding at all (archive is accounts-only; the toggle moved to `AccountsScreen`). The surviving half of this decision — system categories **are renameable** via `e`, never TUI-immutable — still governs.
+>
+> **Superseded in part, again (2026-08-16, backlog 2.4).** `@Transfer` and `@Debt` — the categories this entry reasons from — were deleted with the engine's transfer-feature removal (2026-08-10, [client-breaking-changes.md](client-breaking-changes.md)). The rule survives unchanged but now applies to a single system category, `@Opening`; the "would break the transfer pipeline" rationale below is historical.
 
 **Context.** Building the Manage edit flow (`enter`→detail→`e` edit / `a` archive; see [tui-plan.md](tui-plan.md) Phase 2), the question was how to treat system categories (`@Transfer`, `@Debt`). The initial instinct — and a first recommendation — was to make them fully read-only in the TUI (hide `e` and `a`), assuming "system = untouchable." The engine's actual contract is the opposite on the axis that matters.
 

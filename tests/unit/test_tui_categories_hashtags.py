@@ -13,7 +13,7 @@ from tests.unit.helpers import wait_for
 
 CATS = [
     {"id": "c1", "name": "Comida", "color": "#d9744a", "is_system": False},
-    {"id": "c2", "name": "@Transfer", "color": None, "is_system": True},
+    {"id": "c2", "name": "@Opening", "color": None, "is_system": True},
 ]
 TAGS = [
     {"id": "h1", "name": "trabajo"},

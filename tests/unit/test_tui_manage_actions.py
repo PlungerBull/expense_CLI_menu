@@ -29,7 +29,7 @@ ACCOUNT = {
 }
 ACCOUNT_2 = {**ACCOUNT, "id": "a2", "name": "Interbank", "color": None}
 ARCHIVED_ACCOUNT = {**ACCOUNT, "is_archived": True}
-SYS_CAT = {"id": "c1", "name": "@Transfer", "is_system": True, "color": None}
+SYS_CAT = {"id": "c1", "name": "@Opening", "is_system": True, "color": None}
 HASHTAG = {"id": "h1", "name": "trabajo"}
 
 

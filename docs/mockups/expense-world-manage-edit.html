@@ -220,17 +220,17 @@
     </div>
   </div>
   <div class="term">
-    <div class="bar"><div class="ttl">Category · system (@Transfer) — <span class="lock">rename/recolor OK · archive hidden</span></div><span class="tag rec">option b</span></div>
+    <div class="bar"><div class="ttl">Category · system (@Opening) — <span class="lock">rename/recolor OK · archive hidden</span></div><span class="tag rec">option b</span></div>
     <div class="screen">
-      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Categories <span class="s">›</span> <b>@Transfer</b></div>
-      <div class="sect">@Transfer <span class="lock">🔒</span></div>
+      <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Categories <span class="s">›</span> <b>@Opening</b></div>
+      <div class="sect">@Opening <span class="lock">🔒</span></div>
       <div class="kv">
-        <span class="k">Name</span><span>@Transfer</span>
+        <span class="k">Name</span><span>@Opening</span>
         <span class="k">Color</span><span><span class="sw" style="background:var(--dimmer)"></span>—</span>
         <span class="k">System</span><span class="lock">yes 🔒</span>
         <span class="k">Status</span><span>active</span>
       </div>
-      <div class="legend"><b>e</b> edit (rename/recolor — safe, keyed by system_key) · <span class="lock">no a — archive/delete 403 the transfer pipeline</span> · <b>esc</b> back</div>
+      <div class="legend"><b>e</b> edit (rename/recolor — safe, keyed by system_key) · <span class="lock">no a — archive/delete 403 (system category)</span> · <b>esc</b> back</div>
     </div>
   </div>
 </div>
@@ -280,8 +280,8 @@
       from the Manage lists (archive is now contextual to the record you opened).</li>
     <li><b>System categories:</b> <b>e</b> edit <b>is</b> offered — the engine keys them by <b>system_key</b>, not
       name, so rename/recolor is pipeline-safe and allowed (engine-spec §Categories); supports localization
-      (@Transfer → @Transferencia). <b>a</b> is hidden — archive/delete deterministically <b>403</b> (they anchor
-      the transfer pipeline), so suppressing the action reflects engine truth, not a client-invented rule.</li>
+      (@Opening → @Apertura). <b>a</b> is hidden — archive/delete deterministically <b>403</b> (system category),
+      so suppressing the action reflects engine truth, not a client-invented rule.</li>
     <li><b>Delete:</b> archive-only. The engine <b>409</b>s deletion of any category with transactions and points at
       archive, so a delete button would dead-end on exactly the categories you'd want to remove.</li>
   </ol>

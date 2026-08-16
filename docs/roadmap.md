@@ -83,7 +83,7 @@ Mirrors engine Step 4 (core CRUD), extended with the archive/unarchive/restore v
 - `archive` is for closing accounts IRL; `delete` is for cleanup/mistakes (see [../../expense_world_engine/docs/engine-spec.md](../../expense_world_engine/docs/engine-spec.md))
 
 **2b — `expense categories`**
-- Same verbs. System categories (`@Debt`, `@Transfer`) return 403 on rename/delete/archive — render as a clear "System categories cannot be modified" message.
+- Same verbs. System categories return 403 on delete — rendered as a clear hint. *(Historical: written when `@Debt`/`@Transfer` existed and the hint claimed renames were blocked too; since the 2026-08-10 transfer removal the only system category is `@Opening`, and renames are allowed.)*
 
 **2c — `expense hashtags`**
 - Same verbs. Archive does not cascade to junction rows.
@@ -415,7 +415,7 @@ Wires `list` (with archived/deleted/people toggles), `get`, `create` (with curre
 
 *Deliverable: Categories group menu + all 8 category flows.*
 
-Wires the same template as Accounts, with system-category guard (engine 403 on `@Debt` / `@Transfer` rename/delete/archive rendered as "System categories cannot be modified").
+Wires the same template as Accounts, with the system-category guard (engine 403 on delete, rendered as a hint; historically `@Debt`/`@Transfer`, now `@Opening` only — see the 2026-08-10 transfer removal).
 
 **Verify:** full CRUD round trip; system-category rejection renders cleanly.
 

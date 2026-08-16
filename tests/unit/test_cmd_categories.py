@@ -215,7 +215,7 @@ def test_delete_403_prints_system_hint(configured):
     )
     result = runner.invoke(cli_app, ["categories", "delete", "sys", "--yes"])
     assert result.exit_code == 1
-    assert "System categories" in result.output
+    assert "system category (@Opening)" in result.output
     assert "FORBIDDEN" in result.output
 
 

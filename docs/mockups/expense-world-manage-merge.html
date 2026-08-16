@@ -212,7 +212,7 @@
       <div class="crumb"><b>EXPENSE WORLD</b> <span class="s">›</span> Manage <span class="s">›</span> Categories</div>
       <div class="sect">System category — archive is absent, not greyed differently</div>
       <div class="pop">
-        <div class="pt">@Transfer <span class="lock">🔒</span></div>
+        <div class="pt">@Opening <span class="lock">🔒</span></div>
         <div class="pi on"><span class="kk">e</span><span>Edit — rename/recolor (safe)</span></div>
         <div class="pi gone"><span class="kk">a</span><span>Archive — unavailable (system)</span></div>
         <div class="pi gone"><span class="kk">esc</span><span>Cancel</span></div>
@@ -272,7 +272,7 @@
   <b>already</b> works this way. The detail screen turned out to be the inconsistent one, not the safe one.<br/><br/>
 
   <span class="hd">The one real constraint the merge must carry</span><br/>
-  System categories (@Transfer): <b>e</b> is allowed (engine keys them by <code>system_key</code>), <b>a</b> must stay hidden
+  The system category (@Opening): <b>e</b> is allowed (engine keys it by <code>system_key</code>), <b>a</b> must stay hidden
   (archive/delete <b>403</b>). Today that lives in <code>check_action</code> on the detail. On the list it re-evaluates per
   cursor row (Textual <code>refresh_bindings</code> on cursor move): <b>Alt A / C</b> simply omit <b>a</b> from the footer while a
   system row is highlighted; <b>Alt B</b> shows Archive greyed with the reason — arguably the clearest of the three on this
