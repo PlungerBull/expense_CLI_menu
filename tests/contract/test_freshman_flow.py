@@ -5,14 +5,15 @@ Walks a brand-new user through the exact path Step 9 gate criterion 4 calls out:
     config set → ping → auth bootstrap → auth me
     → accounts create → categories create → log → dashboard → cleanup
 
-Hits the live engine. Gated on PYTEST_LIVE=1 and EXPENSE_PAT.
-Redirects EXPENSE_CONFIG to a temp dir so the developer's
-real install is untouched.
+Hits a real engine. Gated on PYTEST_LIVE=1 and EXPENSE_PAT; the target and the
+real-ledger guard come from conftest.py. Redirects EXPENSE_CONFIG to a temp dir so
+the developer's own install is untouched.
 
-Uses a USD account regardless of the user's main_currency — the engine has
-FX rates available (USD→PEN at 3.75 as of 2026-05-10), so cross-currency
-writes succeed. If RATE_UNAVAILABLE starts firing again, that's an engine
-regression to investigate, not a known-broken state to work around.
+Uses a USD account regardless of the user's main_currency, to walk the
+cross-currency path. Since 2026-08-05 a write never resolves a rate at all —
+conversion happens at read time — so RATE_UNAVAILABLE can no longer fire here; a
+missing rate now surfaces as a null aggregate plus an unconverted count on the
+read side instead.
 """
 
 import json
@@ -23,9 +24,7 @@ import pytest
 from typer.testing import CliRunner
 
 from expense.__main__ import app
-
-ENGINE_URL = os.environ.get("EXPENSE_ENGINE_URL", "https://expense-world-engine.onrender.com")
-PAT = os.environ.get("EXPENSE_PAT")
+from tests.contract.conftest import ENGINE_URL, PAT
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("PYTEST_LIVE") != "1" or not PAT,

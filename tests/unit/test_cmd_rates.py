@@ -77,30 +77,55 @@ def test_get_json_mode_passthrough(configured):
 
 
 @respx.mock
-def test_get_rate_unavailable_surfaces_engine_error(configured):
-    """Per memory project_engine_fx_cron_unwired: cross-currency rates 422 today."""
+def test_get_unsupported_currency_surfaces_engine_error(configured):
+    """An unsupported code is a 422 field error, not a missing-rate error.
+
+    Re-pinned 2026-08-16 (backlog 5.1) against the live engine: the old fixture
+    invented a `RATE_UNAVAILABLE` 422 whose `fields.exchange_rate` told the user to
+    "supply an explicit exchange_rate" — a flag purged in Phase 1.1 and an error
+    code the engine cannot emit. Per the 2026-08-07 entry, a bad currency code is
+    now field-scoped `VALIDATION_ERROR` on `base`/`target`.
+    """
     respx.get("https://api.example.com/v1/exchange-rates").mock(
         return_value=httpx.Response(
             422,
             json={
                 "error": {
-                    "code": "RATE_UNAVAILABLE",
-                    "message": "No rate on or before 2026-05-03 for USD->EUR.",
-                    "fields": {
-                        "exchange_rate": (
-                            "No rate on or before 2026-05-03 for USD->EUR. "
-                            "Wait for the daily fetch or supply an explicit "
-                            "exchange_rate."
-                        )
-                    },
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid currency code.",
+                    "fields": {"target": "'EUR' is not a valid currency code."},
                 }
             },
         )
     )
     result = runner.invoke(cli_app, ["rates", "get", "--target", "EUR"])
     assert result.exit_code == 1
-    assert "RATE_UNAVAILABLE" in result.output
-    assert "exchange_rate" in result.output
+    assert "VALIDATION_ERROR" in result.output
+    assert "target" in result.output
+
+
+@respx.mock
+def test_get_no_rate_for_date_surfaces_not_found(configured):
+    """404 now means exactly one thing: supported pair, no rate row on/before the date.
+
+    Verified against the live engine 2026-08-16 — `fields` is null, so the renderer
+    must survive a `fields: null` envelope, not just a missing key.
+    """
+    respx.get("https://api.example.com/v1/exchange-rates").mock(
+        return_value=httpx.Response(
+            404,
+            json={
+                "error": {
+                    "code": "NOT_FOUND",
+                    "message": "exchange rate for USD->PEN not found.",
+                    "fields": None,
+                }
+            },
+        )
+    )
+    result = runner.invoke(cli_app, ["rates", "get", "--target", "PEN", "--date", "2020-01-01"])
+    assert result.exit_code == 1
+    assert "NOT_FOUND" in result.output
 
 
 def test_get_target_required(configured):

@@ -19,12 +19,12 @@ INBOX_RESPONSE = {
     "status": 1,
     "title": "lunch",
     "amount_cents": 2500,
-    "amount_home_cents": 2500,
     "date": "2026-04-24T12:00:00Z",
     "account_id": None,
     "category_id": None,
     "description": None,
-    "cleared": False,
+    # no `cleared` — InboxResponse has never carried it; a draft has not posted
+    # anywhere yet. Removed 2026-08-16 (backlog 5.1).
     "transaction_type": 1,
     "created_at": "2026-04-24T10:00:00Z",
     "updated_at": "2026-04-24T10:00:00Z",
@@ -290,3 +290,21 @@ def test_promote_422_prints_fix_hint(configured):
     assert "VALIDATION_ERROR" in result.output
     assert "title" in result.output
     assert "account_id" in result.output
+
+
+def test_add_and_update_reject_retired_cleared_flag(configured):
+    """--cleared is gone from both inbox writes entirely.
+
+    A draft has not reached the ledger, so nothing can have posted at the bank:
+    InboxCreateRequest/InboxUpdateRequest have never carried `cleared`, and the
+    engine rejects it as an unknown input — losing the whole write, not just the
+    flag. Found against a real engine by the Phase 5 contract gate, 2026-08-16.
+    Transactions keep the flag; see test_cmd_transactions.py.
+    """
+    for argv in (
+        ["inbox", "add", "--title", "x", "--amount", "-100", "--cleared"],
+        ["inbox", "update", "abc", "--cleared"],
+    ):
+        result = runner.invoke(cli_app, argv)
+        assert result.exit_code == 2, f"{argv} should not parse"
+        assert "No such option" in result.output

@@ -254,10 +254,20 @@ def test_edit_no_changes_does_not_submit(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
-def test_edit_inbox_sequence_has_no_hashtags():
-    screen = QuickAddLogScreen(record={"id": "i1", "title": "x"}, resource="inbox")
-    assert "hashtags" not in screen._sequence()
-    assert "cleared" in screen._sequence()
+def test_edit_inbox_sequence_has_no_hashtags_and_no_cleared():
+    """A draft offers neither field; a transaction offers both.
+
+    `cleared` was removed from the draft form 2026-08-16 (backlog Phase 5): the
+    engine rejects it as an unknown input, so offering the row lost the whole edit
+    to a 422 after everything else had been typed.
+    """
+    draft = QuickAddLogScreen(record={"id": "i1", "title": "x"}, resource="inbox")
+    assert "hashtags" not in draft._sequence()
+    assert "cleared" not in draft._sequence()
+
+    tx = QuickAddLogScreen(record={"id": "t1", "title": "x"}, resource="transactions")
+    assert "cleared" in tx._sequence()
+    assert "hashtags" in tx._sequence()
 
 
 def test_quick_log_rejects_zero_and_unknown_account(fake_client, monkeypatch):

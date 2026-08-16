@@ -182,7 +182,7 @@ def test_format_field_value_formats_only_cents_keys():
     assert format_field_value("current_balance_cents", 5000) == "50.00"
     assert format_field_value("amount_cents", None) == "(null)"
     # Non-money fields pass through literally (incl. decimal rates, ids, ints).
-    assert format_field_value("exchange_rate", 1.0) == "1.0"
+    assert format_field_value("rate", 1.0) == "1.0"
     assert format_field_value("version", 3) == "3"
     assert format_field_value("title", None) == "(null)"
     assert format_field_value("transaction_type", 1) == "1"

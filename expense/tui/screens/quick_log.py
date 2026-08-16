@@ -164,8 +164,12 @@ class QuickAddLogScreen(FormScreen):
     # ---- field sequence --------------------------------------------------
     def _sequence(self) -> list[str]:
         if self._mode == "edit":
-            seq = ["date", "title", "amount", "account", "category", "cleared"]
-            if self._resource == "transactions":  # inbox drafts have no hashtags
+            seq = ["date", "title", "amount", "account", "category"]
+            if self._resource == "transactions":
+                # inbox drafts have neither hashtags nor a cleared flag — a draft
+                # has not reached the ledger, so nothing can have posted at the
+                # bank. Offering it lost the whole edit to a 422 (backlog Phase 5).
+                seq.append("cleared")
                 seq.append("hashtags")
             seq.append("note")
             return seq

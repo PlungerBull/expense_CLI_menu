@@ -1,30 +1,14 @@
-"""Contract lifecycle for inbox + log against the live engine.
+"""Contract lifecycle for inbox + log against a real engine.
 
 Each test creates the supporting account/category, exercises the full lifecycle,
-then cleans up. Gated on PYTEST_LIVE=1.
+then cleans up. Gating, target resolution and the real-ledger guard live in
+conftest.py.
 """
 
-import os
 from datetime import UTC, datetime
 from uuid import uuid4
 
-import pytest
-
-from expense import config as config_module
 from expense.errors import EngineError
-from expense.http import ExpenseClient
-
-pytestmark = pytest.mark.skipif(
-    os.environ.get("PYTEST_LIVE") != "1",
-    reason="Contract tests require PYTEST_LIVE=1",
-)
-
-
-@pytest.fixture
-def client():
-    cfg = config_module.ensure_loaded()
-    with ExpenseClient(cfg) as c:
-        yield c
 
 
 def _safe_delete(client, path):

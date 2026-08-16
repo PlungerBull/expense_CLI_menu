@@ -26,9 +26,10 @@
 
 **Why phases:** the 2026-08 engine rework (transfers deleted, read-time
 currency, reconciliation de-chaining, schema slimming) removed or changed
-endpoints the CLI and TUI still call. **No phase is live-broken any more** —
-Phase 4, the last one, closed 2026-08-16. Phase 5 verifies against the live
-engine; Phase 6 builds the new engine capability the clients don't surface yet;
+endpoints the CLI and TUI still call. **The recovery is verified done** —
+Phase 5, the gate, closed 2026-08-16: the contract suite passes 9/9 against a
+real engine, which is the first real-engine check since the rework began.
+Phase 6 builds the new engine capability the clients don't surface yet;
 Phase 7 closes residual doc alignment; Phase 8 is pre-existing polish,
 schedulable anytime.
 (Phase 1 — the mechanical deletions: exchange-rate purge, settings slimming,
@@ -43,14 +44,27 @@ removal, items 4.1–4.2 — closed 2026-08-16
 picks C/F/J; the "hide rows with nothing spent" rule was added there by user
 decision and applies to the dashboard, the monthly report and the TUI
 Outstanding tree alike; rationale in [decisions.md](decisions.md));
-all four deleted per the rule above, see git history.)
+Phase 5 — the contract re-verification gate, items 5.1–5.2 — closed
+2026-08-16
+(sketch: [mockups/expense-world-phase5-sketch.html](mockups/expense-world-phase5-sketch.html),
+pick C; rationale in [decisions.md](decisions.md) "Contract tests verify
+against a disposable database"). What it changed beyond the plan: the suite
+now runs against `expense_world_test` through a second engine on `:8001` and
+**refuses** to write to the real ledger; three contract files were broken, not
+one; and the gate found a genuine client bug — `--cleared` on `inbox
+add`/`update` and the TUI draft-edit form, a field the engine has never
+accepted there, which 422'd and lost the whole write (removed; sketch:
+[mockups/expense-world-phase5-inbox-cleared.html](mockups/expense-world-phase5-inbox-cleared.html)).
+All five deleted per the rule above, see git history.)
 
-**Baseline at merge time (2026-08-15):** 900 unit tests, 899 green — the one
-failure was the doc-link guard catching the engine's retired `TODO.md`, fixed
-with the merge commit. Green is **false comfort** here: the respx fixtures pin
-the *pre-rework* contract, so most Phase 2–4 breakage is invisible to
-`pytest tests/unit`. Only the `PYTEST_LIVE=1` contract suite sees the real
-engine.
+**Baseline (2026-08-16, after Phase 5):** 868 unit tests green — fewer than the
+900 at merge time because Phases 1–4 deleted features and their tests with them.
+Unit green was **false comfort** for Phases 1–4: the respx fixtures pinned the
+*pre-rework* contract, so breakage was invisible to `pytest tests/unit`. Phase 5
+closed that hole two ways — the fixtures now match the engine's published
+schemas, and [scripts/check_fixture_drift.py](../scripts/check_fixture_drift.py)
+re-checks that mechanically — but the principle stands for future engine
+changes: only the contract suite sees a real engine.
 
 **Working convention for every item below:** fix code + re-pin the affected
 unit fixtures to the new engine shape + scrub the owning doc
@@ -61,21 +75,6 @@ cited by date — read the entry before starting the item; it has the full
 contract detail and engine references.
 
 ---
-
-## Phase 5 — contract re-verification gate
-
-- [ ] **5.1** Fixture audit: sweep `tests/unit` fixtures for retired fields
-  (`transfer_*`, `exchange_rate`, `amount_home_cents`, `is_archived` on
-  cats/hashtags, `beginning_balance_source`, `sort_order`, settings fields,
-  `warnings` on tx delete) so the mocks pin the *new* contract — Phases 1–4
-  each re-pin their own; this is the closing sweep for stragglers. Known
-  stragglers spotted during Phase 4: `amount_home_cents` in
-  `test_cmd_transactions.py:21`, `test_cmd_inbox.py:22`, `test_cmd_log.py:23`;
-  `beginning/ending_balance_home_cents` in `test_cmd_reconcile.py:34,36`.
-- [ ] **5.2** Supervised `PYTEST_LIVE=1` contract run against the loopback
-  engine (per [cli-runtime.md](cli-runtime.md) "Working against the live
-  engine"); fix `test_freshman_flow.py` drift found there. This is the gate
-  that declares the TUI/CLI *working again*.
 
 ## Phase 6 — additive engine capability (unusable until built)
 
@@ -154,7 +153,8 @@ Phases 1–7.
   minimum terminal size fallback (#5).
 - [ ] Post-Step-9 ergonomics (quick-add parser, shell completions, …) stay
   planned in [roadmap.md](roadmap.md) "Post-Step-9 ergonomics" — pointer
-  only; they start after Phase 5's gate at the earliest.
+  only. **Unblocked 2026-08-16**: Phase 5's gate was their precondition and
+  it passed.
 
 ### Dropped as moot (recorded once, then delete on next touch)
 

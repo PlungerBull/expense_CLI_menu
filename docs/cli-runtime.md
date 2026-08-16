@@ -52,10 +52,22 @@ There is exactly **one engine: the local deployment** (`http://127.0.0.1:8000`, 
 
 **Isolation levers, weakest to strongest:**
 
-- `EXPENSE_CONFIG` env override redirects the config file to any path (this is how the contract suite sandboxes itself). This isolates *local config only* — the same PAT still writes to the same user's ledger.
-- A **separate PAT for a separate user** is the only true data isolation. PATs are issued out-of-band: see [cli-spec.md](cli-spec.md) "Auth model" and the engine spec for the endpoint contract. CLI-side `auth pat create`/`revoke` are deferred.
+- `EXPENSE_CONFIG` env override redirects the config file to any path. This isolates *local config only* — the same PAT still writes to the same user's ledger.
+- A **separate PAT for a separate user** is true data isolation within the same database. PATs are issued out-of-band: see [cli-spec.md](cli-spec.md) "Auth model" and the engine spec for the endpoint contract. CLI-side `auth pat create`/`revoke` are deferred.
+- **A second engine over the `expense_world_test` database** is the strongest, and since 2026-08-16 it is how the contract suite is meant to run. Nothing it writes can reach the real ledger, and the debris is disposable — `deploy/local/create-test-db.sh --force` wipes it. Setup lives in the engine repo: `deploy/local/seed-test-user.sh` seeds a practice user, a PAT and a copy of `exchange_rates`, then
 
-**The contract suite** (`tests/contract/`) hits the live engine deliberately and is double-gated: `PYTEST_LIVE=1 EXPENSE_PAT=<token> pytest tests/contract`. `EXPENSE_ENGINE_URL` overrides the target (defaults suit the local profile). What it does: walks real flows (the freshman gate: config → ping → bootstrap → accounts/categories create → log → dashboard), redirects `EXPENSE_CONFIG` to a temp dir so the developer's install is untouched, and cleans up after itself best-effort in reverse dependency order. Cleanup means **soft-deletes** — the run leaves tombstoned rows in the PAT user's account (visible under `--include-deleted`). Run it at step gates, when engine-shape drift is suspected, or before calling a release done — never in CI (deps and gating are designed so CI stays hermetic).
+      SUPABASE_DB_URL=postgresql:///expense_world_test \
+        python -m uvicorn app.main:app --port 8001
+
+  (`python -m uvicorn`, not the console script — engine `deploy/local/README.md` "TCC".)
+
+**The contract suite** (`tests/contract/`) hits a real engine deliberately and is double-gated: `PYTEST_LIVE=1 EXPENSE_PAT=<token> pytest tests/contract`. `EXPENSE_ENGINE_URL` overrides the target and now defaults to `http://127.0.0.1:8000` — until 2026-08-16 it defaulted to the mothballed Render host, so the env var was effectively mandatory while this page claimed otherwise.
+
+**It refuses to run against the real ledger.** Without `EXPENSE_PAT` the only credential available is the developer's own config, so [tests/contract/conftest.py](../tests/contract/conftest.py) aborts the session with a message pointing at the practice database. `EXPENSE_ALLOW_REAL_LEDGER=1` overrides it. This exists because the alternative — a printed warning — only helps someone who is watching, and on 2026-08-16 a mis-scoped gate ran the suite against the real ledger and left four live junk accounts behind (backlog Phase 5, option C of [mockups/expense-world-phase5-sketch.html](mockups/expense-world-phase5-sketch.html)).
+
+What the suite does: walks real flows (the freshman gate: config → ping → bootstrap → accounts/categories create → log → dashboard), redirects `EXPENSE_CONFIG` to a temp dir so the developer's install is untouched, and cleans up after itself best-effort in reverse dependency order. Cleanup means **soft-deletes** — the run leaves tombstoned rows in the PAT user's account (visible under `--include-deleted`), which is exactly why it belongs on the practice database. Run it at step gates, when engine-shape drift is suspected, or before calling a release done — never in CI (deps and gating are designed so CI stays hermetic).
+
+**Fixture drift.** The unit suite mocks the engine, so it cannot notice the engine changing shape. [scripts/check_fixture_drift.py](../scripts/check_fixture_drift.py) compares every unit fixture key against the engine's published `openapi.json`; run it after any engine change. It is deliberately not a pytest file — see the hermeticity rule below.
 
 **Unit tests never touch the network.** `tests/unit/` is respx-mocked and hermetic; autouse fixtures in [tests/unit/conftest.py](../tests/unit/conftest.py) redirect `EXPENSE_CONFIG` and block real sockets so a test can never read the developer's real config or ping a real engine. Never bypass them.
 

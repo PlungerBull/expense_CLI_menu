@@ -30,10 +30,10 @@ RECON_DRAFT_RESPONSE = {
     "name": "Statement April 2026",
     "date_start": "2026-04-01T00:00:00Z",
     "date_end": "2026-04-30T23:59:59Z",
+    # native cents only — the home-cent pair died with read-time conversion
+    # (2026-08-05); reconciliations are single-account, so there is nothing to mix
     "beginning_balance_cents": 100000,
-    "beginning_balance_home_cents": 100000,
     "ending_balance_cents": 150000,
-    "ending_balance_home_cents": 150000,
     "status": 1,
     # difference_cents replaced sort_order/beginning_balance_source/
     # chained_from_reconciliation_id in the 2026-08-06 de-chaining: it is

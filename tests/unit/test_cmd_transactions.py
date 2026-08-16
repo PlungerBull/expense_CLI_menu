@@ -18,7 +18,6 @@ TRANSACTION_RESPONSE = {
     "user_id": "u_123",
     "title": "coffee",
     "amount_cents": 500,
-    "amount_home_cents": 500,
     "date": "2026-04-24T12:00:00Z",
     "account_id": "acct-id",
     "category_id": "cat-id",

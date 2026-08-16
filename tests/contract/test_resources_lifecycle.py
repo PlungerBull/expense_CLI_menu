@@ -1,30 +1,17 @@
-"""Contract lifecycle: create → update → archive → unarchive → delete → restore.
+"""Contract lifecycle for the three named resources.
 
-Hits the real engine. Gated on PYTEST_LIVE=1. Requires EXPENSE_ENGINE_URL and
-EXPENSE_PAT env vars (or a populated ~/.expense-config) — uses ExpenseClient
-directly so each test owns its idempotency keys.
+Accounts: create → update → archive → unarchive → delete → restore.
+Categories and hashtags: create → update → delete → restore — they lost their
+archive routes in the 2026-08-06 schema slimming, and accounts are now the only
+archivable resource (see docs/client-breaking-changes.md).
+
+Hits a real engine. Gating, target resolution and the real-ledger guard live in
+conftest.py; uses ExpenseClient directly so each test owns its idempotency keys.
 """
 
-import os
 from uuid import uuid4
 
-import pytest
-
-from expense import config as config_module
 from expense.commands._resource import fetch_all_pages
-from expense.http import ExpenseClient
-
-pytestmark = pytest.mark.skipif(
-    os.environ.get("PYTEST_LIVE") != "1",
-    reason="Contract tests require PYTEST_LIVE=1",
-)
-
-
-@pytest.fixture
-def client():
-    cfg = config_module.ensure_loaded()
-    with ExpenseClient(cfg) as c:
-        yield c
 
 
 def _list_all(client, resource: str, **flags) -> list[dict]:
@@ -102,11 +89,11 @@ def test_categories_lifecycle(client):
         updated = client.put(f"/categories/{new_id}", json_body={"name": f"{name}-renamed"})
         assert updated["name"] == f"{name}-renamed"
 
-        client.post(f"/categories/{new_id}/archive")
-        active_after = _list_all(client, "categories")
-        assert not any(c["id"] == new_id for c in active_after)
+        # No archive/unarchive arm: those routes 404 since 2026-08-06. Pin the
+        # deletion so a silent re-introduction would be caught.
+        active = _list_all(client, "categories")
+        assert any(c["id"] == new_id for c in active)
 
-        client.post(f"/categories/{new_id}/unarchive")
         client.delete(f"/categories/{new_id}")
         deleted = _list_all(client, "categories", include_deleted=True)
         assert any(c["id"] == new_id for c in deleted)
@@ -133,11 +120,10 @@ def test_hashtags_lifecycle(client):
         updated = client.put(f"/hashtags/{new_id}", json_body={"name": f"{name}-renamed"})
         assert updated["name"] == f"{name}-renamed"
 
-        client.post(f"/hashtags/{new_id}/archive")
-        active_after = _list_all(client, "hashtags")
-        assert not any(h["id"] == new_id for h in active_after)
+        # Same as categories — no archive routes since 2026-08-06.
+        active = _list_all(client, "hashtags")
+        assert any(h["id"] == new_id for h in active)
 
-        client.post(f"/hashtags/{new_id}/unarchive")
         client.delete(f"/hashtags/{new_id}")
         deleted = _list_all(client, "hashtags", include_deleted=True)
         assert any(h["id"] == new_id for h in deleted)

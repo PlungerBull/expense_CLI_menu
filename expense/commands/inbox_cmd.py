@@ -195,12 +195,14 @@ def add(
         None, "--category-id", help="Category UUID. Optional on draft; required to promote."
     ),
     description: str | None = typer.Option(None, "--description", help="Free-form notes."),
-    cleared: bool | None = typer.Option(
-        None, "--cleared/--no-cleared", help="Has the transaction posted at the bank?"
-    ),
     json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/inbox. Drop a partial draft into the inbox; fill in later, then promote.
+
+    No --cleared: a draft has not reached the ledger, so nothing can have posted at
+    the bank yet. InboxCreateRequest has never carried the field and the engine 422s
+    it as an unknown input, losing the whole draft. Set it on the transaction after
+    promoting. (Removed 2026-08-16, backlog Phase 5 — found by the contract gate.)
 
     Example: expense inbox add --title "Lunch" --amount -1500
     """
@@ -221,8 +223,6 @@ def add(
         payload["category_id"] = category_id
     if description is not None:
         payload["description"] = description
-    if cleared is not None:
-        payload["cleared"] = cleared
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
@@ -242,10 +242,11 @@ def update(
     account_id: str | None = typer.Option(None, "--account-id"),
     category_id: str | None = typer.Option(None, "--category-id"),
     description: str | None = typer.Option(None, "--description"),
-    cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
     json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/inbox/{id}.
+
+    No --cleared — see `add`; the field does not exist on a draft.
 
     Example: expense inbox update <inbox-id> --account-id <id> --category-id <id>
     """
@@ -260,7 +261,6 @@ def update(
             "account_id": account_id,
             "category_id": category_id,
             "description": description,
-            "cleared": cleared,
         }
     )
 
