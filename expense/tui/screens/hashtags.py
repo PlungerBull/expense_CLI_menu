@@ -1,26 +1,24 @@
 """Hashtags screen — cross-cutting tags.
 
-A plain list (Name / Status), consistent with the other list screens, rather
-than the chip mockup — usage counts would need engine support the list endpoint
-doesn't provide. Archived rows dimmed. `n` creates; `e` renames the cursor row
-(prefilled EditHashtagScreen); `a` toggles archive immediately — a second `a`
-undoes. `enter` does nothing.
+A plain name list, consistent with the other list screens, rather than the
+chip mockup — usage counts would need engine support the list endpoint
+doesn't provide. `n` creates; `e` renames the cursor row (prefilled
+EditHashtagScreen). `enter` does nothing. Hashtag archive was removed
+engine-side (2026-08-06 schema slimming) — only accounts archive now.
 """
 
 from expense.commands import hashtags_cmd
 from expense.tui.screens._base import ResourceListScreen
 
-_HEADERS = ["Name", "Status"]
+_HEADERS = ["Name"]
 
 
 def hashtag_rows(items: list[dict]) -> list:
     """Pure (id, cells, base_style) rows for a CursorList. Unit-testable."""
     rows = []
     for it in items:
-        archived = bool(it.get("is_archived"))
         name = it.get("name") or "(unnamed)"
-        cells = ["#" + name.lstrip("#"), "archived" if archived else "active"]
-        rows.append((it.get("id"), cells, "dim" if archived else ""))
+        rows.append((it.get("id"), ["#" + name.lstrip("#")], ""))
     return rows
 
 
@@ -38,9 +36,7 @@ class HashtagsScreen(ResourceListScreen):
         from expense.commands._resource import fetch_all_pages
 
         return fetch_all_pages(
-            lambda limit, offset: hashtags_cmd.fetch_hashtags(
-                cfg, include_archived=True, limit=limit, offset=offset, **kw
-            )
+            lambda limit, offset: hashtags_cmd.fetch_hashtags(cfg, limit=limit, offset=offset, **kw)
         )
 
     def rows(self, items: list) -> list:

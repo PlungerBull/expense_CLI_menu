@@ -18,7 +18,6 @@ HASHTAG_RESPONSE = {
     "user_id": "u1",
     "name": "lunch",
     "sort_order": 1,
-    "is_archived": False,
     "deleted_at": None,
     "version": 1,
     "created_at": "2026-04-24T10:00:00Z",
@@ -26,26 +25,6 @@ HASHTAG_RESPONSE = {
 }
 
 LIST_RESPONSE = [HASHTAG_RESPONSE]
-
-
-@respx.mock
-def test_list_include_archived_sends_param(configured):
-    archived = {
-        **HASHTAG_RESPONSE,
-        "id": "55555555-5555-5555-5555-555555555555",
-        "name": "old-tag",
-        "is_archived": True,
-    }
-    route = respx.get("https://api.example.com/v1/hashtags").mock(
-        return_value=httpx.Response(200, json=[HASHTAG_RESPONSE, archived])
-    )
-    result = runner.invoke(cli_app, ["hashtags", "list", "--include-archived"])
-    assert result.exit_code == 0, result.output
-    assert "lunch" in result.output
-    assert "old-tag" in result.output
-
-    request = route.calls.last.request
-    assert request.url.params.get("include_archived") == "true"
 
 
 @respx.mock
@@ -191,40 +170,6 @@ def test_delete_happy(configured):
         return_value=httpx.Response(200, json=deleted)
     )
     result = runner.invoke(cli_app, ["hashtags", "delete", "abc", "--yes"])
-    assert result.exit_code == 0, result.output
-
-
-@respx.mock
-def test_archive_happy(configured):
-    archived = {**HASHTAG_RESPONSE, "is_archived": True}
-    respx.post("https://api.example.com/v1/hashtags/abc/archive").mock(
-        return_value=httpx.Response(200, json=archived)
-    )
-    result = runner.invoke(cli_app, ["hashtags", "archive", "abc"])
-    assert result.exit_code == 0, result.output
-    assert "is_archived: True" in result.output
-
-
-@respx.mock
-def test_archive_is_prompt_free(configured):
-    # Archive is a reversible toggle (2026-07-11): no confirmation, no --yes —
-    # it succeeds bare even in non-TTY mode (CliRunner is non-TTY), where the
-    # old confirm gate used to exit 1 with a "non-interactive" error.
-    archived = {**HASHTAG_RESPONSE, "is_archived": True}
-    respx.post("https://api.example.com/v1/hashtags/abc/archive").mock(
-        return_value=httpx.Response(200, json=archived)
-    )
-    result = runner.invoke(cli_app, ["hashtags", "archive", "abc"])
-    assert result.exit_code == 0, result.output
-    assert "non-interactive" not in result.output
-
-
-@respx.mock
-def test_unarchive_happy(configured):
-    respx.post("https://api.example.com/v1/hashtags/abc/unarchive").mock(
-        return_value=httpx.Response(200, json=HASHTAG_RESPONSE)
-    )
-    result = runner.invoke(cli_app, ["hashtags", "unarchive", "abc"])
     assert result.exit_code == 0, result.output
 
 

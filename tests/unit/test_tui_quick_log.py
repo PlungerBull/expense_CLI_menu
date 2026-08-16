@@ -74,9 +74,10 @@ TXN = {
 
 
 def test_load_entities_three_superset_queries(fake_client, monkeypatch):
-    """The form loads each resource once (include_archived) and derives both
-    the active-only pools and the full name maps — three queries, not six
-    (backlog 6.5b)."""
+    """The form loads each resource once and derives both the suggestion pools
+    and the full name maps — three queries, not six (backlog 6.5b). Only the
+    accounts fetch is a superset (include_archived); categories/hashtags lost
+    archive in the 2026-08-06 schema slimming."""
     calls: list[tuple[str, bool]] = []
     archived = {"id": "accX", "name": "Old bank", "currency_code": "PEN", "is_archived": True}
 
@@ -101,7 +102,7 @@ def test_load_entities_three_superset_queries(fake_client, monkeypatch):
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
             await _wait_loaded(screen, pilot)
-            assert sorted(calls) == [("accounts", True), ("categories", True), ("hashtags", True)]
+            assert sorted(calls) == [("accounts", True), ("categories", False), ("hashtags", False)]
             assert "accX" not in [a[0] for a in screen._accounts]  # archived out of the pool
             assert screen._acc_names.get("accX") == "Old bank"  # but resolvable in the map
 

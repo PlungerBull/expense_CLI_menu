@@ -23,13 +23,13 @@ Rules for this file:
 | Questionary menu deleted ahead of its gate | 2026-07-02 | full entry below |
 | Mockup-first, and showing ≠ approval | 2026-05-24 (hardened) | full entry below |
 | The backlog holds only open work (file now `backlog.md`) | 2026-07-06 | full entry below |
-| Manage detail: system categories are editable, not immutable | 2026-07-07 | full entry below |
+| Manage detail: system categories are editable, not immutable *(archive half moot since 2026-08-06)* | 2026-07-07 | full entry below |
 | Monthly report TUI is a sliding 4-month grid, not a single-month view | 2026-07-08 | full entry below |
 | `SyncContractError` + exit code 5 for /sync contract violations | 2026-07-08 | full entry below |
 | TUI writes: FIFO queue in EngineWriteMixin, error drops the queue | 2026-07-08 | full entry below |
 | Connection errors → exit code 6, off the click-usage collision on 2 | 2026-07-10 | full entry below |
 | TUI paints the terminal's own background (ANSI mode) — one surface, no seam | 2026-07-11 | full entry below |
-| Archive is a prompt-free toggle; Manage record detail deleted | 2026-07-11 | full entry below |
+| Archive is a prompt-free toggle (accounts-only since 2026-08-06); Manage record detail deleted | 2026-07-11 | full entry below |
 | Every data table pages at 20 rows (CLI human mode + TUI), two-tier design | 2026-07-11 | full entry below |
 | TUI is keyboard-only — mouse disabled via `run(mouse=False)` | 2026-07-12 | full entry below |
 | TUI rows-per-page adapt to the terminal — min(20, what fits) | 2026-07-13 | full entry below |
@@ -80,6 +80,8 @@ Rules for this file:
 
 ## Manage detail: system categories are editable, not immutable (2026-07-07)
 
+> **Superseded in part (2026-08-15, backlog 1.3).** The engine's 2026-08-06 schema slimming deleted category/hashtag archive entirely, so the hide-`a`-on-system-categories mechanics below are moot — categories no longer have an `a` binding at all (archive is accounts-only; the toggle moved to `AccountsScreen`). The surviving half of this decision — system categories **are renameable** via `e`, never TUI-immutable — still governs.
+
 **Context.** Building the Manage edit flow (`enter`→detail→`e` edit / `a` archive; see [tui-plan.md](tui-plan.md) Phase 2), the question was how to treat system categories (`@Transfer`, `@Debt`). The initial instinct — and a first recommendation — was to make them fully read-only in the TUI (hide `e` and `a`), assuming "system = untouchable." The engine's actual contract is the opposite on the axis that matters.
 
 **Decision.** The TUI **offers `e` (rename/recolor) on system categories** and **hides only `a` (archive)**. Rationale, from the engine spec: system categories are resolved by an immutable `system_key` column, never by name, so renaming is pipeline-safe and explicitly allowed (`PUT` has no `is_system` guard — engine-spec §Categories) — the `system_key` machinery was built specifically to make renaming safe, including localization (`@Transfer` → `@Transferencia`). Archive and delete, by contrast, change availability and would break the transfer pipeline, so the engine `403`s them. Hiding `a` therefore *reflects* a guaranteed-`403`; offering `e` reflects a guaranteed success. Implemented via `ResourceListScreen.check_action` in [_base.py](../expense/tui/screens/_base.py) (originally on the record detail's `ManageDetailScreen`, which was deleted 2026-07-11 — see the archive-toggle entry below; the system-category rule carried over unchanged).
@@ -127,6 +129,8 @@ Rules for this file:
 **Rejected.** *Match a fixed hex* (`background="#000000"`) — exact and one line, but pinned to a single Terminal profile; on any other terminal the frame comes back. *Do nothing / fix the terminal profile* — punts a code-owned problem onto every machine's config. *Full native-ANSI theme* (`theme.ansi=True`, semantic colors → `ansi_*`) — truly terminal-agnostic including light terminals, but throws away the tuned sign-color palette and restyles foreground/scrollbars/footer app-wide; that belongs to the dedicated light/`NO_COLOR` theme work, not a seam fix.
 
 ## Archive is a prompt-free toggle; Manage record detail deleted (2026-07-11)
+
+> **Scope narrowed (2026-08-15, backlog 1.3).** The 2026-08-06 engine schema slimming removed category/hashtag archive (routes 404, `is_archived` gone), so "everywhere" below now means **accounts only** — the sole archivable resource. The decision itself (reversible toggle → no confirm, no `--yes`) is unchanged and governs the accounts toggle; the deleted-record-detail half is unaffected.
 
 **Context.** `enter` on an Accounts/Categories/Hashtags row opened a record detail (`manage_detail.py`, Option B of 2026-07-07) whose field rows repeated the list's own columns one-for-one — its only value was hosting `e` (edit) and `a` (archive). The user flagged the redundancy ("I can see everything on the previous menu") and, reviewing alternatives, chose to make the list the whole surface. That reopened the archive-confirmation question: archive is fully reversible (`unarchive` restores, transactions untouched), so what does a confirm modal buy?
 

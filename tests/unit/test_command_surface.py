@@ -89,9 +89,10 @@ def test_read_command_has_json_flag(path, callback):
 # --- Confirm-destructive convention ------------------------------------------
 # CLAUDE.md non-negotiable: deletes, reverts, and clears prompt for confirmation
 # unless --yes is passed. Matched by leaf name — a destructive command under a
-# new name (e.g. `remove`) must be added to the set. `archive`/`unarchive`/
-# `restore` are deliberately prompt-free — reversible toggles, not destruction
-# (archive reclassified 2026-07-11; see decisions.md).
+# new name (e.g. `remove`) must be added to the set. `archive`/`unarchive`
+# (accounts-only since the 2026-08-06 schema slimming) and `restore` are
+# deliberately prompt-free — reversible toggles, not destruction (archive
+# reclassified 2026-07-11; see decisions.md).
 
 _DESTRUCTIVE_NAMES = {"delete", "revert", "clear"}
 _DESTRUCTIVE_LEAVES = [(path, cb) for path, cb in _LEAVES if path[-1] in _DESTRUCTIVE_NAMES]

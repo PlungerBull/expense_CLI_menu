@@ -382,9 +382,11 @@ class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
 class ResourceListScreen(SectionScreen):
     """Scaffold for the simple manage lists (Accounts / Categories / Hashtags):
     quiet fetch → title + CursorList of rows (+ optional legend). `n` pushes
-    the new-record form; `e` the prefilled edit form for the cursor row; `a`
-    archives/unarchives the cursor row immediately — no confirm, a second `a`
-    undoes (decision 2026-07-11 in decisions.md). `enter` is a no-op here.
+    the new-record form; `e` the prefilled edit form for the cursor row.
+    `enter` is a no-op here. The `a` archive toggle lives on AccountsScreen
+    only — the engine removed category/hashtag archive (2026-08-06 schema
+    slimming); the no-confirm toggle decision (2026-07-11 in decisions.md)
+    still governs it there.
 
     Subclasses set the class attrs and four hooks. Row builders stay pure
     module functions (they have direct unit tests).
@@ -395,11 +397,10 @@ class ResourceListScreen(SectionScreen):
     EMPTY: str = "(empty)"
     LEGEND: str | None = None
     ALIGN_RIGHT: set[int] = set()
-    RESOURCE: str = ""  # engine collection for the archive toggle, e.g. "accounts"
+    RESOURCE: str = ""  # engine collection, e.g. "accounts"
     BINDINGS = [
         ("n", "new", "New"),
         ("e", "edit", "Edit"),
-        ("a", "archive", "Archive"),
     ]
 
     def __init__(self) -> None:
@@ -429,8 +430,6 @@ class ResourceListScreen(SectionScreen):
     def check_action(self, action: str, parameters: tuple) -> bool | None:
         if action in ("edit", "archive") and self.selected_record() is None:
             return None  # empty list → nothing to act on
-        if action == "archive" and (self.selected_record() or {}).get("is_system"):
-            return None  # system categories: archive deterministically 403s — hide, don't offer
         return True
 
     def on_cursor_list_highlighted(self, event) -> None:
@@ -491,25 +490,3 @@ class ResourceListScreen(SectionScreen):
             return
         self._restore_key = item.get("id")
         self.app.push_screen(self.edit_screen(item), lambda _result: self._load())
-
-    def action_archive(self) -> None:
-        if self._toggle_busy:
-            return
-        item = self.selected_record()
-        if not item or item.get("is_system"):
-            return
-        verb, msg = (
-            ("unarchive", "Unarchived.") if item.get("is_archived") else ("archive", "Archived.")
-        )
-        self._toggle_busy = True
-        self._restore_key = item.get("id")
-        self.run_write(
-            "POST",
-            f"/{self.RESOURCE}/{item['id']}/{verb}",
-            success=msg,
-            on_error=self._toggle_failed,
-        )
-
-    def _toggle_failed(self, message: str) -> None:
-        self._toggle_busy = False
-        self.notify(message, title="Failed", severity="error")

@@ -42,9 +42,37 @@ class AccountsScreen(ResourceListScreen):
     LEGEND = "balances are native currency · home equivalents in Outstanding Amounts"
     ALIGN_RIGHT = {4}
     RESOURCE = "accounts"
+    # Accounts are the only archivable resource since the 2026-08-06 engine
+    # schema slimming, so the `a` toggle lives here, not on the shared scaffold.
+    BINDINGS = [
+        *ResourceListScreen.BINDINGS,
+        ("a", "archive", "Archive"),
+    ]
 
     def fetch_items(self, cfg, **kw):
         return accounts_cmd.fetch_accounts(cfg, include_archived=True, include_people=True, **kw)
+
+    def action_archive(self) -> None:
+        if self._toggle_busy:
+            return
+        item = self.selected_record()
+        if not item:
+            return
+        verb, msg = (
+            ("unarchive", "Unarchived.") if item.get("is_archived") else ("archive", "Archived.")
+        )
+        self._toggle_busy = True
+        self._restore_key = item.get("id")
+        self.run_write(
+            "POST",
+            f"/{self.RESOURCE}/{item['id']}/{verb}",
+            success=msg,
+            on_error=self._toggle_failed,
+        )
+
+    def _toggle_failed(self, message: str) -> None:
+        self._toggle_busy = False
+        self.notify(message, title="Failed", severity="error")
 
     def rows(self, items: list) -> list:
         return account_rows(items, palette=resolve_palette(self.app))

@@ -76,14 +76,14 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - Currency immutability on update: pre-flight hint before the engine 422 lands.
 
 ### `expense categories`
-- `categories list [--include-archived] [--include-deleted]`
+- `categories list [--include-deleted]`
 - `categories get <id>`
 - `categories create`, `update`, `delete`, `restore`
-- `categories archive <id>`, `categories unarchive <id>`
-- System categories (`@Debt`, `@Transfer`, `@Opening`) cannot be deleted or archived — the engine's 403 surfaces as a friendly message. (Renames are allowed; the engine resolves them by `system_key`.)
+- Category archive was removed engine-side (2026-08-06 schema slimming) — accounts are the only archivable resource.
+- System categories (`@Debt`, `@Transfer`, `@Opening`) cannot be deleted — the engine's 403 surfaces as a friendly message. (Renames are allowed; the engine resolves them by `system_key`.)
 
 ### `expense hashtags`
-- Same shape as categories: `list`, `get`, `create`, `update`, `delete`, `restore`, `archive`, `unarchive`. Hashtag archive does not cascade to junction rows (per engine spec).
+- Same shape as categories: `list`, `get`, `create`, `update`, `delete`, `restore`. Hashtag archive was removed with the same 2026-08-06 slimming.
 
 ### `expense inbox`
 - `inbox list [--ready] [--include-deleted]` — `--ready` excludes items missing required fields AND items pointing at archived categories.
@@ -151,7 +151,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 | `--json` | every read command | Raw engine response, passed through verbatim |
 | `--yes` / `-y` | every destructive command (delete, revert, clear) | Skip confirmation prompt |
 | `--verbose` | every command (root flag) | Print HTTP request/response for debugging |
-| `--include-archived` | every `list` on resources that support archive | Include archived rows |
+| `--include-archived` | `accounts list` + `dashboard` (accounts are the only archivable resource since 2026-08-06) | Include archived rows |
 | `--include-deleted` | every `list` | Include soft-deleted rows (recovery view) |
 
 ---

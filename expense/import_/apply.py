@@ -53,12 +53,21 @@ class ApplyResult:
     failures: list[tuple[int, str]] = field(default_factory=list)
 
 
-def _list_all(client: ExpenseClient, resource: str) -> list[dict]:
-    """GET every existing row for a resource (flat list, or paged at the engine cap)."""
+def _list_all(
+    client: ExpenseClient, resource: str, *, include_archived: bool = False
+) -> list[dict]:
+    """GET every existing row for a resource (flat list, or paged at the engine cap).
+
+    `include_archived` applies to accounts only — the only archivable resource
+    since the 2026-08-06 engine schema slimming.
+    """
+    params: dict = {}
+    if include_archived:
+        params["include_archived"] = "true"
     return fetch_all_pages(
         lambda limit, offset: client.get(
             f"/{resource}",
-            params={"include_archived": "true", "limit": limit, "offset": offset},
+            params={**params, "limit": limit, "offset": offset},
         )
     )
 
@@ -112,7 +121,7 @@ def resolve_or_create(client: ExpenseClient, plan: ImportPlan) -> ResolveResult:
 
     # --- accounts: keyed by (name, currency) ---
     amap: dict[tuple[str, str], str] = {}
-    for acc in _list_all(client, "accounts"):
+    for acc in _list_all(client, "accounts", include_archived=True):
         name, cur, aid = acc.get("name"), acc.get("currency_code"), acc.get("id")
         if name and cur and aid:
             amap[(str(name).strip().casefold(), str(cur).upper())] = aid

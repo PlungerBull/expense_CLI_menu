@@ -3,7 +3,8 @@
 The record detail was deleted 2026-07-11 (decisions.md): the list is the only
 surface. `a` toggles archive/unarchive immediately — no ConfirmModal, a second
 `a` undoes — and the cursor stays on the acted-on row across the reload.
-`enter` is a no-op. System categories: edit offered, archive hidden.
+`enter` is a no-op. Archive is Accounts-only since the 2026-08-06 engine
+schema slimming removed category/hashtag archive.
 """
 
 import asyncio
@@ -28,8 +29,8 @@ ACCOUNT = {
 }
 ACCOUNT_2 = {**ACCOUNT, "id": "a2", "name": "Interbank", "color": None}
 ARCHIVED_ACCOUNT = {**ACCOUNT, "is_archived": True}
-SYS_CAT = {"id": "c1", "name": "@Transfer", "is_system": True, "is_archived": False, "color": None}
-HASHTAG = {"id": "h1", "name": "trabajo", "is_archived": False}
+SYS_CAT = {"id": "c1", "name": "@Transfer", "is_system": True, "color": None}
+HASHTAG = {"id": "h1", "name": "trabajo"}
 
 
 async def _wait_loaded(app, pilot):
@@ -147,7 +148,9 @@ def test_edit_prefills_and_puts(fake_client, monkeypatch):
     assert "currency_code" not in puts["/accounts/a1"]  # currency is immutable
 
 
-def test_system_category_hides_archive_but_offers_edit(fake_client, monkeypatch):
+def test_categories_have_no_archive_action(fake_client, monkeypatch):
+    """Category archive died with the 2026-08-06 schema slimming: the `a`
+    binding lives on AccountsScreen only, so on Categories it is inert."""
     monkeypatch.setattr(
         "expense.commands.categories_cmd.fetch_categories", lambda *a, **k: [SYS_CAT]
     )
@@ -158,9 +161,8 @@ def test_system_category_hides_archive_but_offers_edit(fake_client, monkeypatch)
             screen = CategoriesScreen()
             await app.push_screen(screen)
             await _wait_loaded(app, pilot)
-            # archive is hidden (engine 403s system categories); edit is offered
-            assert screen.check_action("archive", ()) is None
-            assert screen.check_action("edit", ()) is True
+            assert not hasattr(screen, "action_archive")
+            assert screen.check_action("edit", ()) is True  # edit still offered
             await pilot.press("a")  # inert — no confirm, no write
             await pilot.pause(0.05)
             assert not isinstance(app.screen, ConfirmModal)

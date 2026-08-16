@@ -5,7 +5,6 @@ import typer
 
 from expense import config as config_module
 from expense.commands._resource import (
-    INCLUDE_ARCHIVED_OPT,
     INCLUDE_DELETED_OPT,
     JSON_OPT,
     LIMIT_OPT,
@@ -43,7 +42,6 @@ def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
     rows = [
         {
             "name": item.get("name") or "(unnamed)",
-            "archived": format_bool(item.get("is_archived")),
             "deleted": format_bool(item.get("deleted_at")),
         }
         for item in items
@@ -51,7 +49,6 @@ def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
     render_table(
         headers={
             "name": "Name",
-            "archived": "Archived",
             "deleted": "Deleted",
         },
         rows=rows,
@@ -62,7 +59,6 @@ def _render_hashtag_list(body: dict, *, json_mode: bool) -> None:
 def fetch_hashtags(
     cfg,
     *,
-    include_archived: bool = False,
     include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
@@ -73,8 +69,6 @@ def fetch_hashtags(
     Shared by the flat `hashtags list` command and the TUI's Hashtags screen.
     """
     params: dict = {}
-    if include_archived:
-        params["include_archived"] = "true"
     if include_deleted:
         params["include_deleted"] = "true"
     if limit is not None:
@@ -93,7 +87,6 @@ def fetch_hashtags(
 @handle_errors
 def list_(
     ctx: typer.Context,
-    include_archived: bool = INCLUDE_ARCHIVED_OPT,
     include_deleted: bool = INCLUDE_DELETED_OPT,
     limit: int | None = LIMIT_OPT,
     offset: int | None = OFFSET_OPT,
@@ -101,13 +94,12 @@ def list_(
 ) -> None:
     """GET /v1/hashtags.
 
-    Example: expense hashtags list --include-archived
+    Example: expense hashtags list
     """
     cfg = config_module.ensure_loaded()
     limit = effective_limit(limit, json_mode=json_output)
     body = fetch_hashtags(
         cfg,
-        include_archived=include_archived,
         include_deleted=include_deleted,
         limit=limit,
         offset=offset,
@@ -229,50 +221,6 @@ def restore(
         resource=_RESOURCE,
         id_=id_,
         verb="restore",
-        json_output=json_output,
-        render_human=lambda body: render_record(body, json_mode=False),
-    )
-
-
-@app.command("archive")
-@handle_errors
-def archive(
-    ctx: typer.Context,
-    id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = JSON_OPT,
-) -> None:
-    """POST /v1/hashtags/{id}/archive. Junction rows left intact.
-
-    Prompt-free: archive is a reversible toggle (unarchive undoes it).
-
-    Example: expense hashtags archive <hashtag-id>
-    """
-    run_toggle(
-        ctx,
-        resource=_RESOURCE,
-        id_=id_,
-        verb="archive",
-        json_output=json_output,
-        render_human=lambda body: render_record(body, json_mode=False),
-    )
-
-
-@app.command("unarchive")
-@handle_errors
-def unarchive(
-    ctx: typer.Context,
-    id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = JSON_OPT,
-) -> None:
-    """POST /v1/hashtags/{id}/unarchive.
-
-    Example: expense hashtags unarchive <hashtag-id>
-    """
-    run_toggle(
-        ctx,
-        resource=_RESOURCE,
-        id_=id_,
-        verb="unarchive",
         json_output=json_output,
         render_human=lambda body: render_record(body, json_mode=False),
     )

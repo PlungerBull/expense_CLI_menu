@@ -12,31 +12,27 @@ from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for
 
 CATS = [
-    {"id": "c1", "name": "Comida", "color": "#d9744a", "is_system": False, "is_archived": False},
-    {"id": "c2", "name": "@Transfer", "color": None, "is_system": True, "is_archived": False},
-    {"id": "c3", "name": "Cripto", "color": None, "is_system": False, "is_archived": True},
+    {"id": "c1", "name": "Comida", "color": "#d9744a", "is_system": False},
+    {"id": "c2", "name": "@Transfer", "color": None, "is_system": True},
 ]
 TAGS = [
-    {"id": "h1", "name": "trabajo", "is_archived": False},
-    {"id": "h2", "name": "#casa", "is_archived": False},
-    {"id": "h3", "name": "black-friday", "is_archived": True},
+    {"id": "h1", "name": "trabajo"},
+    {"id": "h2", "name": "#casa"},
 ]
 
 
-def test_category_rows_swatch_system_and_archived():
+def test_category_rows_swatch_and_system():
     by_id = {r[0]: r for r in category_rows(CATS)}
     _k, cells, style = by_id["c1"]
     assert isinstance(cells[0], Text) and cells[0].style == "#d9744a"
-    assert cells[1] == "Comida" and cells[2] == "—" and cells[3] == "active" and style == ""
+    assert cells[1] == "Comida" and cells[2] == "—" and style == ""
     assert by_id["c2"][1][2] == "system 🔒"  # system marker
-    assert by_id["c3"][1][3] == "archived" and by_id["c3"][2] == "dim"
 
 
-def test_hashtag_rows_hash_prefix_and_status():
+def test_hashtag_rows_hash_prefix():
     by_id = {r[0]: r for r in hashtag_rows(TAGS)}
     assert by_id["h1"][1][0] == "#trabajo"  # prefix added
     assert by_id["h2"][1][0] == "#casa"  # no double-hash
-    assert by_id["h3"][1][1] == "archived" and by_id["h3"][2] == "dim"
 
 
 def _run_list_screen(monkeypatch, screen_cls, fetch_mod, fetch_name, items, edit_cls):

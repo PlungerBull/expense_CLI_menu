@@ -232,7 +232,7 @@ def test_categories_manage_fetches_all_pages(monkeypatch):
     """The manage screens window locally, so the fetch must exhaust the
     envelope — 150 categories were silently cut at the replica's 100 before."""
 
-    def fake_fetch(cfg, *, include_archived, limit, offset, **kw):
+    def fake_fetch(cfg, *, limit, offset, **kw):
         items = [{"id": f"c{i}"} for i in range(offset, min(offset + limit, 150))]
         return {"items": items, "total": 150, "limit": limit, "offset": offset}
 
@@ -243,7 +243,7 @@ def test_categories_manage_fetches_all_pages(monkeypatch):
 
 
 def test_hashtags_manage_fetches_all_pages(monkeypatch):
-    def fake_fetch(cfg, *, include_archived, limit, offset, **kw):
+    def fake_fetch(cfg, *, limit, offset, **kw):
         items = [{"id": f"h{i}"} for i in range(offset, min(offset + limit, 130))]
         return {"items": items, "total": 130, "limit": limit, "offset": offset}
 

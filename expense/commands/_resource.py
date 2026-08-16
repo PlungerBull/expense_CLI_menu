@@ -221,7 +221,7 @@ def fetch_all_pages(
         offset += len(page)
 
 
-def _load_name_map(path: str, params: dict) -> dict[str, str]:
+def _load_name_map(path: str, params: dict | None) -> dict[str, str]:
     """Live id → name map over one reference-list endpoint. Empty on any failure.
 
     The engine's responses are IDs-only, so renderers join against these maps
@@ -234,7 +234,7 @@ def _load_name_map(path: str, params: dict) -> dict[str, str]:
         with ExpenseClient(cfg) as client:
             items = fetch_all_pages(
                 lambda limit, offset: client.get(
-                    path, params={**params, "limit": limit, "offset": offset}
+                    path, params={**(params or {}), "limit": limit, "offset": offset}
                 )
             )
     except Exception:
@@ -259,7 +259,7 @@ def load_account_name_map() -> dict[str, str]:
 
 def load_category_name_map() -> dict[str, str]:
     """Live category id → name map. Empty on any failure."""
-    return _load_name_map("/categories", {"include_archived": "true"})
+    return _load_name_map("/categories", None)
 
 
 def load_hashtag_name_map() -> dict[str, str]:
@@ -269,7 +269,7 @@ def load_hashtag_name_map() -> dict[str, str]:
     `hashtag_ids` columns; renderers join against this map to display human
     names like `Food + Club`. Empty map is safe — callers fall back to raw ids.
     """
-    return _load_name_map("/hashtags", {"include_archived": "true"})
+    return _load_name_map("/hashtags", None)
 
 
 def resolve_name(uuid_value: object, name_map: dict[str, str]) -> str:

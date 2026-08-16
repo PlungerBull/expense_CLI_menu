@@ -205,28 +205,27 @@ class QuickAddLogScreen(FormScreen):
         try:
             cfg = config_module.ensure_loaded()
             kw = screen_fetch_kwargs(self.app)
-            # one superset fetch per resource (include_archived) feeds both the
-            # active-only suggestion pools and the full name maps — three
-            # queries, not six (backlog 6.5b)
+            # one superset accounts fetch (include_archived) feeds both the
+            # active-only suggestion pool and the full name map (backlog 6.5b);
+            # categories/hashtags lost archive in the 2026-08-06 schema
+            # slimming, so their single fetch is already the full set
             accts = items_of(
                 accounts_cmd.fetch_accounts(cfg, include_people=True, include_archived=True, **kw)
             )
-            cats = items_of(categories_cmd.fetch_categories(cfg, include_archived=True, **kw))
-            tags = items_of(hashtags_cmd.fetch_hashtags(cfg, include_archived=True, **kw))
+            cats = items_of(categories_cmd.fetch_categories(cfg, **kw))
+            tags = items_of(hashtags_cmd.fetch_hashtags(cfg, **kw))
             maps = tuple(_name_map(rows) for rows in (accts, cats, tags))
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
         active_accts = [a for a in accts if not a.get("is_archived")]
-        active_cats = [c for c in cats if not c.get("is_archived")]
-        active_tags = [t for t in tags if not t.get("is_archived")]
         accounts = account_choices(active_accts)
         categories = [
             (c["id"], c.get("name") or "(unnamed)")
-            for c in active_cats
+            for c in cats
             if c.get("id") and not c.get("is_system")
         ]
-        hashtags = [(t["id"], t.get("name") or "(unnamed)") for t in active_tags if t.get("id")]
+        hashtags = [(t["id"], t.get("name") or "(unnamed)") for t in tags if t.get("id")]
         self.app.call_from_thread(self._set_entities, accounts, categories, hashtags, maps)
 
     def _set_entities(self, accounts, categories, hashtags, maps) -> None:

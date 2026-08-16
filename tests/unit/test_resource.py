@@ -279,7 +279,7 @@ def test_load_category_name_map_fetches_live(configured):
         return_value=_list_body([{"id": "c1", "name": "Food"}])
     )
     assert load_category_name_map() == {"c1": "Food"}
-    assert route.calls.last.request.url.params["include_archived"] == "true"
+    assert "include_archived" not in route.calls.last.request.url.params
 
 
 @respx.mock
@@ -288,7 +288,7 @@ def test_load_hashtag_name_map_fetches_live(configured):
         return_value=_list_body([{"id": "h1", "name": "trabajo"}])
     )
     assert load_hashtag_name_map() == {"h1": "trabajo"}
-    assert route.calls.last.request.url.params["include_archived"] == "true"
+    assert "include_archived" not in route.calls.last.request.url.params
 
 
 @respx.mock

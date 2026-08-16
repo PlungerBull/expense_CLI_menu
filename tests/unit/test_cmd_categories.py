@@ -21,7 +21,6 @@ CATEGORY_RESPONSE = {
     "sort_order": 1,
     "is_system": False,
     "system_key": None,
-    "is_archived": False,
     "deleted_at": None,
     "version": 1,
     "created_at": "2026-04-24T10:00:00Z",
@@ -29,26 +28,6 @@ CATEGORY_RESPONSE = {
 }
 
 LIST_RESPONSE = [CATEGORY_RESPONSE]
-
-
-@respx.mock
-def test_list_include_archived_sends_param(configured):
-    archived = {
-        **CATEGORY_RESPONSE,
-        "id": "44444444-4444-4444-4444-444444444444",
-        "name": "Crypto",
-        "is_archived": True,
-    }
-    route = respx.get("https://api.example.com/v1/categories").mock(
-        return_value=httpx.Response(200, json=[CATEGORY_RESPONSE, archived])
-    )
-    result = runner.invoke(cli_app, ["categories", "list", "--include-archived"])
-    assert result.exit_code == 0, result.output
-    assert "Food" in result.output
-    assert "Crypto" in result.output
-
-    request = route.calls.last.request
-    assert request.url.params.get("include_archived") == "true"
 
 
 @respx.mock
@@ -238,59 +217,6 @@ def test_delete_403_prints_system_hint(configured):
     assert result.exit_code == 1
     assert "System categories" in result.output
     assert "FORBIDDEN" in result.output
-
-
-@respx.mock
-def test_archive_happy(configured):
-    archived = {**CATEGORY_RESPONSE, "is_archived": True}
-    respx.post("https://api.example.com/v1/categories/abc/archive").mock(
-        return_value=httpx.Response(200, json=archived)
-    )
-    result = runner.invoke(cli_app, ["categories", "archive", "abc"])
-    assert result.exit_code == 0, result.output
-    assert "is_archived: True" in result.output
-
-
-@respx.mock
-def test_archive_is_prompt_free(configured):
-    # Archive is a reversible toggle (2026-07-11): no confirmation, no --yes —
-    # it succeeds bare even in non-TTY mode (CliRunner is non-TTY), where the
-    # old confirm gate used to exit 1 with a "non-interactive" error.
-    archived = {**CATEGORY_RESPONSE, "is_archived": True}
-    respx.post("https://api.example.com/v1/categories/abc/archive").mock(
-        return_value=httpx.Response(200, json=archived)
-    )
-    result = runner.invoke(cli_app, ["categories", "archive", "abc"])
-    assert result.exit_code == 0, result.output
-    assert "non-interactive" not in result.output
-
-
-@respx.mock
-def test_archive_403_prints_system_hint(configured):
-    respx.post("https://api.example.com/v1/categories/sys/archive").mock(
-        return_value=httpx.Response(
-            403,
-            json={
-                "error": {
-                    "code": "FORBIDDEN",
-                    "message": "System category cannot be archived.",
-                    "fields": None,
-                }
-            },
-        )
-    )
-    result = runner.invoke(cli_app, ["categories", "archive", "sys"])
-    assert result.exit_code == 1
-    assert "System categories" in result.output
-
-
-@respx.mock
-def test_unarchive_happy(configured):
-    respx.post("https://api.example.com/v1/categories/abc/unarchive").mock(
-        return_value=httpx.Response(200, json=CATEGORY_RESPONSE)
-    )
-    result = runner.invoke(cli_app, ["categories", "unarchive", "abc"])
-    assert result.exit_code == 0, result.output
 
 
 @respx.mock
