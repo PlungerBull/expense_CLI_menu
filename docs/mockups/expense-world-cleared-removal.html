@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — "cleared" is gone from the ledger (2026-08-17)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     Engine change 2026-08-16 (sql/035): the `cleared` column is deleted.
+     This page shows every place the client still offers it, and the one
+     separate fix the engine author flagged alongside (draft hashtags).
+
+     PROVENANCE: "before" panes are the current client surface, read from
+     transactions_cmd.py / log_cmd.py / quick_log.py today. The engine
+     behaviours quoted (422 on send, silent no-op on the list filter) are
+     from the engine author's change note, not re-verified here — the
+     practice engine on :8001 predates the change.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --term:#121216; --panel:#1d1d22;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9db1c2; --neg:#cf8d8d; --pos:#7fbf8f; --warn:#d8b779;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:22px;
+       padding:38px 20px 70px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  .lbl{width:min(1000px,100%);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .step{width:min(1000px,100%);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:14px}
+  .step.ask{color:var(--warn);border-bottom-color:#3a3125}
+  .pair{width:min(1000px,100%);display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:820px){.pair{grid-template-columns:1fr}}
+  .term{background:var(--term);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:13px;line-height:1.6}
+  .term.wide{width:min(1000px,100%)}
+  .bar{display:flex;align-items:center;gap:9px;padding:8px 13px;background:#101015}
+  .ttl{color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .tag{margin-left:auto;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+       padding:2px 9px;border-radius:999px;border:1px solid}
+  .tag.before{color:var(--neg);border-color:#4a2f2f}
+  .tag.after{color:var(--pos);border-color:#2f4636}
+  .tag.opt{color:var(--warn);border-color:#4a3f28}
+  .tag.danger{color:var(--neg);border-color:#6b3535}
+  .screen{padding:14px 16px 15px;white-space:pre-wrap;overflow-x:auto}
+  .head{color:var(--muted)}
+  .seq{color:var(--text)}
+  .gone{color:var(--neg);text-decoration:line-through;text-decoration-thickness:1px}
+  .new{color:var(--pos)}
+  .ok{color:var(--pos)}
+  .mut{color:var(--dim)}
+  .cmd{color:var(--muted)}
+  .cmd b{color:var(--text)}
+  .err{color:var(--neg)}
+  .warn{color:var(--warn)}
+  .legend{border-top:1px solid #1d1d24;margin-top:10px;padding-top:8px;color:var(--dim);font-size:11.5px}
+  .note{width:min(1000px,100%);color:var(--dim);font-size:12.5px;line-height:1.55}
+  .note b{color:var(--muted)}
+  .qbox{width:min(1000px,100%);background:#15130f;border:1px solid #33291c;border-radius:12px;
+        padding:14px 16px;color:var(--muted);font-size:12.5px;line-height:1.6}
+  .qbox b{color:var(--warn)}
+</style>
+</head>
+<body>
+
+<div class="lbl">expense world — "cleared" is gone from the ledger · engine change 2026-08-16 · sql/035
+  <span><br/>The engine deleted the <b style="color:var(--text)">cleared</b> column outright. It was a
+  leftover from the stock bank-ledger schema: nothing ever read it but one list filter, it was never wired to
+  reconciliation despite the schema docs saying so, and <b style="color:var(--text)">zero rows had it
+  set</b>. Nothing replaces it — a row is confirmed by being assigned to a reconciliation that adds up and is
+  completed, and if a per-row meaning is ever wanted it will be computed from that, never stored.
+  <br/><br/><b style="color:var(--neg)">Three client surfaces still offer it</b> —
+  <b style="color:var(--text)">transactions list</b>, <b style="color:var(--text)">transactions update</b>,
+  <b style="color:var(--text)">log</b> — plus the <b style="color:var(--text)">CLEARED?</b> row in the TUI
+  transaction form. Two of those now destroy a write; the third quietly lies. All of it comes out.</span>
+</div>
+
+<!-- ============ 1 · the dangerous one ============ -->
+<div class="step">1 · `transactions list --cleared` — the one that lies instead of failing</div>
+<div class="pair">
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>before</b> — a filtered-looking answer that isn't filtered</div><span class="tag danger">silent</span></div>
+    <div class="screen"><span class="cmd">$ <b>expense transactions list --cleared</b></span>
+<span class="head">Date        Title           Amount   Account</span>
+<span class="mut">----------  --------------  -------  --------</span>
+<span class="seq">2026-08-16  Lunch           -15.00   Efectivo
+2026-08-15  Salary        +4,000.00  BCP
+2026-08-14  Taxi            -12.00   Efectivo</span>
+
+<span class="err">every row is here — cleared or not.</span>
+<span class="mut">The engine no longer honours ?cleared=,
+and does not error either. You get the
+whole list back, looking like an answer
+to the question you asked.</span><div class="legend">the worst failure shape of the three: no exit code, no message, a wrong answer that is indistinguishable from a right one</div></div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>after</b> — the question can no longer be asked</div><span class="tag after">after</span></div>
+    <div class="screen"><span class="cmd">$ <b>expense transactions list --cleared</b></span>
+<span class="err">Usage: expense transactions list [OPTIONS]
+Error: No such option: --cleared</span>
+
+<span class="cmd">$ <b>expense transactions list --reconciliation-id &lt;id&gt;</b></span>
+<span class="head">Date        Title           Amount   Account</span>
+<span class="mut">----------  --------------  -------  --------</span>
+<span class="seq">2026-08-15  Salary        +4,000.00  BCP</span>
+
+<span class="mut">confirmed-at-the-bank is now a
+reconciliation question, and that filter
+already exists and already works.</span><div class="legend">nothing is lost: the real mechanism was always the reconciliation, and it is already surfaced</div></div>
+  </div>
+</div>
+
+<!-- ============ 2 · the two that destroy a write ============ -->
+<div class="step">2 · `log --cleared` and `transactions update --cleared` — these lose the whole edit</div>
+<div class="pair">
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>before</b> — 422, and nothing is saved</div><span class="tag before">before</span></div>
+    <div class="screen"><span class="cmd">$ <b>expense log --title "Lunch" --amount -1500 \
+      --account-id &lt;a&gt; --category-id &lt;c&gt; --cleared</b></span>
+<span class="err">VALIDATION_ERROR: Request validation failed.
+  cleared: Extra inputs are not permitted</span>
+
+<span class="cmd">$ <b>expense transactions update &lt;id&gt; \
+      --title "Renamed" --cleared</b></span>
+<span class="err">VALIDATION_ERROR: Request validation failed.
+  cleared: Extra inputs are not permitted</span>
+
+<span class="err">the rename is lost too</span><span class="mut"> — the field is
+not dropped, it rejects the whole body.</span><div class="legend">same failure the inbox had; now it is the ledger's turn</div></div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>after</b> — the flag is gone; the write lands</div><span class="tag after">after</span></div>
+    <div class="screen"><span class="cmd">$ <b>expense log --title "Lunch" --amount -1500 \
+      --account-id &lt;a&gt; --category-id &lt;c&gt;</b></span>
+<span class="ok">Created: 8a905138-9f70-4695-a612-f9fa3d77a08d</span>
+
+<span class="cmd">$ <b>expense transactions update &lt;id&gt; --title "Renamed"</b></span>
+<span class="ok">Updated.</span>
+
+<span class="mut">`log --help` and `transactions update
+--help` simply no longer list a cleared
+option. There is nothing to migrate:
+no row in your ledger ever had it set.</span><div class="legend">removed the same way as every other retired flag this rework — generic "No such option"</div></div>
+  </div>
+</div>
+
+<!-- ============ 3 · the TUI form ============ -->
+<div class="step">3 · TUI — editing a transaction (`e` on a row)</div>
+<div class="pair">
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>before</b> — a row that now breaks the save</div><span class="tag before">before</span></div>
+    <div class="screen"><span class="head">Capture &amp; ledger › Transactions › Edit</span>
+
+<span class="seq">  DATE       2026-08-16
+  TITLE      Lunch
+  AMOUNT     -15.00
+  ACCOUNT    Efectivo
+  CATEGORY   Comida
+  <span class="err">CLEARED?   unset</span>            <span class="err">← breaks the save</span>
+  HASHTAGS   #comida
+  NOTE       —</span>
+
+<span class="mut">touching that row puts `cleared` in the
+diff, and the whole edit 422s.</span><div class="legend">the field, its "yes / no / unset" hint and its commit handler all come out</div></div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>after</b> — one row shorter</div><span class="tag after">after</span></div>
+    <div class="screen"><span class="head">Capture &amp; ledger › Transactions › Edit</span>
+
+<span class="seq">  DATE       2026-08-16
+  TITLE      Lunch
+  AMOUNT     -15.00
+  ACCOUNT    Efectivo
+  CATEGORY   Comida
+  HASHTAGS   #comida
+  NOTE       —</span>
+
+<span class="mut">the form loses a field it could not save.
+Nothing else about the screen changes.</span><div class="legend">the log/create form never offered cleared, so only the edit form changes</div></div>
+  </div>
+</div>
+
+<!-- ============ 4 · the separate fix ============ -->
+<div class="step ask">4 · a separate bug the engine author flagged — one question</div>
+<div class="qbox">
+  Same file, unrelated cause. A comment in <b>quick_log.py</b> claims drafts have no hashtags. That was true
+  once; since <b>2026-08-14</b> a draft carries hashtags exactly like a ledger row, and
+  <b>the tags survive promotion</b>. But the form only offers the hashtags row when editing a
+  <b>transaction</b> — so today you can tag a draft when you create it and then
+  <b>never change those tags again</b>. The fix is one line. The question is whether to take it now, on its
+  own, or with the rest of the inbox-hashtags work.
+</div>
+<div class="pair">
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>A</b> — take the one-line fix now</div><span class="tag opt">option</span></div>
+    <div class="screen"><span class="head">Capture &amp; ledger › Inbox › Edit draft</span>
+
+<span class="seq">  DATE       2026-08-16
+  TITLE      Lunch
+  AMOUNT     -15.00
+  ACCOUNT    Efectivo
+  CATEGORY   Comida
+  <span class="new">HASHTAGS   #comida</span>          <span class="new">← now editable</span>
+  NOTE       —</span>
+
+<span class="mut">fixes a real dead end immediately. Leaves
+the CLI inconsistent for a while: `expense
+inbox add` still has no --hashtags, so the
+TUI can retag a draft and the CLI cannot.</span><div class="legend">stops the bleeding now; two surfaces disagree until 6.1 lands</div></div>
+  </div>
+  <div class="term">
+    <div class="bar"><div class="ttl"><b>B</b> — hold it, do all of inbox-hashtags together</div><span class="tag opt">option</span></div>
+    <div class="screen"><span class="head">backlog 6.1 — one coherent piece</span>
+
+<span class="seq">  <span class="new">+</span> TUI draft edit: hashtags row
+  <span class="new">+</span> expense inbox add --hashtags
+  <span class="new">+</span> expense inbox update --hashtags
+  <span class="new">+</span> hashtag column on the inbox table
+     <span class="mut">(needs a column proposal first)</span></span>
+
+<span class="mut">one review, one consistent story across
+CLI and TUI. Costs: drafts stay
+un-retaggable until 6.1 is scheduled.</span><div class="legend">tidier, but leaves a known dead end open for longer</div></div>
+  </div>
+</div>
+
+<div class="note" style="border-top:1px solid #23232a;padding-top:12px">
+  <b>Sections 1–3 have no decision in them</b> — the column is deleted engine-side, so the flags and the form
+  row come out regardless; they are drawn so you can see exactly what disappears. Also removed but not drawn:
+  the <b>cleared</b> key in the test fixtures, the internal <b>cleared=</b> parameter on
+  <b>fetch_transactions</b>, and the filter's mention in <b>cli-spec.md</b>.
+  <br/><br/><b style="color:var(--warn)">Open: A or B in section 4.</b>
+</div>
+
+</body>
+</html>

@@ -22,7 +22,6 @@ TRANSACTION_RESPONSE = {
     "account_id": "acct-id",
     "category_id": "cat-id",
     "description": None,
-    "cleared": False,
     "transaction_type": 1,
     "hashtag_ids": [],
     "inbox_id": None,
@@ -153,7 +152,6 @@ def test_list_all_filters_pass_through(configured):
             "2026-04-01",
             "--to",
             "2026-04-30",
-            "--cleared",
             "--search",
             "coffee",
             "--limit",
@@ -173,7 +171,6 @@ def test_list_all_filters_pass_through(configured):
         "reconciliation_id": "r-1",
         "date_from": "2026-04-01",
         "date_to": "2026-04-30",
-        "cleared": "true",
         "search": "coffee",
         "limit": "25",
         "offset": "10",
@@ -183,13 +180,18 @@ def test_list_all_filters_pass_through(configured):
 
 
 @respx.mock
-def test_list_no_cleared_sends_false(configured):
-    route = respx.get("https://api.example.com/v1/transactions").mock(
-        return_value=httpx.Response(200, json=LIST_RESPONSE)
-    )
-    result = runner.invoke(cli_app, ["transactions", "list", "--no-cleared"])
-    assert result.exit_code == 0, result.output
-    assert route.calls.last.request.url.params.get("cleared") == "false"
+def test_list_rejects_retired_cleared_flag(configured):
+    """--cleared/--no-cleared are gone from the surface entirely.
+
+    The engine deleted the column 2026-08-16 (sql/035). This filter is the one
+    surface that failed *silently*: ?cleared= stopped being honoured without
+    erroring, so the command returned the full list looking like a filtered
+    answer. Confirmed-at-the-bank is a reconciliation question now.
+    """
+    for flag in ("--cleared", "--no-cleared"):
+        result = runner.invoke(cli_app, ["transactions", "list", flag])
+        assert result.exit_code == 2, f"{flag} should not parse"
+        assert "No such option" in result.output
 
 
 @respx.mock
@@ -285,12 +287,12 @@ def test_update_partial_payload(configured):
     )
     result = runner.invoke(
         cli_app,
-        ["transactions", "update", "abc", "--title", "renamed", "--cleared"],
+        ["transactions", "update", "abc", "--title", "renamed"],
     )
     assert result.exit_code == 0, result.output
 
     body = json.loads(route.calls.last.request.content)
-    assert body == {"title": "renamed", "cleared": True}
+    assert body == {"title": "renamed"}
 
 
 @respx.mock

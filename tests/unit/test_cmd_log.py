@@ -24,7 +24,6 @@ TRANSACTION_RESPONSE = {
     "account_id": "acct-id",
     "category_id": "cat-id",
     "description": None,
-    "cleared": False,
     "transaction_type": 1,
     "hashtag_ids": [],
     "inbox_id": None,

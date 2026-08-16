@@ -30,7 +30,6 @@ def log(
         "Naive forms get the local timezone attached. Defaults to now.",
     ),
     description: str | None = typer.Option(None, "--description"),
-    cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
     hashtag_ids: str | None = typer.Option(
         None,
         "--hashtag-ids",
@@ -57,8 +56,6 @@ def log(
     }
     if description is not None:
         payload["description"] = description
-    if cleared is not None:
-        payload["cleared"] = cleared
     if hashtag_ids is not None:
         payload["hashtag_ids"] = [
             piece.strip() for piece in hashtag_ids.split(",") if piece.strip()

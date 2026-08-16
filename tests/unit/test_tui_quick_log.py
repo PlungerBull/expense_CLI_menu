@@ -67,7 +67,6 @@ TXN = {
     "amount_cents": -4250,
     "account_id": "acc1",
     "category_id": "cat1",
-    "cleared": False,
     "hashtag_ids": ["h1"],
     "description": "receta",
 }
@@ -254,20 +253,32 @@ def test_edit_no_changes_does_not_submit(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
-def test_edit_inbox_sequence_has_no_hashtags_and_no_cleared():
-    """A draft offers neither field; a transaction offers both.
+def test_no_form_offers_cleared():
+    """`cleared` is gone from the ledger — no form may offer it.
 
-    `cleared` was removed from the draft form 2026-08-16 (backlog Phase 5): it is a
-    column on a transaction row only, the inbox table has never had one, and the
-    strict write models reject it — so offering the row lost the whole edit to a
-    422 after everything else had been typed.
+    The engine deleted the column 2026-08-16 (sql/035). Sending it is a 422 on an
+    unknown field, which rejects the whole body, so a lingering row here would lose
+    an entire edit. Nothing replaces it: a row is confirmed by belonging to a
+    completed reconciliation that adds up.
+    """
+    for screen in (
+        QuickAddLogScreen(),
+        QuickAddLogScreen(record={"id": "t1", "title": "x"}, resource="transactions"),
+        QuickAddLogScreen(record={"id": "i1", "title": "x"}, resource="inbox"),
+    ):
+        assert "cleared" not in screen._sequence()
+
+
+def test_edit_inbox_sequence_has_no_hashtags():
+    """Known gap, not a rule: drafts have carried hashtag_ids since 2026-08-14 and
+    the tags survive promotion, so gating the row on the resource means a draft can
+    be tagged at creation and never re-tagged. Parked with backlog 6.1, which also
+    owes the CLI `inbox add/update --hashtags`. Flip this test when 6.1 lands.
     """
     draft = QuickAddLogScreen(record={"id": "i1", "title": "x"}, resource="inbox")
     assert "hashtags" not in draft._sequence()
-    assert "cleared" not in draft._sequence()
 
     tx = QuickAddLogScreen(record={"id": "t1", "title": "x"}, resource="transactions")
-    assert "cleared" in tx._sequence()
     assert "hashtags" in tx._sequence()
 
 

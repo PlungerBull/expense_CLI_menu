@@ -88,14 +88,14 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ### `expense inbox`
 - `inbox list [--ready] [--include-deleted]` — `--ready` excludes items missing required fields.
-- `inbox add`, `get`, `update`, `delete` — delete dismisses the draft and is final: the restore route was removed engine-side 2026-08-14, so the `--yes` confirmation is the only safety net (the dismiss is still a soft-delete; `--include-deleted` lists it). A draft carries exactly what the engine's strict write models accept — `title`, `description`, `amount_cents`, `date`, `account_id`, `category_id`, `hashtag_ids` (the last still unsurfaced, Phase 6.1). Notably **no `cleared`**: that is a transaction column the inbox table has never had, so `--cleared` was removed 2026-08-16 (it 422'd and lost the whole write).
+- `inbox add`, `get`, `update`, `delete` — delete dismisses the draft and is final: the restore route was removed engine-side 2026-08-14, so the `--yes` confirmation is the only safety net (the dismiss is still a soft-delete; `--include-deleted` lists it). A draft carries exactly what the engine's strict write models accept — `title`, `description`, `amount_cents`, `date`, `account_id`, `category_id`, `hashtag_ids` (the last still unsurfaced, Phase 6.1). Notably no `cleared` — the inbox table never had that column, and as of 2026-08-16 (sql/035) neither does a transaction; the field is gone from the ledger entirely.
 - `inbox promote <id>` — atomic inbox-to-ledger. On 422, the CLI pretty-prints the missing/blocking fields.
 
 ### `expense log`
 - `log` — direct ledger entry (all required fields supplied as flags).
 
 ### `expense transactions`
-- `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--cleared/--no-cleared`, `--search`, `--include-deleted`.
+- `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--search`, `--include-deleted`. *(`--cleared/--no-cleared` removed 2026-08-17: the engine deleted the column (sql/035). It was the one filter that failed silently — the engine stopped honouring `?cleared=` without erroring, so the command returned the full list looking like a filtered answer. Confirmation is a reconciliation question now: filter by `--reconciliation-id`.)*
 - `transactions get <id>` — full detail; activity entries surface via `expense activity list --resource-type transaction --resource-id <id>`.
 - `transactions update <id>` — partial update; `hashtag_ids` and `reconciliation_id` are editable via update. Field locking under completed reconciliations surfaces the engine's 422 clearly.
 - `transactions delete <id>`, `transactions restore <id>`.

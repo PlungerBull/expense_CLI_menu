@@ -8,8 +8,8 @@ CREATE (record=None): Date › Title › Amount › Account › Category ›
 Hashtags › Note.
 
 EDIT (record + resource): the same bar pre-filled. Sequence: Date › Title ›
-Amount › Account › Category › Cleared › Hashtags › Note. `ctrl+s` PUTs only
-the changed fields.
+Amount › Account › Category › Hashtags › Note. `ctrl+s` PUTs only the changed
+fields. (`Cleared` was here until 2026-08-17 — the engine deleted the column.)
 
 `enter` saves & advances · `ctrl+↑/↓` jump fields · `↑/↓` move the suggestion
 highlight · `ctrl+s` submits. Sign explicit (− expense / + income); currency
@@ -44,7 +44,6 @@ _LABELS = {
     "amount": "AMOUNT",
     "account": "ACCOUNT",
     "category": "CATEGORY",
-    "cleared": "CLEARED?",
     "hashtags": "HASHTAGS",
     "note": "NOTE",
 }
@@ -56,7 +55,6 @@ _HINTS = {
     "amount": "signed decimal · − expense / + income · in the account's currency",
     "account": "pick an existing account · ↑↓ highlight · enter select",
     "category": "pick an existing category · ↑↓ highlight · enter select",
-    "cleared": "type yes / no / unset · has it posted at the bank?",
     "hashtags": "type a tag · ↑↓ highlight · enter adds & stays · empty enter = done (optional)",
     "note": "optional · enter saves · (ctrl+s anytime)",
 }
@@ -67,7 +65,6 @@ _ENGINE_FIELD = {
     "amount": "amount_cents",
     "account": "account_id",
     "category": "category_id",
-    "cleared": "cleared",
     "hashtags": "hashtag_ids",
     "note": "description",
 }
@@ -143,10 +140,6 @@ class QuickAddLogScreen(FormScreen):
         if rec.get("category_id"):
             self._values["category"] = rec["category_id"]
             self._display["category"] = rec["category_id"][:8]
-        cleared = rec.get("cleared")
-        if cleared is not None:
-            self._values["cleared"] = cleared
-            self._display["cleared"] = "yes" if cleared else "no"
         tags = rec.get("hashtag_ids") or []
         if tags:
             self._values["hashtags"] = list(tags)
@@ -166,12 +159,11 @@ class QuickAddLogScreen(FormScreen):
         if self._mode == "edit":
             seq = ["date", "title", "amount", "account", "category"]
             if self._resource == "transactions":
-                # `cleared` is a column on a transaction row only — the inbox table
-                # has never had one, and its write models are strict, so offering
-                # the field lost the whole edit to a 422 on an unknown input
-                # (backlog Phase 5). Hashtags are a separate story: the engine
-                # added them to drafts 2026-08-14, still unsurfaced (Phase 6.1).
-                seq.append("cleared")
+                # Drafts have carried hashtag_ids since 2026-08-14 and the tags
+                # survive promotion, so gating this on the resource means a draft
+                # can be tagged at creation and never re-tagged. Fixing it is one
+                # line — parked with the rest of inbox-hashtags (backlog 6.1),
+                # which also owes the CLI its `inbox add/update --hashtags`.
                 seq.append("hashtags")
             seq.append("note")
             return seq
@@ -245,8 +237,6 @@ class QuickAddLogScreen(FormScreen):
     def _bar_value(self, key: str) -> str:
         if key in _AMOUNTS and key in self._values:
             return amount_to_text(self._values[key])
-        if key == "cleared":
-            return self._display.get("cleared", "unset")
         if key in ("date", "title", "note"):
             return str(self._values.get(key, "") or "")
         return ""  # entity fields re-pick from scratch
@@ -312,8 +302,6 @@ class QuickAddLogScreen(FormScreen):
             self._values[key] = picked[0]
             self._display[key] = picked[1]
             self._advance()
-        elif key == "cleared":
-            self._commit_cleared(text)
         elif key == "hashtags":
             self._commit_hashtag(text)
             return
@@ -323,22 +311,6 @@ class QuickAddLogScreen(FormScreen):
             self.action_submit()  # note is last → enter submits
             return
         self._refresh_view()
-
-    def _commit_cleared(self, text: str) -> None:
-        t = text.strip().lower()
-        if t in ("", "unset", "u", "none"):
-            self._values["cleared"] = None
-            self._display["cleared"] = "unset"
-        elif t in ("yes", "y", "true", "1", "cleared"):
-            self._values["cleared"] = True
-            self._display["cleared"] = "yes"
-        elif t in ("no", "n", "false", "0"):
-            self._values["cleared"] = False
-            self._display["cleared"] = "no"
-        else:
-            self.notify("Cleared: type yes / no / unset.", severity="error")
-            return
-        self._advance()
 
     def _commit_hashtag(self, text: str) -> None:
         if not text:

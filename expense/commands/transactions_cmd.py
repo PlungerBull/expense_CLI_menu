@@ -116,7 +116,6 @@ def fetch_transactions(
     reconciliation: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-    cleared: bool | None = None,
     search: str | None = None,
     limit: int | None = None,
     offset: int | None = None,
@@ -141,8 +140,6 @@ def fetch_transactions(
         params["date_from"] = date_from
     if date_to is not None:
         params["date_to"] = date_to
-    if cleared is not None:
-        params["cleared"] = "true" if cleared else "false"
     if search is not None:
         params["search"] = search
     if limit is not None:
@@ -174,9 +171,6 @@ def list_(
     ),
     date_from: str | None = typer.Option(None, "--from", help="ISO 8601 lower bound (inclusive)."),
     date_to: str | None = typer.Option(None, "--to", help="ISO 8601 upper bound (inclusive)."),
-    cleared: bool | None = typer.Option(
-        None, "--cleared/--no-cleared", help="Filter by cleared status."
-    ),
     search: str | None = typer.Option(
         None, "--search", help="Full-text search on title/description."
     ),
@@ -199,7 +193,6 @@ def list_(
         reconciliation=reconciliation,
         date_from=date_from,
         date_to=date_to,
-        cleared=cleared,
         search=search,
         limit=limit,
         offset=offset,
@@ -244,9 +237,6 @@ def update(
     account_id: str | None = typer.Option(None, "--account-id"),
     category_id: str | None = typer.Option(None, "--category-id"),
     description: str | None = typer.Option(None, "--description"),
-    cleared: bool | None = typer.Option(
-        None, "--cleared/--no-cleared", help="Set the cleared status."
-    ),
     hashtag_ids: str | None = typer.Option(
         None, "--hashtag-ids", help="Comma-separated list; replaces the existing set."
     ),
@@ -255,7 +245,7 @@ def update(
 ) -> None:
     """PUT /v1/transactions/{id}. Partial update.
 
-    Example: expense transactions update <transaction-id> --title "Renamed" --cleared
+    Example: expense transactions update <transaction-id> --title "Renamed"
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
@@ -268,7 +258,6 @@ def update(
             "account_id": account_id,
             "category_id": category_id,
             "description": description,
-            "cleared": cleared,
             "hashtag_ids": _parse_hashtag_ids(hashtag_ids) if hashtag_ids is not None else None,
             "reconciliation_id": reconciliation_id,
         }
