@@ -174,6 +174,17 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 
 ## Step 6 — Reconciliations
 
+> ⚠️ **Partially retired 2026-08-16 (backlog Phase 3).** The engine deleted
+> reconciliation chaining on 2026-08-06 ([client-breaking-changes.md](client-breaking-changes.md)):
+> `sort_order`, `beginning_balance_source`, `chained_from_reconciliation_id` and
+> `PUT /v1/accounts/{id}/reconciliations/order` are gone, `beginning_balance_cents`
+> is required on create, and `difference_cents` is new. So items 5 and 6 below
+> (`move`, `reorder`, and the `expense/_editor.py` helper) are **deleted**, the
+> `--source` / `--sort-order` flags and the chained half of item 2 are gone, and
+> item 1's sort contract is now `date_start ASC NULLS LAST, created_at ASC`.
+> A batch is repositioned by editing its `--date-start`. The lifecycle
+> (create/get/update/delete/restore/complete/revert) stands.
+
 *Deliverable: `expense reconcile` matches the engine reconciliation state machine, including `sort_order` chaining and the bulk reorder endpoint.*
 
 The engine ships `sort_order`, `beginning_balance_source` (`"manual"` or `"chained"`), `chained_from_reconciliation_id`, and a new `PUT /v1/accounts/{account_id}/reconciliations/order` bulk reorder endpoint alongside this step. `PUT /v1/reconciliations/{id}` rejects `beginning_balance_source: "chained" + beginning_balance_cents: <number>` with a field-scoped 422 — the CLI blocks the equivalent flag combination at parse time.
@@ -450,7 +461,7 @@ Adds `expense/menu/term.py` (deleted at 10.X) with `clear_screen()` (gentle view
 
 ### Step 9.5.12 — Reconciliations menu (shipped)
 
-*Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder.*
+*Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder. (Menu deleted at 10.X; `move`/`reorder` themselves deleted 2026-08-16 — see the Step 6 banner.)*
 
 Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-balance` mutual-exclusion guard), `update`, `delete`, `restore`, `complete`, `revert` (extra-strong confirm), `move` (with `--to | --before | --after` mutex), `reorder` (reused `expense/_editor.py` without modification — both commands and that helper were deleted 2026-08-16, see the Step 6 banner).
 
@@ -514,7 +525,7 @@ Walks `expense menu` through `Config → Set engine URL → Set token → Auth �
 
 The TUI is a new **client** of the same engine-integration layer (HTTP client, SQLite replica, error envelope, name resolution, `refresh_after_write`). It implements **zero** business logic — the thin-wrapper rule holds. The one enabling refactor is the **fetch/print split**: commands that fetch *and* print get a pure `fetch_*(cfg, …) -> dict` extracted, which both the typer command and the TUI call. The synchronous engine client runs inside a Textual `@work(thread=True)` worker so the UI never blocks.
 
-**Resolved open decisions** (from [tui-plan.md §9](tui-plan.md)): entry command is **`expense world`** (#1); the TUI **replaced** `expense menu`, now deleted (#2 — see 10.X); reconcile reorder **shells out to `$EDITOR`** for v1 (#4). Still open: designer's final theme tokens (#3), minimum terminal size fallback (#5).
+**Resolved open decisions** (from [tui-plan.md §9](tui-plan.md)): entry command is **`expense world`** (#1); the TUI **replaced** `expense menu`, now deleted (#2 — see 10.X); reconcile reorder **shelled out to `$EDITOR`** for v1 (#4 — the whole feature was deleted 2026-08-16 with the engine's de-chaining). Still open: designer's final theme tokens (#3), minimum terminal size fallback (#5).
 
 ### Step 10.P0 — Walking skeleton (shipped)
 `expense world` launches; neutral theme; header banner + home menu with live status (the status line was later **removed by decision** at the 2026-07-02 review's §4.3 — see [backlog.md](backlog.md) header for where that review's record lives — it reported config presence as "connected" without ever probing the engine); Outstanding Amounts wired to live data (flat, then interactive category tree) via the worker helper. De-risked Textual + async + data-reuse.
@@ -523,7 +534,7 @@ The TUI is a new **client** of the same engine-integration layer (HTTP client, S
 List screens for Inbox, Transactions, Accounts, Categories, Hashtags (chips); interactive `▼/▶` category tree on Outstanding Amounts; record detail modals; loading/empty/error states. Every read surface browsable.
 
 ### Step 10.P2 — Write flows (shipped — closed 2026-07-08)
-Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared, hashtag multi-select, conditional transfer sub-flow *(retired 2026-08-16 with the engine's transfer removal)*, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
+Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared, hashtag multi-select, conditional transfer sub-flow *(retired 2026-08-16 with the engine's transfer removal)*, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder *(reorder retired 2026-08-16 with the engine's de-chaining)*; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
 
 **Shipped so far:** Log/quick-add (+ transfer, retired 2026-08-16), edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile, and the **System reads (Sync · Activity · Rates)** screens ([expense/tui/screens/system.py](../expense/tui/screens/system.py) — wired as three direct System-group entries in [home.py](../expense/tui/screens/home.py); enabling refactor was the `fetch_activity` / `fetch_rate` extractions on the flat commands). Two bugs surfaced and were fixed while landing these: (1) the shared modal CSS only centered `RecordModal`, so `SnapshotModal` (Activity's before/after detail) collapsed invisibly in the top-left — the `align: center middle` rule now covers every modal screen; (2) activity name resolution matched plural `resource_type` strings (`expense_transactions`, …) but the engine writes them **singular** (`transaction`, `account`, …), so the Resource column always fell back to the UUID prefix — `_resolve_resource_name` now maps the engine's real strings (fixing the flat `expense activity list` too).
 **Closed 2026-07-08 with the final screen:** the **Monthly report** — a sliding **4-month grid** (categories × months, `▼/▶` hashtag rows, `[`/`]` slide the window), *not* the originally-sketched single-month view, which would have duplicated Outstanding Amounts (why + rejected alternatives: [decisions.md](decisions.md)). Enabling refactor was the `fetch_single_month`/`fetch_range`/`build_range_grid` extractions on the flat `reports` command. Every home-menu entry is now wired — no `"soon"` stubs remain. Detail: [tui-plan.md](tui-plan.md) Phase 2.

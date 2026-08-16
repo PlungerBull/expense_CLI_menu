@@ -104,7 +104,7 @@
         <div class="row"><span></span><span>Interbank USD</span><span class="amt">$ 1,240.00</span></div>
         <div class="row"><span></span><span>BBVA Soles</span><span class="amt">S/ 3,100.00</span></div>
       </div>
-      <div class="cap q" style="border-top:none;padding-top:10px">Reconciliations · BCP PEN <span class="mut" style="text-transform:none;letter-spacing:0">— chain order (oldest → newest)</span></div>
+      <div class="cap q" style="border-top:none;padding-top:10px">Reconciliations · BCP PEN <span class="mut" style="text-transform:none;letter-spacing:0">— by statement start date (oldest → newest)</span></div>
       <div class="tbl">
         <div class="row head" style="grid-template-columns:1.1fr 1.4fr 105px 105px 90px"><span>Name</span><span>Period</span><span class="amt">Begin</span><span class="amt">End</span><span>Status</span></div>
         <div class="rule"></div>
@@ -125,7 +125,7 @@
       <div class="pick">
         <div class="row dimrow"><span class="mk">▸</span><span>BCP PEN</span><span class="amt">S/ 9,460.00</span></div>
       </div>
-      <div class="cap q" style="border-top:none;padding-top:10px">Reconciliations · BCP PEN <span class="mut" style="text-transform:none;letter-spacing:0">— chain order (oldest → newest)</span></div>
+      <div class="cap q" style="border-top:none;padding-top:10px">Reconciliations · BCP PEN <span class="mut" style="text-transform:none;letter-spacing:0">— by statement start date (oldest → newest)</span></div>
       <div class="tbl">
         <div class="row head" style="grid-template-columns:1.1fr 1.4fr 105px 105px 90px"><span>Name</span><span>Period</span><span class="amt">Begin</span><span class="amt">End</span><span>Status</span></div>
         <div class="rule"></div>
@@ -133,8 +133,8 @@
         <div class="row" style="grid-template-columns:1.1fr 1.4fr 105px 105px 90px"><span>March 2026</span><span class="mut">2026-03-01 → 03-31</span><span class="amt">12,000.00</span><span class="amt">9,580.00</span><span class="badge ok">completed</span></div>
         <div class="row on" style="grid-template-columns:1.1fr 1.4fr 105px 105px 90px"><span>April 2026</span><span class="mut">2026-04-01 → 04-30</span><span class="amt">9,580.00</span><span class="amt">9,460.00</span><span class="badge draft">draft</span></div>
       </div>
-      <div class="hint">enter opens the highlighted batch · ctrl+↑/↓ moves it in the chain (begins recompute) · esc back to accounts</div>
-      <div class="keybar"><span><b class="k">↑↓</b>pick a batch</span><span><b class="k">enter</b>open</span><span><b class="k">ctrl+↑↓</b>move in chain</span><span><b>n</b>new</span><span><b>esc</b>back to accounts</span></div>
+      <div class="hint">enter opens the highlighted batch · esc back to accounts <i>(the ctrl+↑/↓ chain reorder shown here was deleted 2026-08-16)</i></div>
+      <div class="keybar"><span><b class="k">↑↓</b>pick a batch</span><span><b class="k">enter</b>open</span><span><b>n</b>new</span><span><b>esc</b>back to accounts</span></div>
     </div>
   </div>
 
@@ -236,8 +236,8 @@
     <div class="it"><b>Working screen = the batch.</b> Open draft → a checklist of that account's <b>unassigned</b> + <b>already-in-this-batch</b> transactions. Checked = in the batch; space toggles (sets/clears reconciliation_id). Transactions in other batches don't appear — a transaction lives in one batch only.</div>
     <div class="it"><b>Completed = read-only.</b> Opening a closed batch shows begin/end balances + the transactions inside, no toggling. “r” revert unlocks it (and the locked transaction fields) back to draft.</div>
     <div class="it"><b>complete</b> needs ≥1 transaction (engine 422 otherwise) and locks amount/account/title/date on them. <b>delete</b> is draft-only and just detaches the transactions (sets reconciliation_id back to null) — it never deletes transactions.</div>
-    <div class="it"><b>No “difference” meter.</b> The engine doesn't compute one or gate completion on a balance — you decide when the batch matches your statement, then complete.</div>
-    <div class="it"><b>How batches link (the chain).</b> Per account, ordered by sort_order (shown oldest→newest). A <b>chained</b> batch takes its begin from the row above's end (“chained ← March 2026”); a <b>manual</b> batch anchors the chain. <b>ctrl+↑/↓</b> moves a batch in the chain (bulk reorder endpoint; chained begins recompute) — so out-of-order creates are fixed by moving, not just by manual begins.</div>
+    <div class="it"><b>⚠️ Superseded 2026-08-16 — there <i>is</i> a difference meter now.</b> The engine computes <code>difference_cents</code> (ending − beginning, minus the assigned transactions) as of 2026-08-06, and it renders as the <b>Diff</b> column here and in the working-screen header. It still does not gate completion — you decide when to complete.</div>
+    <div class="it"><b>⚠️ Superseded 2026-08-16 — batches no longer link.</b> This panel described the chain (sort_order, chained vs manual begins, ctrl+↑/↓ reorder). The engine deleted chaining on 2026-08-06: every batch carries its own typed beginning balance, and an account's batches are ordered by their <b>statement start date</b>. Out-of-order creates are fixed by editing that date. Current shape: <a href="expense-world-phase3-sketch.html">expense-world-phase3-sketch.html</a>.</div>
     <div class="it"><b>Transaction rows show detail.</b> Title · amount · date on top; <span class="cat" style="color:var(--muted)">category</span> · <span class="tag" style="color:var(--accent)">#hashtags</span> · <span class="nt" style="color:var(--dim);font-style:italic">note</span> on a dim line below — same in draft (with checkbox) and completed (read-only).</div>
   </div>
 

@@ -102,16 +102,16 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `transactions batch` — atomic multi-tx create from flags or a stdin JSON payload.
 
 ### `expense reconcile`
-- `reconcile list [--account-id <id>] [--include-deleted] [--limit <n>] [--offset <n>] [--json]` — when `--account-id` is set, sorted by `sort_order ASC, created_at ASC` (matches engine).
+- `reconcile list [--account-id <id>] [--include-deleted] [--limit <n>] [--offset <n>] [--json]` — when `--account-id` is set, sorted by `date_start ASC NULLS LAST, created_at ASC` (matches engine); the cross-account list stays `created_at DESC`. Rows carry a `Diff` column — the engine's `difference_cents`.
 - `reconcile get <id> [--limit <n>] [--offset <n>] [--json]` — embeds a paged window of assigned transactions; surfaces a `transactions_truncated` hint pointing at `expense transactions list --reconciliation-id <id>` for full filter power.
-- `reconcile create --account-id <id> --name <n> [--date-start ...] [--date-end ...] [--beginning-balance <cents>] [--ending-balance <cents>] [--source manual|chained] [--sort-order <n>]`. Omit `--beginning-balance` to chain from the previous reconciliation in the account.
-- `reconcile update <id>` — partial update; supports `--source manual|chained`. `--source chained` is mutually exclusive with `--beginning-balance` (CLI blocks at parse). `--sort-order` rejected — use `move` / `reorder`.
+- `reconcile create --account-id <id> --name <n> --date-start <date> --beginning-balance <cents> [--date-end ...] [--ending-balance <cents>]`. `--date-start` and `--beginning-balance` are **required**: there is no derived (chained) beginning balance since 2026-08-06, and the statement start date is what orders the batch.
+- `reconcile update <id>` — partial update (`--name`, `--date-start`, `--date-end`, `--beginning-balance`, `--ending-balance`). Editing `--date-start` is how a batch is repositioned. Field locks under a completed reconciliation surface as the engine's 422 with a "revert first" hint.
 - `reconcile delete <id> [--yes]` — only allowed in draft (engine 409 otherwise; CLI hints "revert first"). Cascade-unassigns attached transactions.
 - `reconcile restore <id>` — restored row comes back empty (engine doesn't re-link transactions).
 - `reconcile complete <id>` — flips status → completed; prints count of newly-locked transactions. Locks `amount_cents`, `account_id`, `title`, `date` on every assigned transaction plus the reconciliation's own balance/date fields.
 - `reconcile revert <id> --yes` — flips status → draft; required `--yes` (audit event).
-- `reconcile move <id> --to <n> | --before <id> | --after <id>` — single-row reorder via `PUT /v1/accounts/{account_id}/reconciliations/order`.
-- `reconcile reorder --account-id <id>` — opens `$EDITOR` on a temp file with the current order; save and exit applies the new order via the bulk endpoint (git-rebase-i style).
+
+> `reconcile move` and `reconcile reorder` (the `$EDITOR` bulk reorder) were **deleted 2026-08-16** with the engine's `PUT /v1/accounts/{id}/reconciliations/order`. Ordering is a statement date now: `reconcile update <id> --date-start <date>`.
 
 ### `expense dashboard`
 - `dashboard` — current month: bank accounts, people, categories (with hashtag-combination breakdown), totals. Current-month-only because `GET /v1/dashboard` is current-month-only.

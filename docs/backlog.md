@@ -26,8 +26,8 @@
 
 **Why phases:** the 2026-08 engine rework (transfers deleted, read-time
 currency, reconciliation de-chaining, schema slimming) removed or changed
-endpoints the CLI and TUI still call. Phases 3–4 restore a working CLI/TUI —
-everything in them is **live-broken today** (422s, 404s, or unhandled `null`s).
+endpoints the CLI and TUI still call. Phase 4 is the last one that is
+**live-broken today** (unhandled `null`s on every home aggregate).
 Phase 5 verifies against the live engine; Phase 6 builds the new engine
 capability the clients don't surface yet; Phase 7 closes residual doc
 alignment; Phase 8 is pre-existing polish, schedulable anytime.
@@ -35,7 +35,9 @@ alignment; Phase 8 is pre-existing polish, schedulable anytime.
 categories/hashtags archive, inbox restore, tx-delete warnings — closed
 2026-08-15; Phase 2 — the transfer-feature removal, items 2.1–2.5 — closed
 2026-08-16, with the optional 2.6 convenience re-parked under Phase 8 below;
-both deleted per the rule above, see git history.)
+Phase 3 — reconciliation de-chaining, items 3.1–3.6 — closed 2026-08-16
+(sketch: [mockups/expense-world-phase3-sketch.html](mockups/expense-world-phase3-sketch.html));
+all three deleted per the rule above, see git history.)
 
 **Baseline at merge time (2026-08-15):** 900 unit tests, 899 green — the one
 failure was the doc-link guard catching the engine's retired `TODO.md`, fixed
@@ -53,39 +55,6 @@ cited by date — read the entry before starting the item; it has the full
 contract detail and engine references.
 
 ---
-
-## Phase 3 — reconciliation de-chaining (the biggest chunk)
-
-[Entry 2026-08-06 "reconciliation simplification" — **its CLI work table is
-the authoritative checklist**; line refs verified 2026-08-15.] Chaining,
-`sort_order`, `beginning_balance_source`, and the bulk-reorder route are gone;
-`beginning_balance_cents` is required on create; `difference_cents` is new.
-**The TUI's default create path 422s today** (form starts at
-`source: "chained"`).
-
-- [ ] **3.1** TUI new-batch form: `begin` always required, drop the source
-  picker (`tui/screens/reconciliations.py:311-348,433-480`).
-- [ ] **3.2** TUI: delete `_sort_key` client-side sort and the `ctrl+↑/↓`
-  reorder actions (`:71-74,265-287`); rely on server order
-  (`date_start ASC NULLS LAST, created_at ASC` when account-scoped); fix the
-  chain-model docstring (`:1-22`).
-- [ ] **3.3** Delete `reconcile move` and `reconcile reorder` whole
-  (`reconcile_cmd.py:646-770,807-891`) — both end at the deleted route. Their
-  only helper consumer is `expense/_editor.py` → **delete it too** and its
-  cli-runtime.md mention; note in CLAUDE.md that the `_editor.py`
-  CLI-specific bullet dies with it.
-- [ ] **3.4** `reconcile_cmd.py` flag/render sweep: drop `--source` /
-  `--sort-order`, the mutual-exclusion guards, the `Source` column +
-  `_format_source_marker`, the chained-ambiguity 422 sniffer,
-  `ReconciliationSource`, `_render_reorder_response`; make
-  `--beginning-balance` required on `create` (line refs in the entry's table).
-- [ ] **3.5 [UI]** Surface the new `difference_cents` on reconcile
-  list/detail (CLI table + TUI) — it is the add-up check the feature exists
-  for. Column change → propose + mockup first.
-- [ ] **3.6** Tests: `test_cmd_reconcile.py`, `test_tui_reconciliations.py`,
-  `test_tui_reconcile_detail.py`. Docs: cli-spec.md:105-114 (sort contract,
-  `move`/`reorder`, `--source`), roadmap.md Step 6 gets a retirement banner
-  like Step 7's, tui-plan.md chain references, decisions.md superseding note.
 
 ## Phase 4 — nullable home aggregates + dashboard panel removals
 
@@ -149,11 +118,12 @@ check.
   "Last updated" line.
 - [ ] **7.2** CLAUDE.md refresh: Status section (point at this backlog's
   phases instead of "the 2026-07-06 best-practices backlog"); doc-table row
-  for [client-breaking-changes.md](client-breaking-changes.md); prune retired
-  CLI-specific bullets (`_editor.py` after 3.3).
-- [ ] **7.3** decisions.md entries for the big engine deletions as they land
-  client-side (transfer removal, de-chaining) — each points at its
-  client-breaking-changes entry rather than duplicating it.
+  for [client-breaking-changes.md](client-breaking-changes.md). *(The
+  `_editor.py` bullet was pruned with Phase 3.3, 2026-08-16.)*
+- [x] **7.3** decisions.md entries for the big engine deletions as they land
+  client-side — transfer removal + de-chaining both written 2026-08-16, each
+  pointing at its client-breaking-changes entry rather than duplicating it.
+  Any later deletion gets the same treatment.
 - [ ] **7.4** Final pass: `pytest tests/unit/test_docs_links.py` green, plus a
   stale-term grep over `docs/` (`chained`, `--source`, `transfer`,
   `exchange-rate`, `main-currency`, `include_archived` on cats/hashtags) with
@@ -200,6 +170,6 @@ Phases 1–7.
 
 Three 2026-07-06 §5 nits died with the engine rework rather than being fixed:
 the `reconcile move --json` empty-output nit and the `_validate_source_choice`
-Enum nit (both commands/flags are deleted outright in Phase 3), and the
+Enum nit (both commands/flags were deleted outright in Phase 3), and the
 `--include-deleted` item's dependency on the old cache decision (the flag's
 [UI] half survives above).

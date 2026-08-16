@@ -82,7 +82,7 @@ expense/tui/
     outstanding.py  # balances + people + category ▼/▶ TREE + totals
     reports.py      # Monthly report — sliding 4-month grid, ▼/▶ hashtag rows
     inbox.py        transactions.py  accounts.py  categories.py  hashtags.py
-    reconciliations.py               # full lifecycle + $EDITOR reorder
+    reconciliations.py               # full lifecycle (reorder retired 2026-08-16)
     system.py       # Config / Auth / Sync / Activity / Rates screens
     quick_log.py    # the transaction form (log / edit)
     create_forms.py # BarFormScreen + New{Account,Category,Hashtag} small forms
@@ -207,7 +207,8 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 >
 > **Shipped:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms
 > (account/category/hashtag), the **Manage edit flow** (Option B — see below), full
-> Reconciliations screen (assign/complete/revert/delete + account-first browse + reorder),
+> Reconciliations screen (assign/complete/revert/delete + account-first browse; the
+> reorder shipped here was *retired 2026-08-16* with the engine's de-chaining),
 > Config, Auth & profile, the **Sync · Activity · Rates** system-read screens, and the
 > **Monthly report** screen (below) — nothing remains before parity.
 >
@@ -247,8 +248,9 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   see the banner above.)
 - **Small forms** (reuse the form component): account, category, hashtag create ✅ /
   edit ✅ (`e` on the list row, the Manage edit flow above).
-- **Reconciliation** create/edit form; reorder — shell out to the existing `$EDITOR`
-  flow first, native reorder later.
+- **Reconciliation** create/edit form. *(Reorder — originally an `$EDITOR` shell-out —
+  was deleted 2026-08-16: the engine dropped manual ordering, so a batch's position is
+  its statement start date. See [backlog.md](backlog.md) Phase 3.)*
 - **Config / Auth & profile** forms. Post-write refresh reuses `refresh_after_write`.
 - **Exit criteria:** create/edit/act parity with the flat command surface.
 
@@ -306,7 +308,8 @@ nothing to reveal; see decisions.md "Launch clears the terminal scrollback".)
 | **Complete & polished** | Phases 0–3 | **~6–8 weeks** |
 
 Per-section difficulty: menus & lists *easy*; the tree & the transaction form
-*moderate*; **Reconciliation reorder** the one outlier (the `$EDITOR` flow).
+*moderate*. *(Reconciliation reorder — the one `$EDITOR` outlier — is gone as of
+2026-08-16.)*
 
 ## 7. Risks & mitigations
 
@@ -314,7 +317,6 @@ Per-section difficulty: menus & lists *easy*; the tree & the transaction form
 - **Async correctness** → one `run_engine` worker helper; never touch the engine on the
   UI thread.
 - **Logic duplication** → the fetch/print split is the guardrail; TUI imports `fetch_*`.
-- **Reconcile `$EDITOR` reorder** → shell out to the existing flow first; native later.
 - **Scope creep (live features)** → deferred to Phase 4.
 - **Theming churn** → tokens file, neutral default, zero hardcoded colors.
 
@@ -334,8 +336,9 @@ Per-section difficulty: menus & lists *easy*; the tree & the transaction form
 2. **Coexistence** — ✅ **The TUI replaced `expense menu`, now deleted** (roadmap Step 10.X,
    2026-07-02). They shipped in parallel only until the menu was retired. The flat
    commands (`expense log`, …) stay permanently as the canonical contract-validator interface.
-4. **Reconcile reorder** — ✅ **shell out to `$EDITOR`** for v1 (reuses `expense/_editor.py`);
-   native reorder deferred.
+4. **Reconcile reorder** — ✅ shipped as an `$EDITOR` shell-out for v1, then **superseded
+   2026-08-16**: the engine deleted manual ordering, so both the TUI chord and
+   `expense/_editor.py` are gone. Batches order by statement start date.
 
 **Still open:**
 
