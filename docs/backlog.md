@@ -16,16 +16,19 @@
 
 **Why phases:** the 2026-08 engine rework (transfers deleted, read-time
 currency, reconciliation de-chaining, schema slimming) removed or changed
-endpoints the CLI and TUI still call. Phases 1–4 restore a working CLI/TUI —
+endpoints the CLI and TUI still call. Phases 2–4 restore a working CLI/TUI —
 everything in them is **live-broken today** (422s, 404s, or unhandled `null`s).
 Phase 5 verifies against the live engine; Phase 6 builds the new engine
 capability the clients don't surface yet; Phase 7 closes residual doc
 alignment; Phase 8 is pre-existing polish, schedulable anytime.
+(Phase 1 — the mechanical deletions: exchange-rate purge, settings slimming,
+categories/hashtags archive, inbox restore, tx-delete warnings — closed
+2026-08-15 and deleted per the rule above; see git history.)
 
 **Baseline at merge time (2026-08-15):** 900 unit tests, 899 green — the one
 failure was the doc-link guard catching the engine's retired `TODO.md`, fixed
 with the merge commit. Green is **false comfort** here: the respx fixtures pin
-the *pre-rework* contract, so most Phase 1–4 breakage is invisible to
+the *pre-rework* contract, so most Phase 2–4 breakage is invisible to
 `pytest tests/unit`. Only the `PYTEST_LIVE=1` contract suite sees the real
 engine.
 
@@ -38,66 +41,6 @@ cited by date — read the entry before starting the item; it has the full
 contract detail and engine references.
 
 ---
-
-## Phase 1 — stop the bleeding: mechanical deletions (each surface 422s/404s today)
-
-Small, independent, no design decisions. Order within the phase is free.
-
-- [ ] **1.1 Purge `--exchange-rate` and the rate override path.**
-  [Entry 2026-08-05 "currency converts at read time".] The engine rejects the
-  field with 422 (`extra="forbid"`) on every write. Remove the option and
-  payload entry at `log_cmd.py:34,94`, `inbox_cmd.py:201-230,251-270`,
-  `transactions_cmd.py:273,296` (+ the transfer-leg help text at `:52`),
-  `accounts_cmd.py:221-249` (opening balance); stop sending it from
-  `import_/apply.py:198-202`; delete the `usd-no-rate` skip at
-  `import_/parse.py:206-213` (a USD row needs no rate to be recorded); delete
-  the `RATE_UNAVAILABLE` hint at `log_cmd.py:117` (that error code no longer
-  exists — entry item 9). Doc scrub: cli-spec.md `accounts opening-balance`
-  line.
-
-- [ ] **1.2 Auth settings: remove the seven dead flags + the recalc remnants.**
-  [Entries 2026-08-06 "schema slimming" §1 and 2026-08-01 "home currency
-  locked".] `PUT /auth/settings` is now `extra="forbid"` with
-  `display_timezone` as the only mutable field. Remove `--theme`,
-  `--start-of-week`, `--transaction-sort-preference`, the three
-  `--sidebar-show-*` flags **and** `--main-currency` from
-  `auth_cmd.py:207-248`; fix the docstring ("main_currency change triggers
-  engine recalc" is false — the field is locked, even to its current value);
-  delete the dead `recalculation` read + `_render_recalc_summary`. TUI: remove
-  the whole main-currency flow in `tui/screens/system.py` (`m` binding `:130`,
-  PromptModal `:212`, `_set_currency` `:237-257`); keep the read-only
-  main-currency display rows (`:69,:167`). Doc scrub: cli-spec.md §auth
-  settings (line 67).
-
-- [ ] **1.3 Delete categories/hashtags archive; drop `is_archived` from their surfaces.**
-  [Entry 2026-08-06 "schema slimming" §2 — its CLI table is the checklist.]
-  The four routes 404 and the field no longer arrives (columns silently show
-  blank). Delete the `archive`/`unarchive` commands in
-  `categories_cmd.py:261-300` / `hashtags_cmd.py:237-275` (keep `run_toggle`
-  and the accounts pair); drop the `Archived` columns + `--include-archived`
-  on those two `list` commands; TUI: gate the `a` binding to Accounts
-  (`_base.py:402,430-433,495-513`), drop archived styling in
-  `tui/screens/categories.py` / `hashtags.py`; drop `include_archived` for
-  categories/hashtags in `_resource.py:262,272`, `quick_log.py:213-222`,
-  `import_/apply.py:56-63`. Doc scrub: cli-spec.md category/hashtag verb
-  lists; superseding notes on the two decisions.md archive entries.
-
-- [ ] **1.4 Delete `expense inbox restore`.**
-  [Entry 2026-08-14 "restore is gone".] The route 404s; dismissing a draft is
-  final. Remove the command (`inbox_cmd.py:301-317`) and any TUI restore
-  affordance on dismissed drafts; update the `inbox delete` docstring ("restore
-  is the inverse" is now false — there is no way back). `inbox delete` already
-  confirms via `require_yes`, which is the safety net the entry asks for —
-  verify the TUI dismiss flow confirms too. Doc scrub: cli-spec.md inbox verbs.
-
-- [ ] **1.5 Transaction delete: drop the dead `warnings` read; surface the two new rejections.**
-  [Entry 2026-08-11 "completed reconciliations fully freeze".] `DELETE
-  /transactions/{id}` no longer carries `warnings` — remove the
-  `_print_warnings` call on the delete path (`transactions_cmd.py:335`;
-  restore keeps its warnings envelope). Add friendly hints for the new `409`
-  on deleting a completed-reconciliation transaction and the
-  `reconciliation_id` field-lock `422` — both should read "revert the
-  reconciliation to draft first".
 
 ## Phase 2 — transfer feature removal
 
