@@ -42,8 +42,8 @@ _RESOURCE = "transactions"
 
 _RECONCILIATION_LOCK_HINT = (
     "Hint: This transaction is in a completed reconciliation. "
-    "amount_cents/account_id/title/date are read-only until the reconciliation "
-    "is reverted ('expense reconcile revert <id>')."
+    "amount_cents/account_id/title/date/reconciliation_id are read-only — "
+    "revert the reconciliation to draft first ('expense reconcile revert <id>')."
 )
 _TRANSFER_GUARD_HINT = (
     "Hint: This transaction is part of a transfer pair. "
@@ -327,10 +327,18 @@ def delete(
     verbose = get_verbose(ctx)
 
     with ExpenseClient(cfg, verbose=verbose) as client:
-        body = client.delete(f"/{_RESOURCE}/{id_}")
+        try:
+            body = client.delete(f"/{_RESOURCE}/{id_}")
+        except EngineError as err:
+            if err.status == 409:
+                typer.echo(
+                    "Hint: This transaction is assigned to a completed reconciliation "
+                    "and cannot be deleted — revert the reconciliation to draft first "
+                    "('expense reconcile revert <id>').",
+                    err=True,
+                )
+            raise
     render_record(body, json_mode=json_output)
-    if not json_output:
-        _print_warnings(body)
 
 
 @app.command("restore")

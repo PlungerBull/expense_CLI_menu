@@ -33,7 +33,6 @@ TRANSACTION_RESPONSE = {
     "updated_at": "2026-04-24T10:00:00Z",
     "version": 1,
     "deleted_at": None,
-    "warnings": [],
 }
 
 LIST_RESPONSE = {
@@ -361,18 +360,57 @@ def test_delete_requires_yes_in_non_tty(configured):
 
 
 @respx.mock
-def test_delete_happy_renders_warnings(configured):
-    deleted = {
-        **TRANSACTION_RESPONSE,
-        "deleted_at": "2026-04-24T10:00:00Z",
-        "warnings": ["Transaction belonged to a completed reconciliation. Totals may be stale."],
-    }
+def test_delete_happy_no_warnings_channel(configured):
+    # Since 2026-08-11 DELETE returns the plain transaction shape — no
+    # `warnings` key (restore is the channel's sole member).
+    deleted = {**TRANSACTION_RESPONSE, "deleted_at": "2026-04-24T10:00:00Z"}
     respx.delete("https://api.example.com/v1/transactions/abc").mock(
         return_value=httpx.Response(200, json=deleted)
     )
     result = runner.invoke(cli_app, ["transactions", "delete", "abc", "--yes"])
     assert result.exit_code == 0, result.output
-    assert "Warning: Transaction belonged" in result.output
+    assert "Warning:" not in result.output
+
+
+@respx.mock
+def test_delete_409_completed_reconciliation_hint(configured):
+    respx.delete("https://api.example.com/v1/transactions/abc").mock(
+        return_value=httpx.Response(
+            409,
+            json={
+                "error": {
+                    "code": "CONFLICT",
+                    "message": "Cannot delete a transaction assigned to a completed "
+                    "reconciliation. Revert the reconciliation to draft first.",
+                    "fields": None,
+                }
+            },
+        )
+    )
+    result = runner.invoke(cli_app, ["transactions", "delete", "abc", "--yes"])
+    assert result.exit_code == 1
+    assert "expense reconcile revert" in result.output
+    assert "CONFLICT" in result.output
+
+
+@respx.mock
+def test_update_reconciliation_id_lock_422_hint(configured):
+    respx.put("https://api.example.com/v1/transactions/abc").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Field locked.",
+                    "fields": {"reconciliation_id": "Locked by completed reconciliation."},
+                }
+            },
+        )
+    )
+    result = runner.invoke(cli_app, ["transactions", "update", "abc", "--reconciliation-id", "r1"])
+    assert result.exit_code == 1
+    assert "expense reconcile revert" in result.output
+    assert "reconciliation_id" in result.output
 
 
 @respx.mock
