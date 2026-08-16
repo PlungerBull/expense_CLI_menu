@@ -25,7 +25,6 @@ TRANSACTION_RESPONSE = {
     "description": None,
     "cleared": False,
     "transaction_type": 1,
-    "transfer_transaction_id": None,
     "hashtag_ids": [],
     "inbox_id": None,
     "reconciliation_id": None,
@@ -329,25 +328,6 @@ def test_update_422_reconciliation_lock_hint(configured):
     assert "VALIDATION_ERROR" in result.output
 
 
-@respx.mock
-def test_update_422_transfer_guard_hint(configured):
-    respx.put("https://api.example.com/v1/transactions/abc").mock(
-        return_value=httpx.Response(
-            422,
-            json={
-                "error": {
-                    "code": "VALIDATION_ERROR",
-                    "message": "Field is read-only on a transfer pair leg.",
-                    "fields": {"amount_cents": "Read-only on transfer leg."},
-                }
-            },
-        )
-    )
-    result = runner.invoke(cli_app, ["transactions", "update", "abc", "--amount", "-100"])
-    assert result.exit_code == 1
-    assert "delete and recreate" in result.output
-
-
 # ---------------------------------------------------------------------------
 # delete
 # ---------------------------------------------------------------------------
@@ -471,25 +451,6 @@ def test_restore_422_archived_hint(configured):
     assert "Unarchive or restore" in result.output
 
 
-@respx.mock
-def test_restore_409_asymmetric_pair_hint(configured):
-    respx.post("https://api.example.com/v1/transactions/abc/restore").mock(
-        return_value=httpx.Response(
-            409,
-            json={
-                "error": {
-                    "code": "CONFLICT",
-                    "message": "Transfer sibling missing.",
-                    "fields": None,
-                }
-            },
-        )
-    )
-    result = runner.invoke(cli_app, ["transactions", "restore", "abc"])
-    assert result.exit_code == 1
-    assert "transfer pair" in result.output
-
-
 # ---------------------------------------------------------------------------
 # batch
 # ---------------------------------------------------------------------------
@@ -571,64 +532,11 @@ def test_batch_json_passthrough(configured):
     assert json.loads(result.output) == response
 
 
-_BATCH_TRANSFER_ITEMS = [
-    {
-        "title": "a",
-        "amount_cents": -100,
-        "date": "2026-04-24T12:00:00Z",
-        "account_id": "acct-1",
-        "category_id": "cat-1",
-        "transfer": {
-            "id": "x",
-            "account_id": "acct-2",
-            "amount_cents": 50,
-        },
-    }
-]
-
-# Verified engine envelope for a transfer item in a batch
-# (engine app/helpers/transactions.py — fields key is transactions[i].transfer).
-_BATCH_TRANSFER_422 = {
-    "error": {
-        "code": "VALIDATION_ERROR",
-        "message": "Transfers are not supported in batch creates.",
-        "fields": {"transactions[0].transfer": "Must not be present in batch."},
-    }
-}
-
-
 @respx.mock
-def test_batch_transfer_422_surfaces_with_hint(configured):
-    route = respx.post("https://api.example.com/v1/transactions/batch").mock(
-        return_value=httpx.Response(422, json=_BATCH_TRANSFER_422)
-    )
-    result = runner.invoke(
-        cli_app, ["transactions", "batch"], input=json.dumps(_BATCH_TRANSFER_ITEMS)
-    )
-    assert result.exit_code == 1
-    # thin wrapper: the request reaches the engine — no client pre-emption
-    assert route.called
-    assert "VALIDATION_ERROR" in result.output
-    assert "Transfers are not supported in batch creates." in result.output
-    assert "transactions[0].transfer" in result.output
-    assert "Hint: transfers are not supported in batch creates" in result.output
-
-
-@respx.mock
-def test_batch_transfer_422_json_mode_passes_envelope_verbatim(configured):
-    respx.post("https://api.example.com/v1/transactions/batch").mock(
-        return_value=httpx.Response(422, json=_BATCH_TRANSFER_422)
-    )
-    result = runner.invoke(
-        cli_app, ["transactions", "batch", "--json"], input=json.dumps(_BATCH_TRANSFER_ITEMS)
-    )
-    assert result.exit_code == 1
-    assert json.loads(result.stdout) == _BATCH_TRANSFER_422
-    assert "Hint:" in result.stderr
-
-
-@respx.mock
-def test_batch_other_422_prints_no_transfer_hint(configured):
+def test_batch_422_surfaces_engine_envelope_without_hint(configured):
+    # thin wrapper: the engine owns batch validation (e.g. category_id now
+    # unconditionally required, 2026-08-10); the CLI adds no local check and
+    # no hint — the envelope surfaces verbatim.
     envelope = {
         "error": {
             "code": "VALIDATION_ERROR",

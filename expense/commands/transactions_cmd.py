@@ -45,17 +45,6 @@ _RECONCILIATION_LOCK_HINT = (
     "amount_cents/account_id/title/date/reconciliation_id are read-only — "
     "revert the reconciliation to draft first ('expense reconcile revert <id>')."
 )
-_TRANSFER_GUARD_HINT = (
-    "Hint: This transaction is part of a transfer pair. "
-    "amount_cents/account_id/date/exchange_rate are read-only on transfer legs — "
-    "delete and recreate the transfer to change them. "
-    "title/description/cleared/category_id/hashtag_ids remain editable."
-)
-_BATCH_TRANSFER_HINT = (
-    "Hint: transfers are not supported in batch creates. "
-    "Log each transfer individually with "
-    "'expense log --transfer --to-account-id <id> --to-amount <cents>'."
-)
 
 
 def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
@@ -111,19 +100,7 @@ def _update_hint_for(err: EngineError) -> str | None:
         "complete" in haystack or "lock" in haystack or "read-only" in haystack
     ):
         return _RECONCILIATION_LOCK_HINT
-    if "transfer" in haystack and ("pair" in haystack or "leg" in haystack or "guard" in haystack):
-        return _TRANSFER_GUARD_HINT
     return None
-
-
-def _is_batch_transfer_422(err: EngineError) -> bool:
-    if err.status != 422:
-        return False
-    # verified engine shape: fields = {"transactions[i].transfer": "Must not be present in batch."}
-    if isinstance(err.fields, dict) and any(key.endswith(".transfer") for key in err.fields):
-        return True
-    message = (err.message or "").lower()
-    return "transfer" in message and "batch" in message
 
 
 def _parse_hashtag_ids(raw: str) -> list[str]:
@@ -317,7 +294,7 @@ def delete(
     yes: bool = YES_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """DELETE /v1/transactions/{id}. Soft-delete; transfer pairs delete atomically.
+    """DELETE /v1/transactions/{id}. Soft-delete.
 
     Example: expense transactions delete <transaction-id> --yes
     """
@@ -350,7 +327,7 @@ def restore(
 ) -> None:
     """POST /v1/transactions/{id}/restore.
 
-    Re-applies balance impact and re-links transfer pair atomically.
+    Re-applies the balance impact.
 
     Example: expense transactions restore <transaction-id>
     """
@@ -365,13 +342,6 @@ def restore(
                 typer.echo(
                     "Hint: An account, category, or hashtag referenced by this transaction "
                     "is no longer active. Unarchive or restore the offending row, then retry.",
-                    err=True,
-                )
-            elif err.status == 409:
-                typer.echo(
-                    "Hint: This transaction is part of a transfer pair whose sibling is "
-                    "missing or already active. Restore both legs together, or delete the "
-                    "remaining sibling.",
                     err=True,
                 )
             raise
@@ -389,7 +359,7 @@ def batch(
     ),
     json_output: bool = JSON_OPT,
 ) -> None:
-    """POST /v1/transactions/batch. Atomic multi-create. Transfers not supported in batch.
+    """POST /v1/transactions/batch. Atomic multi-create.
 
     Example: cat transactions.json | expense transactions batch
     """
@@ -424,12 +394,7 @@ def batch(
             item["id"] = str(uuid4())
 
     with ExpenseClient(cfg, verbose=verbose) as client:
-        try:
-            body = client.post(f"/{_RESOURCE}/batch", json_body={"transactions": items})
-        except EngineError as err:
-            if _is_batch_transfer_422(err):
-                typer.echo(_BATCH_TRANSFER_HINT, err=True)
-            raise
+        body = client.post(f"/{_RESOURCE}/batch", json_body={"transactions": items})
     if json_output:
         typer.echo(json.dumps(body, indent=2))
         return
