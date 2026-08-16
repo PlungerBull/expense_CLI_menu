@@ -22,7 +22,7 @@ Rules for this file:
 | Dual-UX strategy (flat + TUI + quick-add) | 2026-04-25 | full entry below |
 | Questionary menu deleted ahead of its gate | 2026-07-02 | full entry below |
 | Mockup-first, and showing ≠ approval | 2026-05-24 (hardened) | full entry below |
-| polish-backlog.md holds only open work | 2026-07-06 | full entry below |
+| The backlog holds only open work (file now `backlog.md`) | 2026-07-06 | full entry below |
 | Manage detail: system categories are editable, not immutable | 2026-07-07 | full entry below |
 | Monthly report TUI is a sliding 4-month grid, not a single-month view | 2026-07-08 | full entry below |
 | `SyncContractError` + exit code 5 for /sync contract violations | 2026-07-08 | full entry below |
@@ -70,7 +70,7 @@ Rules for this file:
 
 **Rejected.** Treating an earlier approval as durable (screens drift, and so do the user's observations); inferring layout or columns from the engine response shape (scannability is the user's product judgment, not a derivable fact).
 
-## polish-backlog.md holds only open work (2026-07-06)
+## The backlog holds only open work (2026-07-06; file renamed `polish-backlog.md` → [backlog.md](backlog.md) 2026-08-15 when it absorbed the engine-rework recovery plan)
 
 **Context.** When the 2026-07-02 quality review was fully worked off, the choice was append the new review below the closed one, or replace.
 

@@ -16,7 +16,7 @@
 > `fetch_body`/`render_record`/`items_of` and friends in `_resource.py`).
 > *(Backlog § references in this doc are to that 2026-07-02 review, fully worked off and
 > removed from the live file — last full copy at commit `2d42482`;
-> [polish-backlog.md](polish-backlog.md) now carries the open 2026-07-06 best-practices review.)*
+> [backlog.md](backlog.md) — renamed from `polish-backlog.md` 2026-08-15 — now carries the merged open-work queue.)*
 > Entry command is **`expense world`**. This TUI
 > **replaced the questionary `expense menu`**, which was **deleted at roadmap Step 10.X
 > (2026-07-02)** — `expense/menu/`, its tests, the Typer command, and the `questionary`
