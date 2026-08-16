@@ -58,7 +58,7 @@ from expense.tui.screens._form import FormScreen
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
 from expense.tui.theme import AMOUNT_RULE, BALANCE_RULE, Palette, resolve_palette
-from expense.tui.widgets.cells import amount_cell
+from expense.tui.widgets.cells import amount_cell, difference_cell
 from expense.tui.widgets.checklist import CheckList
 from expense.tui.widgets.cursor_list import CursorList
 from expense.tui.widgets.header import Breadcrumb
@@ -67,7 +67,7 @@ from expense.tui.widgets.header import Breadcrumb
 # (reconcile_cmd.format_status / format_period) — one copy, per the §5 rule.
 _period = reconcile_cmd.format_period
 
-_BATCH_HEADERS = ["Name", "Period", "Begin", "End", "Source", "Status"]
+_BATCH_HEADERS = ["Name", "Period", "Begin", "End", "Diff", "Status"]
 
 
 def _batch_sort_key(r: dict):
@@ -94,7 +94,7 @@ def batch_rows(items: list[dict], palette: Palette | None = None) -> list:
             _period(it),
             amount_cell(it.get("beginning_balance_cents"), palette, BALANCE_RULE),
             amount_cell(it.get("ending_balance_cents"), palette, BALANCE_RULE),
-            it.get("beginning_balance_source") or "—",
+            difference_cell(it.get("difference_cents"), palette),
             reconcile_cmd.format_status(status),
         ]
         rows.append((it.get("id"), cells, "dim" if status == 2 else ""))
@@ -199,7 +199,7 @@ class ReconciliationsScreen(SectionScreen):
         self._batch_list = CursorList(
             _BATCH_HEADERS,
             batch_rows(self._batches, palette=palette),
-            align_right={2, 3},
+            align_right={2, 3, 4},
             empty="(no batches — press n to create one)",
             title=self._batch_caption(),  # panel title; updated as the account cursor moves
             page_size=pane_size,
@@ -577,6 +577,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
         status = reconcile_cmd.format_status(r.get("status"))
         begin = amount_cell(r.get("beginning_balance_cents"), palette, BALANCE_RULE)
         end = amount_cell(r.get("ending_balance_cents"), palette, BALANCE_RULE)
+        diff = difference_cell(r.get("difference_cents"), palette)
         text = Text.assemble(
             (r.get("name") or "—", "bold"),
             ("  ·  ", "dim"),
@@ -586,9 +587,10 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
             ("\n", ""),
             ("begin ", "dim"),
             begin if isinstance(begin, Text) else (begin, ""),
-            (f"  ({r.get('beginning_balance_source') or '—'})", "dim"),
             ("    end ", "dim"),
             end if isinstance(end, Text) else (end, ""),
+            ("    diff ", "dim"),
+            diff if isinstance(diff, Text) else (diff, ""),
             ("    status ", "dim"),
             _status_span(status, palette),
         )

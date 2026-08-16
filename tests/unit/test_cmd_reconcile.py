@@ -125,6 +125,25 @@ def test_list_happy_with_account_filter(configured):
 
 
 @respx.mock
+def test_list_renders_difference_column(configured):
+    """The flat table always prints the number — 0.00 when the batch balances,
+    the signed figure when it does not. No glyph translation: this table gets
+    piped and eyeballed (Phase 3 sketch, the CLI half of option H)."""
+    respx.get("https://api.example.com/v1/reconciliations").mock(
+        return_value=httpx.Response(200, json=LIST_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["reconcile", "list"])
+    assert result.exit_code == 0, result.output
+    assert "Diff" in result.output
+
+    lines = result.output.splitlines()
+    balanced = next(line for line in lines if RECON_DRAFT_RESPONSE["id"] in line)
+    off = next(line for line in lines if RECON_OFF_RESPONSE["id"] in line)
+    assert "0.00" in balanced
+    assert "-35.00" in off
+
+
+@respx.mock
 def test_list_empty(configured):
     respx.get("https://api.example.com/v1/reconciliations").mock(
         return_value=httpx.Response(200, json={"items": [], "total": 0, "limit": 50, "offset": 0})

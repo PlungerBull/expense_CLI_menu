@@ -156,6 +156,7 @@ def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
             "period": format_period(item),
             "begin": format_cents(item.get("beginning_balance_cents")),
             "end": format_cents(item.get("ending_balance_cents")),
+            "diff": format_cents(item.get("difference_cents")),
             "status": format_status(item.get("status")),
             "deleted": format_bool(item.get("deleted_at")),
             "id": item.get("id") or "—",
@@ -169,12 +170,13 @@ def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
             "period": "Period",
             "begin": "Begin",
             "end": "End",
+            "diff": "Diff",
             "status": "Status",
             "deleted": "Deleted",
             "id": "Id",
         },
         rows=rows,
-        align_right={"begin", "end"},
+        align_right={"begin", "end", "diff"},
     )
     render_pagination_hint(body, items)
 

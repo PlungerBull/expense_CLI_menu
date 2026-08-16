@@ -17,7 +17,7 @@ import expense.tui as tui_pkg
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.theme import EXPENSE_DARK, FALLBACK, Palette, resolve_palette
-from expense.tui.widgets.cells import amount_cell
+from expense.tui.widgets.cells import amount_cell, difference_cell
 from tests.unit.helpers import wait_for
 
 PALETTE = Palette("#0f0", "#f00", "#ff0")
@@ -58,6 +58,20 @@ def test_amount_cell_rule_matrix():
     # income-only: positives colored, negatives bare
     assert amount_cell(100, PALETTE, "income-only").style == PALETTE.success
     assert isinstance(amount_cell(-100, PALETTE, "income-only"), str)
+
+
+def test_difference_cell_balances_to_a_dim_dash():
+    """Phase 3 sketch picks: sign-colored when off (B), dim em dash when it
+    balances (H). Zero must never render as a colored 0.00 — a balanced batch
+    is the goal state, not a number to check."""
+    balanced = difference_cell(0, PALETTE)
+    assert str(balanced) == "—" and balanced.style == "dim"
+    # a missing/omitted field reads the same, never a misleading 0.00
+    assert str(difference_cell(None, PALETTE)) == "—"
+    # off in either direction: sign-colored like every other amount
+    assert difference_cell(-3500, PALETTE).style == PALETTE.error
+    assert difference_cell(3500, PALETTE).style == PALETTE.success
+    assert str(difference_cell(-3500, PALETTE)) == "-35.00"
 
 
 def test_no_literal_color_styles_in_tui():

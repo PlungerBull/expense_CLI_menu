@@ -2,6 +2,8 @@
 
 import asyncio
 
+from textual.widgets import Static
+
 from expense.errors import EngineError
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.modals import ConfirmModal
@@ -63,7 +65,7 @@ DRAFT = {
     "date_end": "2026-04-30T00:00:00Z",
     "beginning_balance_cents": 958000,
     "ending_balance_cents": 946000,
-    "beginning_balance_source": "chained",
+    "difference_cents": -3500,
     "status": 1,
 }
 ASSIGNED = [
@@ -117,6 +119,24 @@ def _patch(monkeypatch):
 
 async def _wait_list(screen, pilot):
     await wait_for(pilot, lambda: screen._list is not None)
+
+
+def test_header_shows_difference_not_source(fake_client, monkeypatch):
+    """The header's old "(chained)"/"(manual)" tag answered a question the
+    engine no longer has two answers to; it carries the add-up check instead."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = ReconciliationDetailScreen(dict(DRAFT))
+            await app.push_screen(screen)
+            await _wait_list(screen, pilot)
+            head = str(screen.query_one("#rhead", Static).visual)
+            assert "diff" in head and "-35.00" in head
+            assert "chained" not in head and "manual" not in head
+
+    asyncio.run(scenario())
 
 
 def test_draft_lists_assigned_checked_plus_available(fake_client, monkeypatch):

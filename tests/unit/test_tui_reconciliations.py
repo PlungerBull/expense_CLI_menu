@@ -21,7 +21,7 @@ ITEMS = [
         "date_end": "2026-03-31T00:00:00Z",
         "beginning_balance_cents": 1200000,
         "ending_balance_cents": 958000,
-        "beginning_balance_source": "chained",
+        "difference_cents": 0,
         "status": 2,
     },
     {
@@ -30,7 +30,7 @@ ITEMS = [
         "name": "April 2026",
         "beginning_balance_cents": 958000,
         "ending_balance_cents": None,
-        "beginning_balance_source": "manual",
+        "difference_cents": -3500,
         "status": 1,
     },
 ]
@@ -45,11 +45,15 @@ def test_batch_rows_format():
     assert cells[0] == "March 2026"
     assert cells[1] == "2026-03-01 → 2026-03-31"
     assert cells[2] == "12,000.00" and cells[3] == "9,580.00"
-    assert cells[4] == "chained" and cells[5] == "completed"
+    # a balanced batch shows a dim em dash, not 0.00 (Phase 3 sketch, option H)
+    assert str(cells[4]) == "—" and cells[5] == "completed"
     assert rows[0][2] == "dim"  # completed dimmed
-    # draft, open-ended period, null end balance
-    assert batch_rows([ITEMS[1]])[0][1][5] == "draft"
-    assert batch_rows([ITEMS[1]])[0][1][1] == "—"
+    # draft, open-ended period, null end balance — and a batch that is off by
+    # -35.00 prints the signed figure
+    off = batch_rows([ITEMS[1]])[0][1]
+    assert off[5] == "draft"
+    assert off[1] == "—"
+    assert str(off[4]) == "-35.00"
 
 
 def _patch(monkeypatch):

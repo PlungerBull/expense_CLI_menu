@@ -13,6 +13,23 @@ def swatch(color: object) -> Text:
     return Text("—", style="dim")
 
 
+def difference_cell(cents: object, palette: Palette | None) -> str | Text:
+    """A reconciliation's `difference_cents`: a dim em-dash when it balances,
+    the sign-colored figure when it doesn't.
+
+    Zero is the goal state, so it reads as "nothing to see" rather than as a
+    number to check (option H of the Phase 3 sketch). A non-zero difference is
+    sign-colored like every other amount in the TUI (option B) — the sign says
+    which way to look. Missing/non-int (an older engine body) also renders as
+    the em-dash, never as a misleading 0.00.
+    """
+    if not isinstance(cents, int) or isinstance(cents, bool):
+        return Text("—", style="dim")
+    if cents == 0:
+        return Text("—", style="dim")
+    return amount_cell(cents, palette, "sign")
+
+
 def amount_cell(cents: object, palette: Palette | None, rule: str) -> str | Text:
     """`format_cents`, sign-colored per `rule` when a palette is given.
 
