@@ -30,6 +30,9 @@ INBOX_RESPONSE = {
     "updated_at": "2026-04-24T10:00:00Z",
     "deleted_at": None,
     "version": 1,
+    # Engine ships this on every inbox representation since 2026-08-14: sorted
+    # ascending, [] when empty, never null, never omitted (backlog 6.1).
+    "hashtag_ids": [],
 }
 
 LIST_RESPONSE = {
@@ -66,8 +69,18 @@ def test_list_overdue_param(configured):
 
 @respx.mock
 def test_list_resolves_names_from_live_reference_lists(configured):
-    """The renderer joins account/category ids against the live reference lists."""
-    item = {**INBOX_RESPONSE, "account_id": "acct-id", "category_id": "cat-id"}
+    """The renderer joins account/category/hashtag ids against the live reference lists.
+
+    The `/hashtags` route must be mocked even though `_load_name_map` swallows
+    every exception: without it the Tags column degrades silently to short-ids
+    and this test would pass while asserting nothing about the column at all.
+    """
+    item = {
+        **INBOX_RESPONSE,
+        "account_id": "acct-id",
+        "category_id": "cat-id",
+        "hashtag_ids": ["tag-id"],
+    }
     respx.get("https://api.example.com/v1/inbox").mock(
         return_value=httpx.Response(
             200, json={"items": [item], "total": 1, "limit": 50, "offset": 0}
@@ -95,11 +108,36 @@ def test_list_resolves_names_from_live_reference_lists(configured):
             },
         )
     )
+    hashtags_route = respx.get("https://api.example.com/v1/hashtags").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [{"id": "tag-id", "name": "club"}],
+                "total": 1,
+                "limit": 200,
+                "offset": 0,
+            },
+        )
+    )
     result = runner.invoke(cli_app, ["inbox", "list"])
     assert result.exit_code == 0, result.output
-    assert accounts_route.called and categories_route.called
+    assert accounts_route.called and categories_route.called and hashtags_route.called
     assert "BCP Soles" in result.output
     assert "Food" in result.output
+    assert "Tags" in result.output
+    assert "club" in result.output
+
+
+@respx.mock
+def test_list_untagged_draft_renders_dash_not_blank(configured):
+    """`—` distinguishes "no tags" from a missing column. Shared rule with transactions."""
+    respx.get("https://api.example.com/v1/inbox").mock(
+        return_value=httpx.Response(200, json=LIST_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["inbox", "list"])
+    assert result.exit_code == 0, result.output
+    assert "Tags" in result.output
+    assert "—" in result.output
 
 
 @respx.mock
@@ -229,6 +267,95 @@ def test_update_partial_payload(configured):
 
     body = json.loads(route.calls.last.request.content)
     assert body == {"title": "renamed"}
+
+
+# --- hashtags on drafts (backlog 6.1) ----------------------------------------
+# Engine accepted these from 2026-08-14; the client surfaced them 2026-08-16.
+# PUT semantics are replacement: omit = leave alone, list = replace, "" = clear.
+# An explicit null is a 422 on every inbox field, so it must never be sent.
+
+
+@respx.mock
+def test_add_sends_hashtag_ids(configured):
+    route = respx.post("https://api.example.com/v1/inbox").mock(
+        return_value=httpx.Response(201, json=INBOX_RESPONSE)
+    )
+    result = runner.invoke(
+        cli_app,
+        [
+            "inbox", "add",
+            "--title", "lunch",
+            "--amount", "-2500",
+            "--hashtag-ids", "h-1, h-2",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    body = json.loads(route.calls.last.request.content)
+    assert body["hashtag_ids"] == ["h-1", "h-2"]
+
+
+@respx.mock
+def test_add_omits_hashtag_ids_when_flag_absent(configured):
+    """Optional on create — no reason to send an empty list on a brand-new draft."""
+    route = respx.post("https://api.example.com/v1/inbox").mock(
+        return_value=httpx.Response(201, json=INBOX_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["inbox", "add", "--title", "x", "--amount", "-1"])
+    assert result.exit_code == 0, result.output
+    assert "hashtag_ids" not in json.loads(route.calls.last.request.content)
+
+
+@respx.mock
+def test_update_replaces_hashtag_ids(configured):
+    route = respx.put("https://api.example.com/v1/inbox/abc").mock(
+        return_value=httpx.Response(200, json=INBOX_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["inbox", "update", "abc", "--hashtag-ids", "h-1,h-2,h-3"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(route.calls.last.request.content) == {"hashtag_ids": ["h-1", "h-2", "h-3"]}
+
+
+@respx.mock
+def test_update_empty_string_clears_hashtags(configured):
+    """`""` must survive as `[]` — a dropped key would silently no-op the clear."""
+    route = respx.put("https://api.example.com/v1/inbox/abc").mock(
+        return_value=httpx.Response(200, json=INBOX_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["inbox", "update", "abc", "--hashtag-ids", ""])
+    assert result.exit_code == 0, result.output
+    assert json.loads(route.calls.last.request.content) == {"hashtag_ids": []}
+
+
+@respx.mock
+def test_update_without_the_flag_leaves_tags_alone(configured):
+    """The key must be absent, not null — an explicit null is a 422."""
+    route = respx.put("https://api.example.com/v1/inbox/abc").mock(
+        return_value=httpx.Response(200, json=INBOX_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["inbox", "update", "abc", "--title", "renamed"])
+    assert result.exit_code == 0, result.output
+    assert "hashtag_ids" not in json.loads(route.calls.last.request.content)
+
+
+@respx.mock
+def test_update_invalid_hashtag_id_surfaces_engine_422(configured):
+    """Bad ids are the engine's call; the client does not pre-validate."""
+    respx.put("https://api.example.com/v1/inbox/abc").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Some hashtag IDs are invalid.",
+                    "fields": {"hashtag_ids": ["h-nope"]},
+                }
+            },
+        )
+    )
+    result = runner.invoke(cli_app, ["inbox", "update", "abc", "--hashtag-ids", "h-nope"])
+    assert result.exit_code == 1
+    assert "Some hashtag IDs are invalid." in result.output
+    assert "hashtag_ids" in result.output
 
 
 def test_delete_requires_yes_in_non_tty(configured):

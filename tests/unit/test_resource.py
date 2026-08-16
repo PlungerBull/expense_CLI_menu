@@ -28,6 +28,7 @@ from expense.commands._resource import (
     load_account_name_map,
     load_category_name_map,
     load_hashtag_name_map,
+    parse_hashtag_ids,
     redact_token,
     render_pagination_hint,
     render_record,
@@ -412,6 +413,34 @@ def test_format_hashtag_cell_empty_or_non_list_is_dash():
     assert format_hashtag_cell([], {}, max_width=24) == "—"
     assert format_hashtag_cell(None, {}, max_width=24) == "—"
     assert format_hashtag_cell("h1", {}, max_width=24) == "—"
+
+
+# --- parse_hashtag_ids -------------------------------------------------------
+# Hoisted to _resource.py with backlog 6.1 so the four commands taking
+# `--hashtag-ids` (transactions update, log, inbox add, inbox update) share one
+# parse. Behaviour pinned here rather than in each command's suite.
+
+
+def test_parse_hashtag_ids_splits_and_strips():
+    assert parse_hashtag_ids("h-1, h-2,h-3") == ["h-1", "h-2", "h-3"]
+    assert parse_hashtag_ids("  h-1  ") == ["h-1"]
+
+
+def test_parse_hashtag_ids_empty_string_is_empty_list_not_none():
+    """`--hashtag-ids ""` is an explicit *clear*, so it must survive as `[]`.
+
+    `build_update_payload` drops `None` (meaning "leave alone") but keeps `[]`,
+    which the engine acts on. Returning `None` here would silently turn a clear
+    into a no-op.
+    """
+    assert parse_hashtag_ids("") == []
+    assert parse_hashtag_ids(",") == []
+    assert parse_hashtag_ids("  ,  ") == []
+
+
+def test_parse_hashtag_ids_does_not_validate_uuids():
+    """Bad ids are the engine's 422, not ours — the thin-wrapper rule."""
+    assert parse_hashtag_ids("not-a-uuid,also-bad") == ["not-a-uuid", "also-bad"]
 
 
 # ---------------------------------------------------------------------------

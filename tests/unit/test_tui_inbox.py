@@ -18,6 +18,7 @@ ITEMS = [
         "account_id": "acc1",
         "category_id": "cat1",
         "status": 1,
+        "hashtag_ids": ["tag1"],
     },
     {
         "id": "b",
@@ -28,6 +29,7 @@ ITEMS = [
         "account_id": "acc1",
         "category_id": "cat1",
         "status": 2,
+        "hashtag_ids": [],
     },
     {
         "id": "c",
@@ -38,21 +40,33 @@ ITEMS = [
         "account_id": None,
         "category_id": None,
         "status": 1,
+        "hashtag_ids": [],
     },
 ]
 ACCOUNTS = {"acc1": "BCP Soles"}
 CATEGORIES = {"cat1": "Comida"}
+HASHTAGS = {"tag1": "obra"}
 
 
 def test_inbox_rows_glyphs_and_format():
-    by_id = dict(inbox_rows(ITEMS, ACCOUNTS, CATEGORIES, ready_ids={"a"}))
+    # Cells are asserted positionally; the Tags column landed at index 7 with
+    # backlog 6.1, pushing status to 8. `align_right={3}` in the screen is an
+    # index into this same list — amount must stay at 3.
+    by_id = dict(inbox_rows(ITEMS, ACCOUNTS, CATEGORIES, HASHTAGS, ready_ids={"a"}))
     # ready (in ready set) → ▶, amount formatted, names resolved
     assert by_id["a"][0] == "▶" and by_id["a"][3] == "-180.00"
-    assert by_id["a"][5] == "BCP Soles" and by_id["a"][6] == "Comida" and by_id["a"][7] == "pend"
+    assert by_id["a"][5] == "BCP Soles" and by_id["a"][6] == "Comida" and by_id["a"][8] == "pend"
     # promoted (status 2) → ✓
-    assert by_id["b"][0] == "✓" and by_id["b"][7] == "prom"
+    assert by_id["b"][0] == "✓" and by_id["b"][8] == "prom"
     # incomplete (not ready, not promoted) → ·; null amount + unresolved refs
     assert by_id["c"][0] == "·" and by_id["c"][3] == "(null)" and by_id["c"][5] == "—"
+
+
+def test_inbox_rows_render_tags():
+    """Tags resolve to names; an untagged draft says `—`, never blank."""
+    by_id = dict(inbox_rows(ITEMS, ACCOUNTS, CATEGORIES, HASHTAGS, ready_ids={"a"}))
+    assert by_id["a"][7] == "obra"
+    assert by_id["b"][7] == "—"
 
 
 def test_pressing_f_cycles_filter_and_reloads(monkeypatch):
@@ -124,6 +138,8 @@ def test_inbox_screen_lists_and_opens_detail(monkeypatch):
             await pilot.pause(0.05)
             assert isinstance(app.screen, QuickAddLogScreen)
             assert app.screen._mode == "edit" and app.screen._resource == "inbox"
-            assert "hashtags" not in app.screen._sequence()  # drafts have no hashtags
+            # Drafts carry hashtag_ids and the tags survive promotion, so the
+            # draft form offers the same picker as a transaction (backlog 6.1).
+            assert "hashtags" in app.screen._sequence()
 
     asyncio.run(scenario())

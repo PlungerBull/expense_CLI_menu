@@ -21,6 +21,7 @@ from expense.commands._resource import (
     load_account_name_map,
     load_category_name_map,
     load_hashtag_name_map,
+    parse_hashtag_ids,
     render_pagination_hint,
     render_record,
     render_table,
@@ -101,10 +102,6 @@ def _update_hint_for(err: EngineError) -> str | None:
     ):
         return _RECONCILIATION_LOCK_HINT
     return None
-
-
-def _parse_hashtag_ids(raw: str) -> list[str]:
-    return [piece.strip() for piece in raw.split(",") if piece.strip()]
 
 
 def fetch_transactions(
@@ -258,7 +255,7 @@ def update(
             "account_id": account_id,
             "category_id": category_id,
             "description": description,
-            "hashtag_ids": _parse_hashtag_ids(hashtag_ids) if hashtag_ids is not None else None,
+            "hashtag_ids": parse_hashtag_ids(hashtag_ids) if hashtag_ids is not None else None,
             "reconciliation_id": reconciliation_id,
         }
     )

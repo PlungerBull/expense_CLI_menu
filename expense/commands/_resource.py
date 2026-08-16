@@ -363,6 +363,23 @@ def account_choices(
     return out
 
 
+def parse_hashtag_ids(raw: str) -> list[str]:
+    """`"a, b ,,c"` → `["a", "b", "c"]`. Shared by every command taking `--hashtag-ids`.
+
+    Two behaviours here are load-bearing, not incidental:
+
+    * **No client-side UUID validation.** A bad id is the engine's 422
+      (`fields.hashtag_ids`, "Some hashtag IDs are invalid."), and it owns the
+      archived-hashtag rule too — the thin-wrapper rule says we don't second-guess it.
+    * **`""` → `[]`, not `None`.** An empty string is an explicit *clear*, so callers
+      must pass the result to `build_update_payload` only when the flag was supplied;
+      `[]` is a real value the engine acts on, while a dropped key means "leave alone".
+
+    Consumers: `transactions update`, `log`, `inbox add`, `inbox update`.
+    """
+    return [piece.strip() for piece in raw.split(",") if piece.strip()]
+
+
 def format_hashtag_cell(ids: object, name_map: dict[str, str], *, max_width: int) -> str:
     """Joined hashtag names for one table cell; unresolved ids show `xxxxxxxx…`.
 

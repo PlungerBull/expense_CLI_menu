@@ -14,10 +14,13 @@ from expense.commands._resource import (
     effective_limit,
     fetch_body,
     format_cents,
+    format_hashtag_cell,
     format_short_date,
     items_of,
     load_account_name_map,
     load_category_name_map,
+    load_hashtag_name_map,
+    parse_hashtag_ids,
     render_pagination_hint,
     render_record,
     render_table,
@@ -58,6 +61,7 @@ def _render_inbox_list(body: dict, *, json_mode: bool) -> None:
 
     accounts = load_account_name_map()
     categories = load_category_name_map()
+    hashtags = load_hashtag_name_map()
     rows = [
         {
             "title": truncate(item.get("title") or "—", 24),
@@ -67,6 +71,7 @@ def _render_inbox_list(body: dict, *, json_mode: bool) -> None:
             "account": resolve_name(item.get("account_id"), accounts),
             "category": resolve_name(item.get("category_id"), categories),
             "status": _fmt_status(item.get("status")),
+            "hashtags": format_hashtag_cell(item.get("hashtag_ids"), hashtags, max_width=24),
         }
         for item in items
     ]
@@ -79,6 +84,8 @@ def _render_inbox_list(body: dict, *, json_mode: bool) -> None:
             "account": "Account",
             "category": "Category",
             "status": "Status",
+            # Tags last, matching `transactions list` (backlog 6.1, sketch pick E).
+            "hashtags": "Tags",
         },
         rows=rows,
         align_right={"amount"},
@@ -195,9 +202,18 @@ def add(
         None, "--category-id", help="Category UUID. Optional on draft; required to promote."
     ),
     description: str | None = typer.Option(None, "--description", help="Free-form notes."),
+    hashtag_ids: str | None = typer.Option(
+        None,
+        "--hashtag-ids",
+        help="Comma-separated hashtag UUIDs to attach at creation. "
+        "Engine rejects archived ids with 422.",
+    ),
     json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/inbox. Drop a partial draft into the inbox; fill in later, then promote.
+
+    Tags survive promotion — `expense inbox promote` returns a transaction carrying
+    the draft's `hashtag_ids`, so there is nothing to re-attach afterwards.
 
     No --cleared. `expense_transaction_inbox` has no `cleared` column and never has;
     the inbox write models are strict and accept exactly seven fields (id on create,
@@ -208,7 +224,7 @@ def add(
     (Removed 2026-08-16, backlog Phase 5 — found by the contract gate; inbox scope
     confirmed by the engine author the same day.)
 
-    Example: expense inbox add --title "Lunch" --amount -1500
+    Example: expense inbox add --title "Lunch" --amount -1500 --hashtag-ids <id>,<id>
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
@@ -227,6 +243,8 @@ def add(
         payload["category_id"] = category_id
     if description is not None:
         payload["description"] = description
+    if hashtag_ids is not None:
+        payload["hashtag_ids"] = parse_hashtag_ids(hashtag_ids)
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
@@ -246,11 +264,18 @@ def update(
     account_id: str | None = typer.Option(None, "--account-id"),
     category_id: str | None = typer.Option(None, "--category-id"),
     description: str | None = typer.Option(None, "--description"),
+    hashtag_ids: str | None = typer.Option(
+        None, "--hashtag-ids", help="Comma-separated list; replaces the existing set."
+    ),
     json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/inbox/{id}.
 
     No --cleared — see `add`; the inbox table has no such column.
+
+    `--hashtag-ids` is a replacement, matching `transactions update`: omit the flag
+    to leave the tags alone, pass a list to become the whole set, pass "" to clear.
+    Never sends an explicit null — the engine 422s that on every inbox field.
 
     Example: expense inbox update <inbox-id> --account-id <id> --category-id <id>
     """
@@ -265,6 +290,7 @@ def update(
             "account_id": account_id,
             "category_id": category_id,
             "description": description,
+            "hashtag_ids": parse_hashtag_ids(hashtag_ids) if hashtag_ids is not None else None,
         }
     )
 

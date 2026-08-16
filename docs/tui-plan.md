@@ -246,8 +246,10 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   signed-amount validation, hashtag multi-select, inline 422 surfacing. (The
   conditional transfer sub-flow was retired 2026-08-16 — see the banner above. The
   **tri-state cleared** field went 2026-08-17 with the engine's deletion of the
-  column, `sql/035`. Note the three modes no longer share one field set: only
-  Transaction-edit offers hashtags, which is a known gap for drafts — backlog 6.1.)
+  column, `sql/035`. Both edit modes share one field set again as of 2026-08-16:
+  Draft-edit offers the same hashtag multi-select as Transaction-edit — the
+  resource gate that excluded drafts was the whole of backlog 6.1's TUI half,
+  and the tags survive promotion, so a draft tagged here needs no re-tagging.)
 - **Small forms** (reuse the form component): account, category, hashtag create ✅ /
   edit ✅ (`e` on the list row, the Manage edit flow above).
 - **Reconciliation** create/edit form. *(Reorder — originally an `$EDITOR` shell-out —

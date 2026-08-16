@@ -157,16 +157,10 @@ class QuickAddLogScreen(FormScreen):
     # ---- field sequence --------------------------------------------------
     def _sequence(self) -> list[str]:
         if self._mode == "edit":
-            seq = ["date", "title", "amount", "account", "category"]
-            if self._resource == "transactions":
-                # Drafts have carried hashtag_ids since 2026-08-14 and the tags
-                # survive promotion, so gating this on the resource means a draft
-                # can be tagged at creation and never re-tagged. Fixing it is one
-                # line — parked with the rest of inbox-hashtags (backlog 6.1),
-                # which also owes the CLI its `inbox add/update --hashtags`.
-                seq.append("hashtags")
-            seq.append("note")
-            return seq
+            # Same sequence for both resources: drafts have carried hashtag_ids
+            # since 2026-08-14 and the tags survive promotion, so there is no
+            # reason for the inbox form to differ (backlog 6.1, 2026-08-16).
+            return ["date", "title", "amount", "account", "category", "hashtags", "note"]
         return ["date", "title", "amount", "account", "category", "hashtags", "note"]
 
     def _required(self) -> tuple[str, ...]:

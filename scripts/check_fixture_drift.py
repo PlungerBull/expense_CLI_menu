@@ -87,6 +87,7 @@ KNOWN_LOCAL = frozenset(
         "acc2",
         "cat1",
         "cat2",
+        "tag1",  # hashtag name-map fixture, test_tui_inbox.py (backlog 6.1)
         "aaaa",
         "bbbb",
         "amt",

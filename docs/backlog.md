@@ -57,6 +57,14 @@ accepted there, which 422'd and lost the whole write (removed; sketch:
 [mockups/expense-world-phase5-inbox-cleared.html](mockups/expense-world-phase5-inbox-cleared.html)).
 All five deleted per the rule above, see git history.)
 
+**Baseline (2026-08-16, after Phase 6.1):** 882 unit tests green, and the
+contract suite is 10/10 against the disposable engine on `:8001`. (868 after
+Phase 5; 6.1 added 14.) The note below still holds and is why 6.1 shipped with a
+live check rather than unit tests alone — worth repeating, because
+[scripts/check_fixture_drift.py](../scripts/check_fixture_drift.py) cannot help
+with *additive* engine changes at all: it only detects fields the engine has
+**stopped** serving, never one a fixture is missing.
+
 **Baseline (2026-08-16, after Phase 5):** 868 unit tests green — fewer than the
 900 at merge time because Phases 1–4 deleted features and their tests with them.
 Unit green was **false comfort** for Phases 1–4: the respx fixtures pinned the
@@ -78,13 +86,17 @@ contract detail and engine references.
 
 ## Phase 6 — additive engine capability (unusable until built)
 
-- [ ] **6.1 [UI] Inbox hashtags.** [Entry 2026-08-14 "inbox drafts carry
-  hashtags".] Add `--hashtags` to `inbox add`/`update` (same comma-separated
-  shape as transactions; PUT semantics are replacement — omit = leave, `[]` =
-  clear); render `hashtag_ids` on inbox rows (CLI table column + TUI — the
-  TUI form can reuse the transaction form's hashtag multi-select). No
-  post-promote re-tagging exists in this repo, so nothing to remove. Column
-  additions → mockup first.
+*(6.1 — inbox hashtags — closed 2026-08-16; deleted per the rule above, see git
+history. Sketch:
+[mockups/expense-world-phase6-inbox-hashtags.html](mockups/expense-world-phase6-inbox-hashtags.html),
+picks A/E/H. What it changed beyond the plan: the flag is `--hashtag-ids`, not
+the `--hashtags` this item wrote — three shipped surfaces already spelled it the
+long way, and the option takes ids, not names. `parse_hashtag_ids` was hoisted
+to `_resource.py` first, since a naive implementation would have made four
+copies of one comma-split. Verified against a real engine: contract suite 10/10
+on `:8001`, including a new `test_inbox_hashtags_lifecycle` that pins all three
+PUT semantics and that promotion carries the tags across.)*
+
 - [ ] **6.2 [UI] People API.** [Entry 2026-08-14 "the People API ships".]
   (a) a create-person command (`POST /people` — the only `/people` route ever;
   everything else goes through `/accounts/{id}`, which already accepts person
