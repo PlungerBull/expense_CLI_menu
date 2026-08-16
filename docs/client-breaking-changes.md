@@ -28,6 +28,58 @@ must do.
 
 ---
 
+## 2026-08-16 ⚠️ BREAKING — `cleared` is deleted from the ledger
+
+**Engine change** (`sql/035`). The `cleared` boolean is gone from
+`expense_transactions` and from every request and response model that carried it.
+
+It was a leftover from the stock bank-ledger schema this project started from.
+Nothing in the engine ever wrote it except the caller, nothing read it except the
+`?cleared=` list filter, and — despite schema docs claiming it "drives
+reconciliation" — it was never connected to reconciliation at all: completing a
+batch never set it, and it was not in the locked-field set, so it could be flipped
+on a row inside a completed batch. **Zero rows had it set.**
+
+### What breaks
+
+1. **`cleared` is absent from every transaction response body** — `GET
+   /transactions`, `GET /transactions/{id}`, and the bodies returned by create,
+   batch, update, delete, restore and promote. `row["cleared"]` is a `KeyError`.
+2. **Sending it is `422` on the unknown field** — `POST /transactions`,
+   `POST /transactions/batch`, `PUT /transactions/{id}`. Request models fail
+   closed, so it is *not* silently dropped: the whole write is rejected. An
+   update carrying an unrelated rename loses the rename too.
+3. **`GET /transactions?cleared=true` no longer filters — and does not error.**
+   It returns the unfiltered list. This is the dangerous one: a client that keeps
+   sending the param gets a complete list that looks exactly like a filtered
+   answer. Do not rely on an error to catch this.
+
+### What the client must do
+
+**Done 2026-08-17, commit `02c95e8`.** Removed: `transactions list
+--cleared/--no-cleared` and the `cleared=` parameter on `fetch_transactions`;
+`transactions update --cleared/--no-cleared`; `log --cleared/--no-cleared`; the
+TUI quick-log `CLEARED?` field (label, hint, `_ENGINE_FIELD` entry, prefill
+seeding, `_sequence` entry, bar renderer, `_commit_cleared` handler); and the key
+from every transaction fixture. Guard tests pin all three failure modes.
+Mockup: [mockups/expense-world-cleared-removal.html](mockups/expense-world-cleared-removal.html).
+
+### What does *not* change
+
+**Nothing replaces it, by design.** A row is confirmed by being assigned to a
+reconciliation that adds up and is completed — that is the only
+statement-confirmation mechanism, and it already has a client surface
+(`transactions list --reconciliation-id`). If a per-row "confirmed" meaning is
+ever wanted, the engine will compute it at read time from reconciliation status,
+never store it on the row.
+
+The **inbox** never had `cleared` and never had `reconciliation_id`; there is no
+route assigning a draft to a batch. A draft is not a ledger row. (The client's
+`inbox add/update --cleared` flags were removed a day earlier, 2026-08-16, when
+the Phase 5 contract gate caught them 422-ing — same field, different reason.)
+
+---
+
 ## 2026-08-14 ➕ ADDITIVE — inbox drafts carry hashtags
 
 **Engine change** (`sql/033`; `app/helpers/hashtag_links.py` new,

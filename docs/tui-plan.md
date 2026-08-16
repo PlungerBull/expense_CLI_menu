@@ -242,10 +242,12 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - **Confirm modal** (one component) for promote / delete / restore /
   complete / revert / sync — reuses idempotency + error envelope. (Archive is
   deliberately **not** confirm-gated — reversible toggle, 2026-07-11.)
-- **The transaction form** (Log / Inbox-add / Transaction-edit — same fields): required
-  fields, signed-amount validation, **tri-state cleared**, hashtag multi-select,
-  inline 422 surfacing. (The conditional transfer sub-flow was retired 2026-08-16 —
-  see the banner above.)
+- **The transaction form** (Log / Transaction-edit / Draft-edit): required fields,
+  signed-amount validation, hashtag multi-select, inline 422 surfacing. (The
+  conditional transfer sub-flow was retired 2026-08-16 — see the banner above. The
+  **tri-state cleared** field went 2026-08-17 with the engine's deletion of the
+  column, `sql/035`. Note the three modes no longer share one field set: only
+  Transaction-edit offers hashtags, which is a known gap for drafts — backlog 6.1.)
 - **Small forms** (reuse the form component): account, category, hashtag create ✅ /
   edit ✅ (`e` on the list row, the Manage edit flow above).
 - **Reconciliation** create/edit form. *(Reorder — originally an `$EDITOR` shell-out —
