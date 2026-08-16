@@ -115,7 +115,9 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ### `expense dashboard`
 - `dashboard` — current month: bank accounts, people, categories (with hashtag-combination breakdown), totals. Current-month-only because `GET /v1/dashboard` is current-month-only.
-- `--include-archived` — adds `archived_accounts`, `archived_categories`, `archived_hashtags` panels with lifetime signed totals.
+- `--include-archived` — adds the `archived_accounts` panel. *(The `archived_categories` / `archived_hashtags` lifetime panels were deleted with the engine's 2026-08-05 change — an archived account still holds real money, an archived category only history.)*
+
+> **Aggregates are home-currency and nullable** (engine, 2026-08-05). The native `spent_cents` / `{inflow,outflow,net}_cents` no longer exist — a sum across accounts in different currencies is a number in no currency — so every category/hashtag/totals table has **one** amount column, `Home`. Each figure is nullable with an `unconverted_count` beside it; a `null` renders as `3 unrated`, **never** `0.00` and never a native-currency fallback. Rows with nothing spent are not drawn (`expense categories list` is the full list); rows the engine could not price keep their line. Month-grid cells distinguish `—` (no activity) from `3 unrated`.
 - `--json` — raw engine response.
 - For historical months, see `expense reports monthly`.
 

@@ -26,18 +26,24 @@
 
 **Why phases:** the 2026-08 engine rework (transfers deleted, read-time
 currency, reconciliation de-chaining, schema slimming) removed or changed
-endpoints the CLI and TUI still call. Phase 4 is the last one that is
-**live-broken today** (unhandled `null`s on every home aggregate).
-Phase 5 verifies against the live engine; Phase 6 builds the new engine
-capability the clients don't surface yet; Phase 7 closes residual doc
-alignment; Phase 8 is pre-existing polish, schedulable anytime.
+endpoints the CLI and TUI still call. **No phase is live-broken any more** —
+Phase 4, the last one, closed 2026-08-16. Phase 5 verifies against the live
+engine; Phase 6 builds the new engine capability the clients don't surface yet;
+Phase 7 closes residual doc alignment; Phase 8 is pre-existing polish,
+schedulable anytime.
 (Phase 1 — the mechanical deletions: exchange-rate purge, settings slimming,
 categories/hashtags archive, inbox restore, tx-delete warnings — closed
 2026-08-15; Phase 2 — the transfer-feature removal, items 2.1–2.5 — closed
 2026-08-16, with the optional 2.6 convenience re-parked under Phase 8 below;
 Phase 3 — reconciliation de-chaining, items 3.1–3.6 — closed 2026-08-16
 (sketch: [mockups/expense-world-phase3-sketch.html](mockups/expense-world-phase3-sketch.html));
-all three deleted per the rule above, see git history.)
+Phase 4 — nullable home aggregates + the archived category/hashtag panel
+removal, items 4.1–4.2 — closed 2026-08-16
+(sketch: [mockups/expense-world-phase4-sketch.html](mockups/expense-world-phase4-sketch.html),
+picks C/F/J; the "hide rows with nothing spent" rule was added there by user
+decision and applies to the dashboard, the monthly report and the TUI
+Outstanding tree alike; rationale in [decisions.md](decisions.md));
+all four deleted per the rule above, see git history.)
 
 **Baseline at merge time (2026-08-15):** 900 unit tests, 899 green — the one
 failure was the doc-link guard catching the engine's retired `TODO.md`, fixed
@@ -56,32 +62,16 @@ contract detail and engine references.
 
 ---
 
-## Phase 4 — nullable home aggregates + dashboard panel removals
-
-[Entry 2026-08-05 "currency converts at read time", items 5–7.] Native
-cross-currency aggregates are deleted; every remaining home aggregate is
-nullable with an `unconverted_count`; `/dashboard` lost
-`archived_categories`/`archived_hashtags`. `unconverted_count` appears **zero
-times** in this repo today — an unconvertible month crashes or misrenders.
-
-- [ ] **4.1 [UI]** Decide + mock the "unavailable" rendering once (a `null`
-  is *not* zero and *not* missing — render as unavailable **with the count**,
-  never `0`, never a native-figure fallback), then apply everywhere:
-  `reports_cmd.py:42,53,112,121,126`, TUI `home.py:105-111` stat cluster,
-  `outstanding.py:54` totals, `_resource.py:453,461` (the native-key
-  derivation — those keys are gone; read the home keys directly).
-- [ ] **4.2** `dashboard` command: remove the archived-categories and
-  archived-hashtags panels (`dashboard_cmd.py:134-147`); `archived_accounts`
-  stays. Same in any TUI surface that mirrors them. Doc scrub: cli-spec.md
-  §dashboard `--include-archived` (line 118), roadmap Step 5 note.
-
 ## Phase 5 — contract re-verification gate
 
 - [ ] **5.1** Fixture audit: sweep `tests/unit` fixtures for retired fields
   (`transfer_*`, `exchange_rate`, `amount_home_cents`, `is_archived` on
   cats/hashtags, `beginning_balance_source`, `sort_order`, settings fields,
   `warnings` on tx delete) so the mocks pin the *new* contract — Phases 1–4
-  each re-pin their own; this is the closing sweep for stragglers.
+  each re-pin their own; this is the closing sweep for stragglers. Known
+  stragglers spotted during Phase 4: `amount_home_cents` in
+  `test_cmd_transactions.py:21`, `test_cmd_inbox.py:22`, `test_cmd_log.py:23`;
+  `beginning/ending_balance_home_cents` in `test_cmd_reconcile.py:34,36`.
 - [ ] **5.2** Supervised `PYTEST_LIVE=1` contract run against the loopback
   engine (per [cli-runtime.md](cli-runtime.md) "Working against the live
   engine"); fix `test_freshman_flow.py` drift found there. This is the gate
