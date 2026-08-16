@@ -123,15 +123,13 @@ def test_auth_provisioned_shows_identity(fake_client, monkeypatch):
             await app.push_screen(screen)
             await wait_for(pilot, lambda: bool(app.screen.query(".section-title")))
             await pilot.pause(0.05)
-            # currency change → prompt USD/PEN, then confirm → PUT /auth/settings
-            screen.action_currency()
-            await pilot.pause(0.05)
-            app.screen.query_one("#prompt").value = "usd"
-            await pilot.press("enter")  # submit prompt → opens confirm
-            await pilot.pause(0.05)
-            await pilot.press("y")  # confirm recalc
-            await wait_for(pilot, lambda: fake_client.puts)
-            assert fake_client.puts == [("/auth/settings", {"main_currency": "USD"})]
+            card = _screen_text(app.screen)
+            assert "display name" in card and "Alex" in card
+            assert "main currency" in card and "PEN" in card
+            # Main currency is read-only — the engine locked it (2026-08-01);
+            # the `m` set-currency flow is gone.
+            assert not hasattr(screen, "action_currency")
+            assert fake_client.puts == []
 
     asyncio.run(scenario())
 

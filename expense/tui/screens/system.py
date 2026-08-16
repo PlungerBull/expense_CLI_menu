@@ -3,7 +3,8 @@
 Config: read view of engine URL / token (masked) / main currency; `e` edits
 the engine URL, `t` sets the token (both write ~/.expense-config). Auth &
 profile: identity + settings from GET /auth/me; `b` bootstraps (provisions the
-user record), `m` sets the main currency (PUT /auth/settings).
+user record). The main currency is display-only — it is locked engine-side
+(2026-08-01 rework).
 
 System reads:
   Activity — engine-direct audit log; `enter` shows one entry's before/after.
@@ -17,10 +18,9 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands._resource import items_of, redact_token
-from expense.currencies import SUPPORTED_CURRENCIES
 from expense.errors import format_error
 from expense.tui.screens._base import PagedListMixin, SectionScreen
-from expense.tui.screens.modals import ConfirmModal, PromptModal, SnapshotModal
+from expense.tui.screens.modals import PromptModal, SnapshotModal
 from expense.tui.widgets.cursor_list import CursorList
 
 
@@ -127,7 +127,6 @@ class AuthScreen(SectionScreen):
     CARD_WIDTH = 76
     BINDINGS = [
         ("b", "bootstrap", "Bootstrap"),
-        ("m", "currency", "Main currency"),
     ]
 
     def fetch(self) -> dict:
@@ -162,7 +161,6 @@ class AuthScreen(SectionScreen):
         settings = data["settings"]
         rows = [
             ("display name", user.get("display_name")),
-            ("email", user.get("email")),
             ("user id", user.get("id")),
             ("main currency", settings.get("main_currency")),
             ("timezone", settings.get("display_timezone") or user.get("timezone")),
@@ -171,7 +169,7 @@ class AuthScreen(SectionScreen):
             Static(Text("Auth & profile — your identity & settings"), classes="section-title"),
             Static(_kv_table([(k, v) for k, v in rows if v is not None])),
             Static(
-                Text("b bootstrap (provision) · m set main currency (USD/PEN)", style="dim"),
+                Text("b bootstrap (provision)", style="dim"),
                 classes="legend",
             ),
         ]
@@ -184,32 +182,6 @@ class AuthScreen(SectionScreen):
         self.app.push_screen(
             PromptModal("Bootstrap", "your display name — creates your user record"), cb
         )
-
-    def action_currency(self) -> None:
-        def cb(value: str | None) -> None:
-            if not value:
-                return
-            cur = value.upper()
-            if cur not in SUPPORTED_CURRENCIES:
-                # copy below stays literal ("USD or PEN") — update alongside
-                # expense.currencies.SUPPORTED_CURRENCIES
-                self.notify("Enter USD or PEN.", severity="error")
-                return
-
-            def confirm(ok: bool | None) -> None:
-                if ok:
-                    self._set_currency(cur)
-
-            self.app.push_screen(
-                ConfirmModal(
-                    "Change main currency?",
-                    f"Set main currency to {cur}. This triggers a home-currency "
-                    "recalculation across your transactions on the engine.",
-                ),
-                confirm,
-            )
-
-        self.app.push_screen(PromptModal("Main currency", "USD or PEN"), cb)
 
     def _bootstrap(self, display_name: str) -> None:
         from expense import dates
@@ -233,28 +205,6 @@ class AuthScreen(SectionScreen):
             on_success=lambda: self._done("Provisioned."),
             on_error=lambda m: self.notify(m, title="Bootstrap failed", severity="error"),
         )
-
-    def _set_currency(self, currency: str) -> None:
-        self.run_write(
-            "PUT",
-            "/auth/settings",
-            json_body={"main_currency": currency},
-            on_success=lambda: self._currency_saved(currency),
-            on_error=lambda m: self.notify(m, title="Couldn't update", severity="error"),
-        )
-
-    def _currency_saved(self, currency: str) -> None:
-        from expense import config as config_module
-
-        # Mirror the engine-side setting into ~/.expense-config; a failed save
-        # must surface as an error and skip the success toast + reload.
-        try:
-            cfg = config_module.ensure_loaded()
-            config_module.save(cfg.model_copy(update={"main_currency": currency}))
-        except Exception as exc:
-            self.notify(format_error(exc), title="Couldn't update", severity="error")
-            return
-        self._done(f"Main currency set to {currency}.")
 
     def _done(self, message: str) -> None:
         self.notify(message)

@@ -5,7 +5,7 @@ import typer
 
 from expense import config as config_module
 from expense import dates
-from expense.commands._resource import JSON_OPT, YES_OPT, require_yes
+from expense.commands._resource import JSON_OPT
 from expense.config import Config
 from expense.context import get_verbose
 from expense.errors import EngineError, handle_errors
@@ -47,28 +47,10 @@ def _render_settings_only(body: dict, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
-    recalc = body.get("recalculation")
     typer.echo("Settings:")
     for key, value in body.items():
-        if key == "recalculation":
-            continue
         display = value if value is not None else "(null)"
         typer.echo(f"  {key}: {display}")
-    if recalc:
-        _render_recalc_summary(recalc)
-
-
-def _render_recalc_summary(recalc: dict) -> None:
-    total = recalc.get("total", 0)
-    orphans = recalc.get("orphan_transfer_legs", 0)
-    typer.echo("")
-    typer.echo(f"Rewrote {total} transaction(s) in home currency.")
-    if orphans:
-        typer.secho(
-            f"  ⚠ {orphans} transfer leg(s) need attention "
-            f"(soft-delete orphans — resolve via the transactions API).",
-            fg=typer.colors.YELLOW,
-        )
 
 
 def _render_user_only(body: dict, *, json_mode: bool) -> None:
@@ -204,67 +186,29 @@ def profile(
 @handle_errors
 def settings(
     ctx: typer.Context,
-    theme: int | None = typer.Option(None, "--theme", help="Theme index."),
-    start_of_week: int | None = typer.Option(
-        None, "--start-of-week", help="0=Sunday, 1=Monday, ..."
-    ),
-    main_currency: str | None = typer.Option(
-        None, "--main-currency", help="USD or PEN (engine schema-locked)."
-    ),
-    transaction_sort_preference: int | None = typer.Option(
-        None, "--transaction-sort-preference", help="Sort preference index."
-    ),
     display_timezone: str | None = typer.Option(
         None, "--display-timezone", help="IANA timezone for rendering."
     ),
-    sidebar_show_bank_accounts: bool | None = typer.Option(
-        None, "--sidebar-show-bank-accounts/--no-sidebar-show-bank-accounts"
-    ),
-    sidebar_show_people: bool | None = typer.Option(
-        None, "--sidebar-show-people/--no-sidebar-show-people"
-    ),
-    sidebar_show_categories: bool | None = typer.Option(
-        None, "--sidebar-show-categories/--no-sidebar-show-categories"
-    ),
-    yes: bool = YES_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """PUT /v1/auth/settings. Partial update; main_currency change triggers engine recalc.
+    """PUT /v1/auth/settings. display_timezone is the only mutable field.
 
-    Example: expense auth settings --theme 1 --start-of-week 1
+    The home currency is locked engine-side (2026-08-01) and the display
+    preferences (theme, sort, sidebar) were removed in the 2026-08-06 schema
+    slimming — the engine rejects any other field with 422.
+
+    Example: expense auth settings --display-timezone America/Lima
     """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
-    payload: dict = {}
-    for key, value in (
-        ("theme", theme),
-        ("start_of_week", start_of_week),
-        ("main_currency", main_currency),
-        ("transaction_sort_preference", transaction_sort_preference),
-        ("display_timezone", display_timezone),
-        ("sidebar_show_bank_accounts", sidebar_show_bank_accounts),
-        ("sidebar_show_people", sidebar_show_people),
-        ("sidebar_show_categories", sidebar_show_categories),
-    ):
-        if value is not None:
-            payload[key] = value
-
-    if not payload:
+    if display_timezone is None:
         typer.echo("Error: No settings to update; pass at least one flag.", err=True)
         raise typer.Exit(code=1)
 
-    if main_currency is not None:
-        require_yes(
-            yes,
-            "Changing main_currency triggers synchronous home-currency "
-            "recalculation on the engine. Continue?",
-        )
+    payload = {"display_timezone": display_timezone}
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.put("/auth/settings", json_body=payload)
-
-    if "main_currency" in payload:
-        _cache_main_currency(cfg, body)
 
     _render_settings_only(body, json_mode=json_output)

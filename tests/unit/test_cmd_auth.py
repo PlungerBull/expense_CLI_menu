@@ -19,7 +19,6 @@ runner = CliRunner()
 BOOTSTRAP_RESPONSE = {
     "user": {
         "id": "u_123",
-        "email": "x@y.com",
         "display_name": "Alex",
         "last_login_at": "2026-04-23T10:00:00Z",
         "created_at": "2026-01-01T00:00:00Z",
@@ -27,18 +26,11 @@ BOOTSTRAP_RESPONSE = {
     },
     "settings": {
         "user_id": "u_123",
-        "theme": 0,
-        "start_of_week": 0,
         "main_currency": "USD",
-        "transaction_sort_preference": 0,
         "display_timezone": "America/Lima",
-        "sidebar_show_bank_accounts": True,
-        "sidebar_show_people": True,
-        "sidebar_show_categories": True,
         "version": 1,
         "created_at": "2026-01-01T00:00:00Z",
         "updated_at": "2026-04-23T10:00:00Z",
-        "deleted_at": None,
     },
 }
 
@@ -121,89 +113,37 @@ def test_settings_no_flags_errors(configured):
 
 
 @respx.mock
-def test_settings_non_currency_change_no_prompt(configured):
-    # Engine always includes `recalculation` per null-over-omission; null when no recalc.
-    response_body = {**BOOTSTRAP_RESPONSE["settings"], "recalculation": None}
+def test_settings_display_timezone_updates(configured):
+    updated_settings = {**BOOTSTRAP_RESPONSE["settings"], "display_timezone": "America/Bogota"}
     route = respx.put("https://api.example.com/v1/auth/settings").mock(
-        return_value=httpx.Response(200, json=response_body)
+        return_value=httpx.Response(200, json=updated_settings)
     )
-    result = runner.invoke(cli_app, ["auth", "settings", "--no-sidebar-show-people"])
+    result = runner.invoke(cli_app, ["auth", "settings", "--display-timezone", "America/Bogota"])
     assert result.exit_code == 0, result.output
 
     req_body = json.loads(route.calls.last.request.content)
-    assert req_body == {"sidebar_show_people": False}
-    # Renderer must skip the recalculation key entirely when null — no "Rewrote" line.
-    assert "Rewrote" not in result.output
+    assert req_body == {"display_timezone": "America/Bogota"}
+    assert "display_timezone: America/Bogota" in result.output
 
 
 @respx.mock
-def test_settings_drops_none_fields_from_payload(configured):
-    route = respx.put("https://api.example.com/v1/auth/settings").mock(
-        return_value=httpx.Response(200, json=BOOTSTRAP_RESPONSE["settings"])
-    )
-    result = runner.invoke(cli_app, ["auth", "settings", "--theme", "1"])
-    assert result.exit_code == 0
-
-    req_body = json.loads(route.calls.last.request.content)
-    assert req_body == {"theme": 1}
-
-
-@respx.mock
-def test_settings_main_currency_requires_yes_in_non_tty(configured):
+def test_settings_422_invalid_timezone_renders_engine_error(configured):
     respx.put("https://api.example.com/v1/auth/settings").mock(
-        return_value=httpx.Response(200, json=BOOTSTRAP_RESPONSE["settings"])
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Invalid input.",
+                    "fields": {"display_timezone": "Not a valid IANA timezone."},
+                }
+            },
+        )
     )
-    result = runner.invoke(cli_app, ["auth", "settings", "--main-currency", "PEN"])
+    result = runner.invoke(cli_app, ["auth", "settings", "--display-timezone", "Mars/Olympus"])
     assert result.exit_code == 1
-    assert "non-interactive" in result.output
-
-
-@respx.mock
-def test_settings_main_currency_with_yes_surfaces_recalc(configured):
-    updated_settings = {
-        **BOOTSTRAP_RESPONSE["settings"],
-        "main_currency": "PEN",
-        "recalculation": {
-            "regular_transactions": 142,
-            "transfer_transactions": 6,
-            "orphan_transfer_legs": 0,
-            "inbox_items": 3,
-            "total": 151,
-        },
-    }
-    respx.put("https://api.example.com/v1/auth/settings").mock(
-        return_value=httpx.Response(200, json=updated_settings)
-    )
-    result = runner.invoke(cli_app, ["auth", "settings", "--main-currency", "PEN", "--yes"])
-    assert result.exit_code == 0, result.output
-
-    cfg = config_module.load()
-    assert cfg.main_currency == "PEN"
-    assert "Rewrote 151 transaction(s) in home currency." in result.output
-    # No orphans → no warning line.
-    assert "need attention" not in result.output
-
-
-@respx.mock
-def test_settings_main_currency_orphan_warning(configured):
-    updated_settings = {
-        **BOOTSTRAP_RESPONSE["settings"],
-        "main_currency": "PEN",
-        "recalculation": {
-            "regular_transactions": 100,
-            "transfer_transactions": 8,
-            "orphan_transfer_legs": 2,
-            "inbox_items": 0,
-            "total": 108,
-        },
-    }
-    respx.put("https://api.example.com/v1/auth/settings").mock(
-        return_value=httpx.Response(200, json=updated_settings)
-    )
-    result = runner.invoke(cli_app, ["auth", "settings", "--main-currency", "PEN", "--yes"])
-    assert result.exit_code == 0, result.output
-    assert "Rewrote 108 transaction(s)" in result.output
-    assert "2 transfer leg(s) need attention" in result.output
+    assert "VALIDATION_ERROR" in result.output
+    assert "display_timezone" in result.output
 
 
 @respx.mock
