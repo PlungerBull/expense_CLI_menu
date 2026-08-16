@@ -277,45 +277,21 @@ def delete(
     yes: bool = YES_OPT,
     json_output: bool = JSON_OPT,
 ) -> None:
-    """DELETE /v1/inbox/{id}. Soft-delete (dismiss the draft); restore is the inverse.
+    """DELETE /v1/inbox/{id}. Dismiss the draft — final; there is no restore.
+
+    The dismiss is still a soft-delete engine-side (`--include-deleted` lists
+    it), but the restore route was removed 2026-08-14, so this confirmation
+    is the only safety net.
 
     Example: expense inbox delete <inbox-id> --yes
     """
-    require_yes(yes, f"Delete inbox item {id_}?")
+    require_yes(yes, f"Delete inbox item {id_}? Dismissal is final — there is no restore.")
 
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.delete(f"/{_RESOURCE}/{id_}")
-    render_record(body, json_mode=json_output)
-
-
-@app.command("restore")
-@handle_errors
-def restore(
-    ctx: typer.Context,
-    id_: str = typer.Argument(..., metavar="ID"),
-    json_output: bool = JSON_OPT,
-) -> None:
-    """POST /v1/inbox/{id}/restore. Undo a dismissed draft.
-
-    Example: expense inbox restore <inbox-id>
-    """
-    cfg = config_module.ensure_loaded()
-    verbose = get_verbose(ctx)
-
-    with ExpenseClient(cfg, verbose=verbose) as client:
-        try:
-            body = client.post(f"/{_RESOURCE}/{id_}/restore")
-        except EngineError as err:
-            if err.status == 409:
-                typer.echo(
-                    "Hint: This inbox item was already promoted to a ledger transaction. "
-                    "Delete the transaction directly to undo.",
-                    err=True,
-                )
-            raise
     render_record(body, json_mode=json_output)
 
 

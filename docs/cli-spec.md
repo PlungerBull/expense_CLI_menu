@@ -86,8 +86,8 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - Same shape as categories: `list`, `get`, `create`, `update`, `delete`, `restore`. Hashtag archive was removed with the same 2026-08-06 slimming.
 
 ### `expense inbox`
-- `inbox list [--ready] [--include-deleted]` — `--ready` excludes items missing required fields AND items pointing at archived categories.
-- `inbox add`, `get`, `update`, `delete`, `restore`
+- `inbox list [--ready] [--include-deleted]` — `--ready` excludes items missing required fields.
+- `inbox add`, `get`, `update`, `delete` — delete dismisses the draft and is final: the restore route was removed engine-side 2026-08-14, so the `--yes` confirmation is the only safety net (the dismiss is still a soft-delete; `--include-deleted` lists it).
 - `inbox promote <id>` — atomic inbox-to-ledger. On 422, the CLI pretty-prints the missing/blocking fields.
 
 ### `expense log`

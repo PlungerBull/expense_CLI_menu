@@ -251,35 +251,6 @@ def test_delete_happy(configured):
 
 
 @respx.mock
-def test_restore_happy(configured):
-    respx.post("https://api.example.com/v1/inbox/abc/restore").mock(
-        return_value=httpx.Response(200, json=INBOX_RESPONSE)
-    )
-    result = runner.invoke(cli_app, ["inbox", "restore", "abc"])
-    assert result.exit_code == 0, result.output
-
-
-@respx.mock
-def test_restore_409_prints_promoted_hint(configured):
-    respx.post("https://api.example.com/v1/inbox/abc/restore").mock(
-        return_value=httpx.Response(
-            409,
-            json={
-                "error": {
-                    "code": "CONFLICT",
-                    "message": "Inbox item already promoted.",
-                    "fields": None,
-                }
-            },
-        )
-    )
-    result = runner.invoke(cli_app, ["inbox", "restore", "abc"])
-    assert result.exit_code == 1
-    assert "promoted" in result.output
-    assert "CONFLICT" in result.output
-
-
-@respx.mock
 def test_promote_happy(configured):
     transaction_response = {
         "id": "tx-id",

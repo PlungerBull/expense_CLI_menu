@@ -155,7 +155,8 @@ class InboxScreen(PagedListMixin, SectionScreen):
             return
         self.confirm_write(
             "Delete inbox item?",
-            f"Soft-delete the draft “{item.get('title') or '—'}”.",
+            f"Dismiss the draft “{item.get('title') or '—'}”. "
+            "Dismissal is final — there is no restore.",
             "DELETE",
             f"/inbox/{item['id']}",
             success="Deleted.",
