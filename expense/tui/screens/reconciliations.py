@@ -1,11 +1,12 @@
 """Reconciliations — list, new batch, and the working/detail screen (Phase 2).
 
 Per-account bank-statement batches. The browse is account-first (two panes):
-the account selector on top, the selected account's batches below in chain
-order. `↑↓` in account focus swaps the account (the batch list follows); `enter`
-drops into batch focus, where `enter` opens the working screen, `ctrl+↑/↓`
-reorders the chain, and `esc` returns to the accounts. `n` creates a batch for
-the selected account.
+the account selector on top, the selected account's batches below in the
+engine's order (`date_start ASC NULLS LAST, created_at ASC` when account-scoped
+— a batch is a statement period, so its date is its position). `↑↓` in account
+focus swaps the account (the batch list follows); `enter` drops into batch
+focus, where `enter` opens the working screen and `esc` returns to the accounts.
+`n` creates a batch for the selected account.
 
 New batch: name › account › date start › date end › begin › end. Both balances
 are typed off the paper statement — the engine deleted derived (chained) begins
@@ -69,9 +70,18 @@ _period = reconcile_cmd.format_period
 _BATCH_HEADERS = ["Name", "Period", "Begin", "End", "Source", "Status"]
 
 
-def _sort_key(r: dict):
-    so = r.get("sort_order")
-    return (so if so is not None else 10**9, r.get("id") or "")
+def _batch_sort_key(r: dict):
+    """The engine's account-scoped order, mirrored for a client-side slice.
+
+    `fetch()` pulls every account's batches in one unscoped read so that moving
+    the account cursor stays instant — and the unscoped list is `created_at
+    DESC`, not statement order (only account-scoped reads sort by date; see
+    client-breaking-changes.md 2026-08-06). So the per-account slice re-applies
+    the documented server key: `date_start ASC NULLS LAST, created_at ASC`.
+    ISO-8601 strings sort chronologically as text.
+    """
+    ds = r.get("date_start")
+    return (ds is None, ds or "", r.get("created_at") or "", r.get("id") or "")
 
 
 def batch_rows(items: list[dict], palette: Palette | None = None) -> list:
@@ -93,17 +103,15 @@ def batch_rows(items: list[dict], palette: Palette | None = None) -> list:
 
 class ReconciliationsScreen(SectionScreen):
     """Account-first two-pane browse. Top: bank accounts. Bottom: the selected
-    account's batches in chain order. `↑↓` in account focus swaps the account
-    (the batch list follows); `enter` drops into batch focus; there `enter`
-    opens a batch, `ctrl+↑/↓` reorders the chain, `esc` returns to accounts."""
+    account's batches in the engine's statement-date order. `↑↓` in account
+    focus swaps the account (the batch list follows); `enter` drops into batch
+    focus; there `enter` opens a batch, `esc` returns to accounts."""
 
     crumb = ("Capture & ledger", "Reconciliations")
     CARD_WIDTH = 100
     BINDINGS = [
         ("escape", "back", "Back"),  # not the inherited pop: two-stage batches → accounts → home
         ("n", "new", "New"),
-        ("ctrl+up", "reorder(-1)", "Move up"),
-        ("ctrl+down", "reorder(1)", "Move down"),
     ]
 
     def __init__(self) -> None:
@@ -123,7 +131,7 @@ class ReconciliationsScreen(SectionScreen):
         cfg = config_module.ensure_loaded()
         kw = screen_fetch_kwargs(self.app)
         # page through everything: the default ~100-row page truncated the
-        # chain, so ctrl+up/down reordered against wrong neighbors (6.2b)
+        # account's batches, so the lower pane silently lost old ones (6.2b)
         recons = fetch_all_pages(
             lambda limit, offset: reconcile_cmd.fetch_reconciliations(
                 cfg, limit=limit, offset=offset, **kw
@@ -140,14 +148,14 @@ class ReconciliationsScreen(SectionScreen):
         acct = self._selected_account()
         aid = acct[0] if acct else None
         self._batches = sorted(
-            (r for r in self._recons if r.get("account_id") == aid), key=_sort_key
+            (r for r in self._recons if r.get("account_id") == aid), key=_batch_sort_key
         )
         self._by_id = {r.get("id"): r for r in self._batches}
 
     def _batch_caption(self) -> str:
         acct = self._selected_account()
         label = acct[1] if acct else "—"
-        return f"Reconciliations · {label}   ·   chain order (oldest → newest)"
+        return f"Reconciliations · {label}   ·   by statement start date (oldest → newest)"
 
     # ---- adaptive window (2026-07-13): two stacked panes split #content ----
     def pane_rows(self) -> int:
@@ -262,34 +270,6 @@ class ReconciliationsScreen(SectionScreen):
             NewReconciliationScreen(account_id=acct[0], account_name=acct[1]),
             lambda _result: self._load(),
         )
-
-    def action_reorder(self, delta: int) -> None:
-        if self._mode != "batches" or len(self._batches) < 2:
-            return
-        key = self._batch_list.cursor_key
-        ids = [r.get("id") for r in self._batches]
-        i = ids.index(key)
-        j = i + delta
-        if j < 0 or j >= len(ids):
-            return
-        ids[i], ids[j] = ids[j], ids[i]
-        acct = self._selected_account()
-        self._resume_batch = True
-        self._resume_key = key
-        self._reorder(acct[0], ids)
-
-    def _reorder(self, account_id: str, ordered_ids: list) -> None:
-        self.run_write(
-            "PUT",
-            f"/accounts/{account_id}/reconciliations/order",
-            json_body={"ordered_ids": ordered_ids},
-            on_success=self._reordered,
-            on_error=lambda m: self.notify(m, title="Couldn't reorder", severity="error"),
-        )
-
-    def _reordered(self) -> None:
-        self.notify("Reordered.")
-        self._load()
 
 
 # --------------------------------------------------------------------------- #

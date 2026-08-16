@@ -200,12 +200,11 @@ def test_highlight_from_batches_pane_does_not_switch_account(monkeypatch):
 
 def test_reconciliations_list_pages_past_engine_cap(monkeypatch):
     """The browse fetch pages through the whole collection — a batch past the
-    default page must not vanish from the chain, or ctrl+up/down reorders
-    against wrong neighbors (backlog 6.2b, list half)."""
+    default page must not vanish from the account's pane (backlog 6.2b, list
+    half)."""
     total = 201
     all_items = [
-        {"id": f"r{i}", "account_id": "acc1", "name": f"B{i}", "status": 1, "sort_order": i}
-        for i in range(total)
+        {"id": f"r{i}", "account_id": "acc1", "name": f"B{i}", "status": 1} for i in range(total)
     ]
 
     def paged(cfg, *, limit=None, offset=None, **k):
@@ -226,9 +225,29 @@ def test_reconciliations_list_pages_past_engine_cap(monkeypatch):
             await app.push_screen(screen)
             await _wait_browse(app, pilot)
             assert len(screen._recons) == total  # both pages collected
-            assert len(screen._batches) == total  # full chain for the account
+            assert len(screen._batches) == total  # every batch for the account
 
     asyncio.run(scenario())
+
+
+def test_batches_ordered_by_statement_start_date_nulls_last():
+    """The pane mirrors the engine's account-scoped key (date_start ASC NULLS
+    LAST, created_at ASC). The bulk fetch is unscoped, and *that* list is
+    created_at DESC — so without this the rows would sit in creation order."""
+    from expense.tui.screens.reconciliations import _batch_sort_key
+
+    rows = [
+        {"id": "undated", "created_at": "2026-01-01T00:00:00Z"},
+        {"id": "may", "date_start": "2026-05-01T00:00:00Z", "created_at": "2026-01-02T00:00:00Z"},
+        {"id": "march", "date_start": "2026-03-01T00:00:00Z", "created_at": "2026-07-09T00:00:00Z"},
+        {"id": "april", "date_start": "2026-04-01T00:00:00Z", "created_at": "2026-01-03T00:00:00Z"},
+    ]
+    assert [r["id"] for r in sorted(rows, key=_batch_sort_key)] == [
+        "march",
+        "april",
+        "may",
+        "undated",
+    ]
 
 
 def test_new_reconciliation_from_account_drops_account_field():
