@@ -1,4 +1,3 @@
-import enum
 import json
 from uuid import uuid4
 
@@ -36,13 +35,6 @@ app = typer.Typer(help="Reconciliations.", no_args_is_help=True)
 _RESOURCE = "reconciliations"
 
 
-class ReconciliationSource(enum.StrEnum):
-    """Allowed values for --source. Typer validates the choice and lists it in --help."""
-
-    manual = "manual"
-    chained = "chained"
-
-
 STATUS_LABELS = {1: "draft", 2: "completed"}
 
 
@@ -78,7 +70,8 @@ def fetch_reconciliations(
     """GET /v1/reconciliations → the raw engine body. Pure data, no render.
 
     Shared by the flat `reconcile list` command and the TUI's Reconciliations
-    screen. Rows are ordered by `sort_order` (the chain order).
+    screen. Account-scoped reads come back `date_start ASC NULLS LAST,
+    created_at ASC`; the cross-account list stays `created_at DESC`.
     """
     params: dict = {}
     if account_id is not None:
@@ -128,13 +121,6 @@ def fetch_reconciliation(
     )
 
 
-_CHAINED_AMBIGUITY_HINT = (
-    "Hint: --source chained cannot be combined with --beginning-balance.\n"
-    "Chained mode derives the value from the previous reconciliation.\n"
-    "Try one of:\n"
-    "  --source chained                            # let engine derive\n"
-    "  --source manual --beginning-balance <cents> # set explicit value"
-)
 _FIELD_LOCKED_HINT = (
     "Hint: this reconciliation is completed. "
     "Use 'expense reconcile revert <id> --yes' to unlock fields."
@@ -151,18 +137,6 @@ _RESTORE_NOTE = (
     "Note: assigned transactions were NOT re-linked. They may have moved to other "
     "batches or been edited. Reassign manually if needed."
 )
-
-
-def _format_source_marker(item: dict) -> str:
-    source = item.get("beginning_balance_source")
-    if source == "chained":
-        upstream = item.get("chained_from_reconciliation_id")
-        if upstream:
-            return f"[chained from {upstream}]"
-        return "[chained, no upstream]"
-    if source == "manual":
-        return "[manual]"
-    return ""
 
 
 def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
@@ -182,7 +156,6 @@ def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
             "period": format_period(item),
             "begin": format_cents(item.get("beginning_balance_cents")),
             "end": format_cents(item.get("ending_balance_cents")),
-            "source": item.get("beginning_balance_source") or "—",
             "status": format_status(item.get("status")),
             "deleted": format_bool(item.get("deleted_at")),
             "id": item.get("id") or "—",
@@ -196,7 +169,6 @@ def _render_reconciliation_list(body: dict, *, json_mode: bool) -> None:
             "period": "Period",
             "begin": "Begin",
             "end": "End",
-            "source": "Source",
             "status": "Status",
             "deleted": "Deleted",
             "id": "Id",
@@ -213,9 +185,6 @@ def _render_reconciliation_detail(body: dict, *, json_mode: bool) -> None:
         return
 
     render_record(body, json_mode=False, skip=("transactions",))
-    marker = _format_source_marker(body)
-    if marker:
-        typer.echo(f"  {marker}")
 
     transactions_total = body.get("transactions_total")
     transactions = body.get("transactions") or []
@@ -251,12 +220,6 @@ def _render_reconciliation_detail(body: dict, *, json_mode: bool) -> None:
             )
 
 
-def _is_chained_ambiguity_422(err: EngineError) -> bool:
-    if err.status != 422 or not isinstance(err.fields, dict):
-        return False
-    return "beginning_balance_cents" in err.fields and "beginning_balance_source" in err.fields
-
-
 def _is_field_locked_422(err: EngineError) -> bool:
     if err.status != 422 or not isinstance(err.fields, dict):
         return False
@@ -272,7 +235,7 @@ def list_(
     account: str | None = typer.Option(
         None,
         "--account-id",
-        help="Filter by account_id (sorts the chain by sort_order ASC).",
+        help="Filter by account_id (orders by statement start date, undated last).",
     ),
     include_deleted: bool = INCLUDE_DELETED_OPT,
     limit: int | None = LIMIT_OPT,
@@ -330,45 +293,35 @@ def create(
     ctx: typer.Context,
     account_id: str = typer.Option(..., "--account-id", help="Owning account UUID."),
     name: str = typer.Option(..., "--name", help="Human-readable label (e.g. 'April 2026')."),
-    date_start: str | None = typer.Option(
-        None,
+    date_start: str = typer.Option(
+        ...,
         "--date-start",
-        help="YYYY-MM-DD or RFC 3339; naive forms get the local timezone attached.",
+        help="Required — the statement's first day; it orders the batch. "
+        "YYYY-MM-DD or RFC 3339; naive forms get the local timezone attached.",
     ),
     date_end: str | None = typer.Option(
         None,
         "--date-end",
         help="YYYY-MM-DD or RFC 3339; naive forms get the local timezone attached.",
     ),
-    beginning_balance: int | None = typer.Option(
-        None,
+    beginning_balance: int = typer.Option(
+        ...,
         "--beginning-balance",
-        help="Signed cents. Omit to chain from the previous reconciliation in this account.",
+        help="Required — signed cents, the statement's opening balance.",
     ),
     ending_balance: int | None = typer.Option(None, "--ending-balance", help="Signed cents."),
-    source: ReconciliationSource | None = typer.Option(
-        None,
-        "--source",
-        help="Mutually exclusive with --beginning-balance for 'chained'.",
-    ),
-    sort_order: int | None = typer.Option(
-        None,
-        "--sort-order",
-        help="1-based slot in the account chain. Omit to append at the end.",
-    ),
     json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/reconciliations. Create a draft reconciliation batch.
 
-    Example: expense reconcile create --account-id <id> --name "April 2026"
-             --date-start 2026-04-01 --date-end 2026-04-30 --ending-balance 12345600
-    """
-    if source == ReconciliationSource.chained and beginning_balance is not None:
-        raise typer.BadParameter(
-            _CHAINED_AMBIGUITY_HINT,
-            param_hint="--source/--beginning-balance",
-        )
+    Both balances are typed off the statement — the engine deleted derived
+    (chained) beginning balances on 2026-08-06, so `beginning_balance_cents` is
+    required. `--date-start` is required too: it is what orders the batch.
 
+    Example: expense reconcile create --account-id <id> --name "April 2026"
+             --date-start 2026-04-01 --date-end 2026-04-30
+             --beginning-balance 958000 --ending-balance 946000
+    """
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -377,19 +330,13 @@ def create(
         "id": new_id,
         "account_id": account_id,
         "name": name,
+        "date_start": to_canonical_aware(date_start),
+        "beginning_balance_cents": beginning_balance,
     }
-    if date_start is not None:
-        payload["date_start"] = to_canonical_aware(date_start)
     if date_end is not None:
         payload["date_end"] = to_canonical_aware(date_end)
-    if beginning_balance is not None:
-        payload["beginning_balance_cents"] = beginning_balance
     if ending_balance is not None:
         payload["ending_balance_cents"] = ending_balance
-    if source is not None:
-        payload["beginning_balance_source"] = source.value
-    if sort_order is not None:
-        payload["sort_order"] = sort_order
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
@@ -397,9 +344,6 @@ def create(
         typer.echo(f"Created: {new_id}")
     render_record(body, json_mode=json_output, skip=("transactions",))
     if not json_output:
-        marker = _format_source_marker(body)
-        if marker:
-            typer.echo(f"  {marker}")
         typer.echo(
             "\nNext: attach transactions with "
             f"'expense transactions update <tx-id> --reconciliation-id {new_id}'"
@@ -414,27 +358,17 @@ def update(
     name: str | None = typer.Option(None, "--name"),
     date_start: str | None = typer.Option(None, "--date-start"),
     date_end: str | None = typer.Option(None, "--date-end"),
-    beginning_balance: int | None = typer.Option(
-        None, "--beginning-balance", help="Signed cents. Implicitly switches source to 'manual'."
-    ),
+    beginning_balance: int | None = typer.Option(None, "--beginning-balance", help="Signed cents."),
     ending_balance: int | None = typer.Option(None, "--ending-balance"),
-    source: ReconciliationSource | None = typer.Option(
-        None,
-        "--source",
-        help="Mutually exclusive with --beginning-balance for 'chained'.",
-    ),
     json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/reconciliations/{id}. Partial update.
 
+    `--date-start` is also how you reposition a batch: since the 2026-08-06
+    de-chaining, an account's batches are ordered by their statement start date.
+
     Example: expense reconcile update <id> --name "March 2026" --ending-balance 12500
     """
-    if source == ReconciliationSource.chained and beginning_balance is not None:
-        raise typer.BadParameter(
-            _CHAINED_AMBIGUITY_HINT,
-            param_hint="--source/--beginning-balance",
-        )
-
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -445,7 +379,6 @@ def update(
             "date_end": to_canonical_aware(date_end) if date_end is not None else None,
             "beginning_balance_cents": beginning_balance,
             "ending_balance_cents": ending_balance,
-            "beginning_balance_source": source.value if source is not None else None,
         }
     )
 
@@ -453,9 +386,7 @@ def update(
         try:
             body = client.put(f"/{_RESOURCE}/{id_}", json_body=payload)
         except EngineError as err:
-            if _is_chained_ambiguity_422(err):
-                typer.echo(_CHAINED_AMBIGUITY_HINT, err=True)
-            elif _is_field_locked_422(err):
+            if _is_field_locked_422(err):
                 typer.echo(_FIELD_LOCKED_HINT, err=True)
             raise
     render_record(body, json_mode=json_output, skip=("transactions",))
@@ -495,9 +426,6 @@ def delete(
 
 def _render_after_state_change(body: dict, *, lock_verb: str) -> None:
     render_record(body, json_mode=False, skip=("transactions",))
-    marker = _format_source_marker(body)
-    if marker:
-        typer.echo(f"  {marker}")
     transactions_total = body.get("transactions_total")
     if isinstance(transactions_total, int):
         typer.echo(f"\n{lock_verb} {transactions_total} transactions.")
@@ -520,9 +448,6 @@ def restore(
 
     def _render(body: dict) -> None:
         render_record(body, json_mode=False, skip=("transactions",))
-        marker = _format_source_marker(body)
-        if marker:
-            typer.echo(f"  {marker}")
         typer.echo(f"\n{_RESTORE_NOTE}")
 
     run_toggle(

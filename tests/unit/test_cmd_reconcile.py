@@ -35,24 +35,24 @@ RECON_DRAFT_RESPONSE = {
     "ending_balance_cents": 150000,
     "ending_balance_home_cents": 150000,
     "status": 1,
-    "sort_order": 4,
-    "beginning_balance_source": "chained",
-    "chained_from_reconciliation_id": "00000000-0000-0000-0000-000000000003",
+    # difference_cents replaced sort_order/beginning_balance_source/
+    # chained_from_reconciliation_id in the 2026-08-06 de-chaining: it is
+    # (ending − beginning) minus the assigned transactions, computed at read time
+    "difference_cents": 0,
     "version": 1,
     "created_at": "2026-04-15T10:00:00Z",
     "updated_at": "2026-04-15T10:00:00Z",
     "deleted_at": None,
 }
 
-RECON_MANUAL_RESPONSE = {
+RECON_OFF_RESPONSE = {
     **RECON_DRAFT_RESPONSE,
     "id": "33333333-3333-3333-3333-333333333333",
-    "beginning_balance_source": "manual",
-    "chained_from_reconciliation_id": None,
+    "difference_cents": -3500,
 }
 
 LIST_RESPONSE = {
-    "items": [RECON_DRAFT_RESPONSE, RECON_MANUAL_RESPONSE],
+    "items": [RECON_DRAFT_RESPONSE, RECON_OFF_RESPONSE],
     "total": 2,
     "limit": 50,
     "offset": 0,
@@ -107,21 +107,18 @@ def test_list_happy_with_account_filter(configured):
         "Period",
         "Begin",
         "End",
-        "Source",
         "Status",
         "Deleted",
         "Id",
     ):
         assert header in result.output
+    assert "Source" not in result.output  # died with the 2026-08-06 de-chaining
     assert "Statement April 2026" in result.output
     assert "2026-04-01 → 2026-04-30" in result.output
 
     lines = result.output.splitlines()
-    chained_row = next(line for line in lines if RECON_DRAFT_RESPONSE["id"] in line)
-    assert "chained" in chained_row
-    assert "draft" in chained_row
-    manual_row = next(line for line in lines if RECON_MANUAL_RESPONSE["id"] in line)
-    assert "manual" in manual_row
+    balanced_row = next(line for line in lines if RECON_DRAFT_RESPONSE["id"] in line)
+    assert "draft" in balanced_row
 
     request = route.calls.last.request
     assert request.url.params.get("account_id") == "22222222-2222-2222-2222-222222222222"
@@ -193,7 +190,7 @@ def test_get_404(configured):
 
 
 @respx.mock
-def test_create_chained_default(configured):
+def test_create_sends_both_required_fields(configured):
     route = respx.post("https://api.example.com/v1/reconciliations").mock(
         return_value=httpx.Response(201, json=RECON_DRAFT_RESPONSE)
     )
@@ -210,52 +207,32 @@ def test_create_chained_default(configured):
             "2026-04-01",
             "--date-end",
             "2026-04-30",
+            "--beginning-balance",
+            "100000",
             "--ending-balance",
             "150000",
         ],
     )
     assert result.exit_code == 0, result.output
     assert "Created:" in result.output
-    assert "[chained from " in result.output
     assert "Next: attach transactions" in result.output
 
     body = json.loads(route.calls.last.request.content)
     UUID(body["id"])
     assert body["account_id"] == "22222222-2222-2222-2222-222222222222"
     assert body["name"] == "Statement April 2026"
+    assert body["beginning_balance_cents"] == 100000
     assert body["ending_balance_cents"] == 150000
-    assert "beginning_balance_cents" not in body, "expected omission to trigger chaining"
+    assert body["date_start"].startswith("2026-04-01")
+    # both retired by the de-chaining; the request schemas are extra="forbid"
+    assert "beginning_balance_source" not in body
+    assert "sort_order" not in body
     assert "X-Idempotency-Key" in route.calls.last.request.headers
 
 
-@respx.mock
-def test_create_with_manual_balance(configured):
-    route = respx.post("https://api.example.com/v1/reconciliations").mock(
-        return_value=httpx.Response(201, json=RECON_MANUAL_RESPONSE)
-    )
-    result = runner.invoke(
-        cli_app,
-        [
-            "reconcile",
-            "create",
-            "--account-id",
-            "22222222-2222-2222-2222-222222222222",
-            "--name",
-            "Cutover",
-            "--beginning-balance",
-            "999999",
-            "--ending-balance",
-            "1050000",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-
-    body = json.loads(route.calls.last.request.content)
-    assert body["beginning_balance_cents"] == 999999
-    assert "beginning_balance_source" not in body
-
-
-def test_create_chained_with_balance_blocks_at_parse(configured):
+def test_create_without_beginning_balance_blocks_at_parse(configured):
+    """Omitting it used to mean \"chain from the previous batch\"; there is no
+    derived mode left, so the engine 422s. Typer refuses before the HTTP call."""
     result = runner.invoke(
         cli_app,
         [
@@ -265,18 +242,16 @@ def test_create_chained_with_balance_blocks_at_parse(configured):
             "acct",
             "--name",
             "X",
-            "--source",
-            "chained",
-            "--beginning-balance",
-            "100",
+            "--date-start",
+            "2026-04-01",
         ],
     )
-    assert result.exit_code != 0
-    stripped = _strip_panel(result.output)
-    assert "--source chained cannot be combined" in stripped
+    assert result.exit_code == 2  # Click usage error
+    assert "--beginning-balance" in _strip_panel(result.output)
 
 
-def test_create_invalid_source_value_blocks_at_parse(configured):
+def test_create_without_date_start_blocks_at_parse(configured):
+    """date_start is what orders a batch since the de-chaining."""
     result = runner.invoke(
         cli_app,
         [
@@ -286,14 +261,36 @@ def test_create_invalid_source_value_blocks_at_parse(configured):
             "acct",
             "--name",
             "X",
-            "--source",
-            "auto",
+            "--beginning-balance",
+            "100000",
         ],
     )
-    assert result.exit_code == 2  # Click usage error, distinct from the connection code
-    stripped = _strip_panel(result.output)
-    assert "is not one of" in stripped
-    assert "manual" in stripped and "chained" in stripped
+    assert result.exit_code == 2
+    assert "--date-start" in _strip_panel(result.output)
+
+
+def test_create_rejects_retired_flags(configured):
+    """--source and --sort-order are gone from the surface entirely."""
+    for flag, value in (("--source", "chained"), ("--sort-order", "3")):
+        result = runner.invoke(
+            cli_app,
+            [
+                "reconcile",
+                "create",
+                "--account-id",
+                "acct",
+                "--name",
+                "X",
+                "--date-start",
+                "2026-04-01",
+                "--beginning-balance",
+                "100000",
+                flag,
+                value,
+            ],
+        )
+        assert result.exit_code == 2, flag
+        assert "No such option" in _strip_panel(result.output)
 
 
 @respx.mock
@@ -320,22 +317,7 @@ def test_update_partial_payload(configured):
     assert "X-Idempotency-Key" in route.calls.last.request.headers
 
 
-@respx.mock
-def test_update_source_chained_alone(configured):
-    route = respx.put(
-        "https://api.example.com/v1/reconciliations/11111111-1111-1111-1111-111111111111"
-    ).mock(return_value=httpx.Response(200, json=RECON_DRAFT_RESPONSE))
-    result = runner.invoke(
-        cli_app,
-        ["reconcile", "update", "11111111-1111-1111-1111-111111111111", "--source", "chained"],
-    )
-    assert result.exit_code == 0, result.output
-
-    body = json.loads(route.calls.last.request.content)
-    assert body == {"beginning_balance_source": "chained"}
-
-
-def test_update_chained_with_balance_blocks_at_parse(configured):
+def test_update_rejects_retired_source_flag(configured):
     result = runner.invoke(
         cli_app,
         [
@@ -344,13 +326,10 @@ def test_update_chained_with_balance_blocks_at_parse(configured):
             "11111111-1111-1111-1111-111111111111",
             "--source",
             "chained",
-            "--beginning-balance",
-            "500",
         ],
     )
-    assert result.exit_code != 0
-    stripped = _strip_panel(result.output)
-    assert "--source chained cannot be combined" in stripped
+    assert result.exit_code == 2
+    assert "No such option" in _strip_panel(result.output)
 
 
 @respx.mock
@@ -384,40 +363,6 @@ def test_update_field_locked_422_surfaces_hint(configured):
     assert result.exit_code == 1
     assert "VALIDATION_ERROR" in result.output
     assert "expense reconcile revert" in result.output
-
-
-@respx.mock
-def test_update_chained_ambiguity_422_surfaces_hint(configured):
-    respx.put(
-        "https://api.example.com/v1/reconciliations/11111111-1111-1111-1111-111111111111"
-    ).mock(
-        return_value=httpx.Response(
-            422,
-            json={
-                "error": {
-                    "code": "VALIDATION_ERROR",
-                    "message": "Cannot set beginning_balance_cents while source is 'chained'.",
-                    "fields": {
-                        "beginning_balance_cents": "Remove this field, or set source to manual.",
-                        "beginning_balance_source": "Cannot be 'chained' while value is set.",
-                    },
-                }
-            },
-        )
-    )
-    result = runner.invoke(
-        cli_app,
-        [
-            "reconcile",
-            "update",
-            "11111111-1111-1111-1111-111111111111",
-            "--name",
-            "anything",
-        ],
-    )
-    assert result.exit_code == 1
-    assert "VALIDATION_ERROR" in result.output
-    assert "--source chained cannot be combined with --beginning-balance" in result.output
 
 
 def test_delete_requires_yes_in_non_tty(configured):
@@ -543,7 +488,7 @@ def test_revert_with_yes_prints_unlocked_count(configured):
 @respx.mock
 def test_list_include_deleted_param(configured):
     deleted = {
-        **RECON_MANUAL_RESPONSE,
+        **RECON_OFF_RESPONSE,
         "id": "99999999-9999-9999-9999-999999999999",
         "deleted_at": "2026-06-01T09:00:00Z",
     }
