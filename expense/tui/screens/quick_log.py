@@ -166,9 +166,11 @@ class QuickAddLogScreen(FormScreen):
         if self._mode == "edit":
             seq = ["date", "title", "amount", "account", "category"]
             if self._resource == "transactions":
-                # inbox drafts have neither hashtags nor a cleared flag — a draft
-                # has not reached the ledger, so nothing can have posted at the
-                # bank. Offering it lost the whole edit to a 422 (backlog Phase 5).
+                # `cleared` is a column on a transaction row only — the inbox table
+                # has never had one, and its write models are strict, so offering
+                # the field lost the whole edit to a 422 on an unknown input
+                # (backlog Phase 5). Hashtags are a separate story: the engine
+                # added them to drafts 2026-08-14, still unsurfaced (Phase 6.1).
                 seq.append("cleared")
                 seq.append("hashtags")
             seq.append("note")

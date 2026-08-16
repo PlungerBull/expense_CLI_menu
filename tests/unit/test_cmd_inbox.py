@@ -295,11 +295,12 @@ def test_promote_422_prints_fix_hint(configured):
 def test_add_and_update_reject_retired_cleared_flag(configured):
     """--cleared is gone from both inbox writes entirely.
 
-    A draft has not reached the ledger, so nothing can have posted at the bank:
-    InboxCreateRequest/InboxUpdateRequest have never carried `cleared`, and the
-    engine rejects it as an unknown input — losing the whole write, not just the
-    flag. Found against a real engine by the Phase 5 contract gate, 2026-08-16.
-    Transactions keep the flag; see test_cmd_transactions.py.
+    `expense_transaction_inbox` has no `cleared` column and never has, and the
+    inbox write models are strict — so the field is rejected as an unknown input
+    and the whole write is lost, not just the flag. Found against a real engine by
+    the Phase 5 contract gate, 2026-08-16. Transactions keep the flag (it is a
+    per-row boolean there, written only by the caller); see
+    test_cmd_transactions.py.
     """
     for argv in (
         ["inbox", "add", "--title", "x", "--amount", "-100", "--cleared"],

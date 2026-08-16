@@ -65,10 +65,16 @@
 
 <div class="lbl">expense world — a flag that cannot work · found by the phase 5 gate · 2026-08-16
   <span><br/>The verification gate ran against a real engine for the first time since the rework and found
-  one genuine app bug. <b style="color:var(--text)">"Cleared"</b> means <i>this has actually posted at the
-  bank</i>. It is a real property of a <b style="color:var(--text)">transaction</b>. An inbox draft is a note
-  to yourself that hasn't been entered into the ledger yet — there is nothing at the bank to have posted, so
-  the engine has never accepted the field there.
+  one genuine app bug. <b style="color:var(--text)">"Cleared"</b> is a yes/no you set yourself on a single
+  <b style="color:var(--text)">transaction</b> — a sticky note meaning <i>this one has actually posted at the
+  bank</i>. Nothing in the engine ever sets it for you, and nothing reads it except the
+  <b style="color:var(--text)">--cleared</b> list filter.
+  <br/><br/><b style="color:var(--warn)">Corrected 2026-08-17, by the engine's author:</b> the reason it
+  cannot go on a draft is not a rule about workflow — it is that the inbox table has
+  <b style="color:var(--text)">never had the column</b>, and its write form accepts exactly seven things, so
+  anything else is refused outright. In particular <b style="color:var(--text)">completing a reconciliation
+  does not tick "cleared"</b> on the rows in it; the two are unrelated mechanisms that happen to describe the
+  same real-world event. The original wording here implied they were two steps of one workflow. They are not.
   <br/><br/><b style="color:var(--neg)">Today:</b> <b style="color:var(--text)">expense inbox add --cleared</b>
   and <b style="color:var(--text)">inbox update --cleared</b> both offer the flag, send it, and the engine
   rejects the whole write. The TUI's edit-draft form shows a <b style="color:var(--text)">CLEARED?</b> row for

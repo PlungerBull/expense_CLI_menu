@@ -257,9 +257,10 @@ def test_edit_no_changes_does_not_submit(fake_client, monkeypatch):
 def test_edit_inbox_sequence_has_no_hashtags_and_no_cleared():
     """A draft offers neither field; a transaction offers both.
 
-    `cleared` was removed from the draft form 2026-08-16 (backlog Phase 5): the
-    engine rejects it as an unknown input, so offering the row lost the whole edit
-    to a 422 after everything else had been typed.
+    `cleared` was removed from the draft form 2026-08-16 (backlog Phase 5): it is a
+    column on a transaction row only, the inbox table has never had one, and the
+    strict write models reject it — so offering the row lost the whole edit to a
+    422 after everything else had been typed.
     """
     draft = QuickAddLogScreen(record={"id": "i1", "title": "x"}, resource="inbox")
     assert "hashtags" not in draft._sequence()

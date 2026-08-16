@@ -88,7 +88,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ### `expense inbox`
 - `inbox list [--ready] [--include-deleted]` — `--ready` excludes items missing required fields.
-- `inbox add`, `get`, `update`, `delete` — delete dismisses the draft and is final: the restore route was removed engine-side 2026-08-14, so the `--yes` confirmation is the only safety net (the dismiss is still a soft-delete; `--include-deleted` lists it).
+- `inbox add`, `get`, `update`, `delete` — delete dismisses the draft and is final: the restore route was removed engine-side 2026-08-14, so the `--yes` confirmation is the only safety net (the dismiss is still a soft-delete; `--include-deleted` lists it). A draft carries exactly what the engine's strict write models accept — `title`, `description`, `amount_cents`, `date`, `account_id`, `category_id`, `hashtag_ids` (the last still unsurfaced, Phase 6.1). Notably **no `cleared`**: that is a transaction column the inbox table has never had, so `--cleared` was removed 2026-08-16 (it 422'd and lost the whole write).
 - `inbox promote <id>` — atomic inbox-to-ledger. On 422, the CLI pretty-prints the missing/blocking fields.
 
 ### `expense log`

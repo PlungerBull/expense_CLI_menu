@@ -199,10 +199,14 @@ def add(
 ) -> None:
     """POST /v1/inbox. Drop a partial draft into the inbox; fill in later, then promote.
 
-    No --cleared: a draft has not reached the ledger, so nothing can have posted at
-    the bank yet. InboxCreateRequest has never carried the field and the engine 422s
-    it as an unknown input, losing the whole draft. Set it on the transaction after
-    promoting. (Removed 2026-08-16, backlog Phase 5 — found by the contract gate.)
+    No --cleared. `expense_transaction_inbox` has no `cleared` column and never has;
+    the inbox write models are strict and accept exactly seven fields (id on create,
+    title, description, amount_cents, date, account_id, category_id, hashtag_ids), so
+    anything else is a 422 on the unknown field — losing the whole draft, not just
+    the flag. `cleared` is a per-row boolean on a *transaction*, written only by the
+    caller; promote hardcodes it false, so set it afterwards if you want it.
+    (Removed 2026-08-16, backlog Phase 5 — found by the contract gate; inbox scope
+    confirmed by the engine author the same day.)
 
     Example: expense inbox add --title "Lunch" --amount -1500
     """
@@ -246,7 +250,7 @@ def update(
 ) -> None:
     """PUT /v1/inbox/{id}.
 
-    No --cleared — see `add`; the field does not exist on a draft.
+    No --cleared — see `add`; the inbox table has no such column.
 
     Example: expense inbox update <inbox-id> --account-id <id> --category-id <id>
     """
