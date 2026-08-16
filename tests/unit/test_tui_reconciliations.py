@@ -73,7 +73,10 @@ async def _wait_accounts(screen, pilot):
     await wait_for(pilot, lambda: screen._accounts)
 
 
-def test_new_reconciliation_chained_omits_begin(fake_client, monkeypatch):
+def test_new_reconciliation_always_sends_begin_never_source(fake_client, monkeypatch):
+    """One straight path since the 2026-08-06 de-chaining: begin is always typed,
+    and `beginning_balance_source` must never be sent (request schemas are
+    extra="forbid", so shipping it is a 422)."""
     _patch(monkeypatch)
 
     async def scenario():
@@ -84,22 +87,25 @@ def test_new_reconciliation_chained_omits_begin(fake_client, monkeypatch):
             await _wait_accounts(screen, pilot)
             _enter(screen, "April 2026")  # name
             _enter(screen, "BCP")  # account → acc1
-            _enter(screen, "")  # date_start skip
+            _enter(screen, "2026-04-01")  # date_start (required)
             _enter(screen, "")  # date_end skip
-            _enter(screen, "chained")  # source → no begin field
+            _enter(screen, "9580.00")  # begin
             _enter(screen, "9460.00")  # end → submits
             await wait_for(pilot, lambda: fake_client.posts)
             path, body = fake_client.posts[0]
             assert path == "/reconciliations"
             assert body["account_id"] == "acc1" and body["name"] == "April 2026"
-            assert body["beginning_balance_source"] == "chained"
-            assert "beginning_balance_cents" not in body  # chained derives it
+            assert body["beginning_balance_cents"] == 958000
             assert body["ending_balance_cents"] == 946000
+            assert "beginning_balance_source" not in body
+            assert "sort_order" not in body
 
     asyncio.run(scenario())
 
 
-def test_new_reconciliation_manual_includes_begin(fake_client, monkeypatch):
+def test_new_reconciliation_date_start_is_required(fake_client, monkeypatch):
+    """date_start orders the batch now, so an empty enter is refused in place
+    rather than silently creating an unorderable batch."""
     _patch(monkeypatch)
 
     async def scenario():
@@ -108,19 +114,15 @@ def test_new_reconciliation_manual_includes_begin(fake_client, monkeypatch):
             screen = NewReconciliationScreen()
             await app.push_screen(screen)
             await _wait_accounts(screen, pilot)
-            _enter(screen, "Manual batch")  # name
-            _enter(screen, "Interbank")  # account → acc2
-            _enter(screen, "")  # date_start
-            _enter(screen, "")  # date_end
-            _enter(screen, "manual")  # source → begin field appears
-            assert "begin" in screen._sequence()
-            _enter(screen, "5000.00")  # begin
-            _enter(screen, "")  # end skip → submits
-            await wait_for(pilot, lambda: fake_client.posts)
-            path, body = fake_client.posts[0]
-            assert body["beginning_balance_source"] == "manual"
-            assert body["beginning_balance_cents"] == 500000
-            assert "ending_balance_cents" not in body
+            _enter(screen, "April 2026")  # name
+            _enter(screen, "BCP")  # account → acc1
+            _enter(screen, "")  # date_start → rejected, stays put
+            assert screen._key == "date_start"
+            assert "date_start" in screen._required()
+            _enter(screen, "2026-04-01")
+            assert screen._key == "date_end"
+            await pilot.pause()
+            assert not fake_client.posts
 
     asyncio.run(scenario())
 

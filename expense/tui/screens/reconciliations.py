@@ -7,10 +7,11 @@ drops into batch focus, where `enter` opens the working screen, `ctrl+↑/↓`
 reorders the chain, and `esc` returns to the accounts. `n` creates a batch for
 the selected account.
 
-New batch: name › account › date range › source (chained|manual) › [begin if
-manual] › end. Begin balance is chained by default (the engine derives it from
-the previous batch's end); manual lets you set it — you can't supply a value
-while chained (engine 422). POST /reconciliations.
+New batch: name › account › date start › date end › begin › end. Both balances
+are typed off the paper statement — the engine deleted derived (chained) begins
+on 2026-08-06, so there is nothing to inherit and `beginning_balance_cents` is
+required. `date_start` is required too: it is what orders the batch.
+POST /reconciliations.
 
 Working screen (ReconciliationDetailScreen): a checklist of the account's
 unassigned + already-in-batch transactions (draft) or a read-only list of the
@@ -299,23 +300,17 @@ _R_LABELS = {
     "account": "ACCOUNT",
     "date_start": "DATE START",
     "date_end": "DATE END",
-    "source": "SOURCE",
     "begin": "BEGIN BALANCE",
     "end": "END BALANCE",
 }
 _R_HINTS = {
     "name": "e.g. “April 2026” · enter to save",
     "account": "pick a bank account · ↑↓ highlight · enter select",
-    "date_start": "YYYY-MM-DD · optional · empty enter to skip",
+    "date_start": "YYYY-MM-DD · the statement's first day · it orders the batch",
     "date_end": "YYYY-MM-DD · optional · empty enter to skip",
-    "source": "chained = begin from the previous batch · manual = set it yourself · ↑↓ · enter",
     "begin": "signed decimal · your statement's opening balance",
     "end": "signed decimal · statement's closing balance · optional · enter saves",
 }
-_SOURCES = [
-    ("chained", "chained — begin carried from the previous batch"),
-    ("manual", "manual — set the begin balance yourself"),
-]
 _AMOUNTS = {"begin", "end"}
 _DATES = {"date_start", "date_end"}
 
@@ -325,8 +320,8 @@ class NewReconciliationScreen(FormScreen):
 
     def __init__(self, account_id: str | None = None, account_name: str | None = None) -> None:
         super().__init__()
-        self._values = {"source": "chained"}
-        self._display = {"source": "chained"}
+        self._values: dict = {}
+        self._display: dict = {}
         self._accounts: list = []
         self._preset_account = account_id
         if account_id:  # created from within an account — don't ask for it again
@@ -336,16 +331,14 @@ class NewReconciliationScreen(FormScreen):
         else:
             self.crumb = ("Reconciliations", "New")
 
-    def _is_manual(self) -> bool:
-        return self._values.get("source") == "manual"
-
     def _sequence(self) -> list[str]:
         seq = ["name"] if self._preset_account else ["name", "account"]
-        seq += ["date_start", "date_end", "source"]
-        return seq + (["begin", "end"] if self._is_manual() else ["end"])
+        return seq + ["date_start", "date_end", "begin", "end"]
 
     def _required(self) -> tuple[str, ...]:
-        return ("name", "account") + (("begin",) if self._is_manual() else ())
+        # begin: the engine has no derived mode left, so it is typed off the
+        # statement. date_start: it is what orders the batch (undated sorts last).
+        return ("name", "account", "date_start", "begin")
 
     def _label(self, key: str) -> str:
         return _R_LABELS[key]
@@ -354,14 +347,14 @@ class NewReconciliationScreen(FormScreen):
         return _R_HINTS.get(key, "")
 
     def _suggests(self, key: str) -> bool:
-        return key in ("account", "source")
+        return key == "account"
 
     def _bar_value(self, key: str) -> str:
         if key in _AMOUNTS and key in self._values:
             return amount_to_text(self._values[key])
         if key in ("name", *_DATES):
             return str(self._values.get(key, "") or "")
-        return ""  # account / source re-pick
+        return ""  # account re-pick
 
     def _after_mount(self) -> None:
         if not self._preset_account:  # only need the account picker for standalone create
@@ -391,10 +384,6 @@ class NewReconciliationScreen(FormScreen):
         needle = text.strip().lower()
         if key == "account":
             self._suggestions = [(i, n, c) for (i, n, c) in self._accounts if needle in n.lower()]
-        elif key == "source":
-            self._suggestions = [
-                (v, d) for (v, d) in _SOURCES if needle in v.lower() or needle in d.lower()
-            ]
         else:
             self._suggestions = []
         self._suggest_idx = 0
@@ -425,19 +414,12 @@ class NewReconciliationScreen(FormScreen):
                     self.notify(f"{_R_LABELS[key].title()}: use YYYY-MM-DD.", severity="error")
                     return
                 self._values[key] = self._display[key] = text
+            elif key == "date_start":  # required — it orders the batch
+                self.notify("Date start is required.", severity="error")
+                return
             else:
                 self._values.pop(key, None)
                 self._display.pop(key, None)
-            self._advance()
-        elif key == "source":
-            picked = self._suggestions[self._suggest_idx] if self._suggestions else None
-            if picked is None:
-                self.notify("Pick chained or manual.", severity="error")
-                return
-            self._values["source"] = self._display["source"] = picked[0]
-            if picked[0] == "chained":  # chained has no begin slot
-                self._values.pop("begin", None)
-                self._display.pop("begin", None)
             self._advance()
         elif key == "begin":
             cents = parse_amount(text)
@@ -473,11 +455,9 @@ class NewReconciliationScreen(FormScreen):
             payload["date_start"] = to_canonical_aware(self._values["date_start"])
         if self._values.get("date_end"):
             payload["date_end"] = to_canonical_aware(self._values["date_end"])
-        if self._is_manual():
-            payload["beginning_balance_cents"] = self._values["begin"]
-            payload["beginning_balance_source"] = "manual"
-        else:
-            payload["beginning_balance_source"] = "chained"
+        # never send beginning_balance_source — the engine's request schemas are
+        # extra="forbid" since the 2026-08-06 de-chaining, so it would 422
+        payload["beginning_balance_cents"] = self._values["begin"]
         if self._values.get("end") is not None:
             payload["ending_balance_cents"] = self._values["end"]
         return payload
