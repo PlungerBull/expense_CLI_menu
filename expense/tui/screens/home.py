@@ -20,7 +20,7 @@ from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
 from expense.commands import dashboard_cmd
-from expense.commands._resource import format_cents
+from expense.commands._resource import UNRATED_SUFFIX, format_cents, unconverted_of
 from expense.tui.screens._base import screen_fetch_kwargs
 from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.categories import CategoriesScreen
@@ -95,19 +95,23 @@ def _extract_stats(body: dict) -> dict:
     net/spent come straight from `totals`; `owed` is the net of every person's
     *home-converted* balance (positive = they owe you, negative = you owe them).
     Native `current_balance_cents` is intentionally ignored — summing across
-    currencies would be meaningless — and `None` home-cents are skipped.
+    currencies would be meaningless.
+
+    `unrated` counts everything the header could not price: the transactions
+    behind an unconvertible `totals` block, plus each person whose balance has
+    no rate today. Two different kinds of thing, deliberately added into one
+    number — it is a single list of work to go do (user decision, 2026-08-16).
+    When it is non-zero, `_stat_cluster` shows nothing else.
     """
     totals = body.get("totals") or {}
     people = body.get("people") or []
-    owed = sum(
-        p["current_balance_home_cents"]
-        for p in people
-        if isinstance(p.get("current_balance_home_cents"), int)
-    )
+    priced = [p for p in people if isinstance(p.get("current_balance_home_cents"), int)]
+    owed = sum(p["current_balance_home_cents"] for p in priced)
     return {
         "net": totals.get("net_home_cents"),
         "spent": totals.get("outflow_home_cents"),
         "owed": owed,
+        "unrated": unconverted_of(totals) + (len(people) - len(priced)),
     }
 
 
@@ -117,9 +121,22 @@ def _stat_cluster(stats: dict | None, palette: Palette | None) -> Text:
     `None` (pre-fetch / failed fetch) → empty. The owed segment is dropped
     entirely when nothing is outstanding (`owed == 0`); otherwise its label and
     color flip with the sign. Colors come from the palette, never literal names.
+
+    **If anything feeding this line could not be priced, the line is replaced
+    by `4 UNRATED` and nothing else** (Phase 4 sketch, option J). Every figure
+    here is partly wrong in that case: an unconvertible `totals` blanks net and
+    spent, and an unpriceable person silently shrinks owed. Showing a figure
+    that looks right but is not is worse than showing the error, so the error
+    stands alone until the rates are fixed.
     """
     if stats is None:
         return Text("")
+    unrated = stats.get("unrated")
+    if isinstance(unrated, int) and not isinstance(unrated, bool) and unrated > 0:
+        return Text(
+            f"{unrated} {UNRATED_SUFFIX.upper()}",
+            style=f"bold {palette.warning}" if palette else "bold",
+        )
     pos = palette.success if palette else ""
     neg = palette.error if palette else ""
     sep = ("  ·  ", "dim")

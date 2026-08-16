@@ -2,7 +2,8 @@
 
 Covers: build_update_payload, require_yes, render_totals,
 render_pagination_hint, run_toggle (including the hints= path added in
-the audit refactor).
+the audit refactor), and the nullable-aggregate helpers format_aggregate /
+has_aggregate.
 """
 
 import httpx
@@ -16,11 +17,13 @@ from expense.commands._resource import (
     build_update_payload,
     fetch_all_pages,
     fetch_body,
+    format_aggregate,
     format_bool,
     format_cents,
     format_field_value,
     format_hashtag_cell,
     format_month,
+    has_aggregate,
     items_of,
     load_account_name_map,
     load_category_name_map,
@@ -125,6 +128,52 @@ def test_format_cents_non_int_falls_back_to_str():
     # Booleans are an int subclass but are never amounts — keep them literal.
     assert format_cents(True) == "True"
     assert format_cents("n/a") == "n/a"
+
+
+# ---------------------------------------------------------------------------
+# format_aggregate / has_aggregate — the nullable home aggregates
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "count", "expected"),
+    [
+        (-50000, 0, "-500.00"),  # a present figure formats as any amount does
+        (0, 0, "0.00"),  # a real zero is a real zero
+        (-50000, 3, "-500.00"),  # a figure wins over a stale count
+        (None, 3, "3 unrated"),  # the engine refused to report a partial total
+        (None, 1, "1 unrated"),
+        (None, 0, "(null)"),  # null with no count is just missing data
+        (None, None, "(null)"),
+        (None, "3", "(null)"),  # a non-int count is not a count
+        (None, True, "(null)"),  # bool is an int subclass but never a count
+    ],
+)
+def test_format_aggregate(value, count, expected):
+    assert format_aggregate(value, count) == expected
+
+
+def test_format_aggregate_never_renders_a_null_as_zero():
+    """The whole point: `null` is not `0`, and never falls back to a native figure."""
+    rendered = format_aggregate(None, 3)
+    assert "0.00" not in rendered
+    assert rendered == "3 unrated"
+
+
+@pytest.mark.parametrize(
+    ("value", "count", "shown"),
+    [
+        (-50000, 0, True),  # spent something
+        (50000, 0, True),  # earned something
+        (0, 0, False),  # nothing spent — not drawn
+        (None, 0, False),  # nothing to say at all
+        (None, 3, True),  # unpriceable is NOT empty; it keeps its row
+        (0, 2, True),  # a count always wins
+        (True, 0, False),  # bool is not an amount
+    ],
+)
+def test_has_aggregate(value, count, shown):
+    assert has_aggregate(value, count) is shown
 
 
 def test_format_field_value_formats_only_cents_keys():
@@ -395,12 +444,10 @@ def test_items_of(body, expected):
 def test_render_totals_human_renders_inflow_outflow_net(capsys):
     render_totals(
         {
-            "inflow_cents": 800000,
             "inflow_home_cents": 800000,
-            "outflow_cents": 320000,
             "outflow_home_cents": 320000,
-            "net_cents": 480000,
             "net_home_cents": 480000,
+            "unconverted_count": 0,
         }
     )
     out = capsys.readouterr().out
@@ -408,6 +455,27 @@ def test_render_totals_human_renders_inflow_outflow_net(capsys):
     assert "inflow: 8,000.00" in out
     assert "outflow: 3,200.00" in out
     assert "net: 4,800.00" in out
+    # One figure per line since 2026-08-05 — the native aggregates are deleted,
+    # so there is nothing left to put in the old `(home: ...)` parenthetical.
+    assert "(home:" not in out
+
+
+def test_render_totals_unconvertible_collapses_to_one_line(capsys):
+    """The three figures share one count, so they fail together, not three times."""
+    render_totals(
+        {
+            "inflow_home_cents": None,
+            "outflow_home_cents": None,
+            "net_home_cents": None,
+            "unconverted_count": 3,
+        }
+    )
+    out = capsys.readouterr().out
+    assert "3 unrated — no totals this month" in out
+    assert "inflow:" not in out
+    # Never zero, never "(null)" — the engine refused to report a partial total.
+    assert "0.00" not in out
+    assert "(null)" not in out
 
 
 def test_render_totals_handles_none(capsys):

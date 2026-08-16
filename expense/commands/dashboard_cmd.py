@@ -5,11 +5,14 @@ import typer
 from expense import config as config_module
 from expense.commands._resource import (
     JSON_OPT,
+    format_aggregate,
     format_cents,
     format_month,
+    has_aggregate,
     load_hashtag_name_map,
     render_table,
     render_totals,
+    unconverted_of,
 )
 from expense.context import get_verbose
 from expense.errors import handle_errors
@@ -54,12 +57,20 @@ def hashtag_label(ids: list[str], name_map: dict[str, str]) -> str:
 
 
 def _render_categories_table(categories: list[dict] | None) -> None:
-    """Render the Categories block as Name / Spent, with indented hashtag sub-rows.
+    """Render the Categories block as Name / Home, with indented hashtag sub-rows.
 
     Hashtag breakdown (when present in the engine payload) renders as an
-    indented sub-row in the Name column. Spent is the native sum from
-    spent_cents; the home-currency variant is dropped per the dashboard's
-    single-column convention.
+    indented sub-row in the Name column.
+
+    The amount is `spent_home_cents` — the only cross-account figure that exists
+    since 2026-08-05, the native `spent_cents` having been deleted engine-side.
+    The column is called `Home` so this table and `reports monthly` agree
+    (Phase 4 sketch, option F).
+
+    Categories and hashtag combinations with nothing spent are **not drawn**:
+    the engine returns every non-deleted category whether or not it has
+    activity, and a report is not a category list. One that could not be priced
+    keeps its row and says `3 unrated` (`has_aggregate`).
     """
     typer.echo("Categories:")
     if not categories:
@@ -68,43 +79,33 @@ def _render_categories_table(categories: list[dict] | None) -> None:
     name_map = load_hashtag_name_map()
     rows: list[dict[str, str]] = []
     for cat in categories:
+        cat_unconverted = unconverted_of(cat)
+        if not has_aggregate(cat.get("spent_home_cents"), cat_unconverted):
+            continue
         rows.append(
             {
                 "name": cat.get("name") or "(unnamed)",
-                "spent": format_cents(cat.get("spent_cents")),
+                "home": format_aggregate(cat.get("spent_home_cents"), cat_unconverted),
             }
         )
         for sub in cat.get("hashtag_breakdown") or []:
+            sub_unconverted = unconverted_of(sub)
+            if not has_aggregate(sub.get("spent_home_cents"), sub_unconverted):
+                continue
             ids = sub.get("hashtag_ids") or []
             rows.append(
                 {
                     "name": "  " + hashtag_label(ids, name_map),
-                    "spent": format_cents(sub.get("spent_cents")),
+                    "home": format_aggregate(sub.get("spent_home_cents"), sub_unconverted),
                 }
             )
-    render_table(
-        headers={"name": "Name", "spent": "Spent"},
-        rows=rows,
-        align_right={"spent"},
-    )
-
-
-def _render_lifetime_table(items: list[dict] | None, *, empty_message: str) -> None:
-    """Render archived-categories / archived-hashtags lifetime totals as Name / Lifetime spent."""
-    if not items:
-        typer.echo(empty_message)
+    if not rows:
+        typer.echo("  (no categories)")
         return
-    rows = [
-        {
-            "name": item.get("name") or "(unnamed)",
-            "lifetime": format_cents(item.get("lifetime_spent_cents")),
-        }
-        for item in items
-    ]
     render_table(
-        headers={"name": "Name", "lifetime": "Lifetime spent"},
+        headers={"name": "Name", "home": "Home"},
         rows=rows,
-        align_right={"lifetime"},
+        align_right={"home"},
     )
 
 
@@ -131,23 +132,16 @@ def _render_dashboard(body: dict, *, json_mode: bool) -> None:
 
     render_totals(body.get("totals"))
 
+    # The archived-categories / archived-hashtags lifetime panels were deleted
+    # from the engine on 2026-08-05: archiving a category was never a distinct
+    # feature (soft delete already hides a row from the pickers), and those
+    # panels were the `is_archived` columns' last readers. An archived *account*
+    # is different — it still holds real money — so that panel stays.
     archived_accounts = body.get("archived_accounts")
-    archived_categories = body.get("archived_categories")
-    archived_hashtags = body.get("archived_hashtags")
-    if (
-        archived_accounts is not None
-        or archived_categories is not None
-        or archived_hashtags is not None
-    ):
+    if archived_accounts is not None:
         typer.echo("")
         typer.echo("Archived accounts:")
         _render_account_table(archived_accounts, empty_message="  (no archived accounts)")
-        typer.echo("")
-        typer.echo("Archived categories:")
-        _render_lifetime_table(archived_categories, empty_message="  (no archived categories)")
-        typer.echo("")
-        typer.echo("Archived hashtags:")
-        _render_lifetime_table(archived_hashtags, empty_message="  (no archived hashtags)")
 
 
 def fetch_dashboard(
@@ -175,7 +169,7 @@ def dashboard(
     include_archived: bool = typer.Option(
         False,
         "--include-archived",
-        help="Include archived accounts/categories/hashtags panels (lifetime totals).",
+        help="Add the archived-accounts panel.",
     ),
     json_output: bool = JSON_OPT,
 ) -> None:

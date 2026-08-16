@@ -32,37 +32,36 @@ DASHBOARD_RESPONSE = {
             "current_balance_home_cents": -4500,
         }
     ],
+    # Aggregates are home-currency ONLY since the engine's 2026-08-05 read-time
+    # currency change: the native `spent_cents` / `{inflow,outflow,net}_cents`
+    # were deleted, and every survivor is nullable with an `unconverted_count`.
     "categories": [
         {
             "id": "33333333-3333-3333-3333-333333333333",
             "name": "Food",
-            "spent_cents": -50000,
             "spent_home_cents": -50000,
+            "unconverted_count": 0,
             "hashtag_breakdown": [
                 {
                     "hashtag_ids": ["aaaa", "bbbb"],
-                    "spent_cents": -30000,
                     "spent_home_cents": -30000,
+                    "unconverted_count": 0,
                 },
                 {
                     "hashtag_ids": [],
-                    "spent_cents": -20000,
                     "spent_home_cents": -20000,
+                    "unconverted_count": 0,
                 },
             ],
         }
     ],
     "totals": {
-        "inflow_cents": 800000,
         "inflow_home_cents": 800000,
-        "outflow_cents": 320000,
         "outflow_home_cents": 320000,
-        "net_cents": 480000,
         "net_home_cents": 480000,
+        "unconverted_count": 0,
     },
     "archived_accounts": None,
-    "archived_categories": None,
-    "archived_hashtags": None,
 }
 
 DASHBOARD_WITH_ARCHIVED = {
@@ -76,22 +75,38 @@ DASHBOARD_WITH_ARCHIVED = {
             "current_balance_home_cents": 0,
         }
     ],
-    "archived_categories": [
+}
+
+#: A month the engine refused to total, plus a category with nothing spent.
+#: `Empty` must not be drawn at all; `Travel` must say how many rows are behind
+#: its missing figure — a null is neither zero nor missing.
+DASHBOARD_UNCONVERTIBLE = {
+    **DASHBOARD_RESPONSE,
+    "categories": [
+        *DASHBOARD_RESPONSE["categories"],
         {
-            "id": "55555555-5555-5555-5555-555555555555",
-            "name": "Crypto",
-            "lifetime_spent_cents": -250000,
-            "lifetime_spent_home_cents": -250000,
-        }
-    ],
-    "archived_hashtags": [
+            "id": "77777777-7777-7777-7777-777777777777",
+            "name": "Empty",
+            "spent_home_cents": 0,
+            "unconverted_count": 0,
+            "hashtag_breakdown": [],
+        },
         {
-            "id": "66666666-6666-6666-6666-666666666666",
-            "name": "#vacation-2024",
-            "lifetime_spent_cents": -480000,
-            "lifetime_spent_home_cents": -480000,
-        }
+            "id": "88888888-8888-8888-8888-888888888888",
+            "name": "Travel",
+            "spent_home_cents": None,
+            "unconverted_count": 3,
+            "hashtag_breakdown": [
+                {"hashtag_ids": [], "spent_home_cents": None, "unconverted_count": 3}
+            ],
+        },
     ],
+    "totals": {
+        "inflow_home_cents": None,
+        "outflow_home_cents": None,
+        "net_home_cents": None,
+        "unconverted_count": 3,
+    },
 }
 
 
@@ -132,17 +147,53 @@ def test_dashboard_include_archived(configured):
     assert result.exit_code == 0, result.output
     assert "Archived accounts:" in result.output
     assert "Old BCP" in result.output
-    assert "Archived categories:" in result.output
-    assert "Crypto" in result.output
-    # Lifetime spent now renders as a table column header + right-aligned cell
-    # value rather than the old `lifetime spent: -X (home: -X)` line.
-    assert "Lifetime spent" in result.output
-    assert "-2,500.00" in result.output
-    assert "Archived hashtags:" in result.output
-    assert "#vacation-2024" in result.output
+    # The archived category / hashtag lifetime panels were deleted from the
+    # engine on 2026-08-05 — an archived account still holds real money, an
+    # archived category holds only history and soft delete already hides it from
+    # the pickers. `--include-archived` now controls the accounts panel alone.
+    assert "Archived categories:" not in result.output
+    assert "Archived hashtags:" not in result.output
+    assert "Lifetime spent" not in result.output
 
     request = route.calls.last.request
     assert request.url.params.get("include_archived") == "true"
+
+
+@respx.mock
+def test_dashboard_unconvertible_reports_the_count_never_zero(configured):
+    """A null aggregate is neither zero nor missing — it says how many rows it hides."""
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(200, json=DASHBOARD_UNCONVERTIBLE)
+    )
+    result = runner.invoke(cli_app, ["dashboard"])
+    assert result.exit_code == 0, result.output
+
+    # The unpriceable category keeps its row and carries the count, on the
+    # category and on its hashtag combo alike.
+    assert "Travel" in result.output
+    assert result.output.count("3 unrated") >= 2
+    # Never a zero, never a native-currency fallback, never a bare "(null)".
+    assert "(null)" not in result.output
+
+    # The three totals share one count, so they fail together as one line.
+    assert "3 unrated — no totals this month" in result.output
+    assert "inflow:" not in result.output
+
+    # A category with nothing spent is not drawn at all.
+    assert "Empty" not in result.output
+    # ...while one that did spend is unaffected.
+    assert "Food" in result.output
+
+
+@respx.mock
+def test_dashboard_json_is_untouched_by_the_hiding(configured):
+    """--json stays the raw engine body — including the rows the table hides."""
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(200, json=DASHBOARD_UNCONVERTIBLE)
+    )
+    result = runner.invoke(cli_app, ["dashboard", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == DASHBOARD_UNCONVERTIBLE
 
 
 @respx.mock
@@ -182,16 +233,12 @@ def test_dashboard_handles_empty_collections(configured):
         "people": [],
         "categories": [],
         "totals": {
-            "inflow_cents": 0,
             "inflow_home_cents": 0,
-            "outflow_cents": 0,
             "outflow_home_cents": 0,
-            "net_cents": 0,
             "net_home_cents": 0,
+            "unconverted_count": 0,
         },
         "archived_accounts": None,
-        "archived_categories": None,
-        "archived_hashtags": None,
     }
     respx.get("https://api.example.com/v1/dashboard").mock(
         return_value=httpx.Response(200, json=payload)

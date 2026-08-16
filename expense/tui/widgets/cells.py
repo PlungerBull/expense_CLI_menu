@@ -2,7 +2,7 @@
 
 from rich.text import Text
 
-from expense.commands._resource import format_cents
+from expense.commands._resource import format_aggregate, format_cents, unconverted_of
 from expense.tui.theme import Palette
 
 
@@ -43,3 +43,28 @@ def amount_cell(cents: object, palette: Palette | None, rule: str) -> str | Text
     if cents >= 0:
         return Text(text, style=palette.success)
     return Text(text, style=palette.error) if rule == "sign" else text
+
+
+def aggregate_cell(
+    cents: object,
+    unconverted_count: object,
+    palette: Palette | None,
+    rule: str,
+) -> str | Text:
+    """A home-currency aggregate cell: the sign-colored amount, or `3 unrated`.
+
+    Since 2026-08-05 the engine returns `None` plus an `unconverted_count` when
+    any row in the group falls on a date with no resolvable rate. That is not a
+    zero and not a blank, so it renders as its own warning-colored figure rather
+    than as an amount (Phase 4 sketch, option C) — warning, because unpriced
+    rows are work to go do, not something broken.
+
+    A present amount is delegated to `amount_cell`, so aggregates stay colored
+    exactly like every other amount in the TUI.
+    """
+    if isinstance(cents, int) and not isinstance(cents, bool):
+        return amount_cell(cents, palette, rule)
+    text = format_aggregate(cents, unconverted_count)
+    if palette is None or unconverted_of({"unconverted_count": unconverted_count}) == 0:
+        return text
+    return Text(text, style=palette.warning)

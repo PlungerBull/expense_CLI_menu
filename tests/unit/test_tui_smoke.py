@@ -28,21 +28,30 @@ SAMPLE = {
         {"name": "BCP Soles", "currency_code": "PEN", "current_balance_cents": 1245000}
     ],
     "people": [{"name": "Socio Juan", "currency_code": "PEN", "current_balance_cents": -150000}],
+    # Aggregates are home-currency only since 2026-08-05, each nullable with an
+    # `unconverted_count`. `Vacío` spent nothing and must not be drawn.
     "categories": [
         {
             "name": "Comida",
-            "spent_cents": -43250,
-            "hashtag_breakdown": [{"hashtag_ids": ["x"], "spent_cents": -25000}],
+            "spent_home_cents": -43250,
+            "unconverted_count": 0,
+            "hashtag_breakdown": [
+                {"hashtag_ids": ["x"], "spent_home_cents": -25000, "unconverted_count": 0}
+            ],
         },
-        {"name": "Vivienda", "spent_cents": -250000, "hashtag_breakdown": []},
+        {
+            "name": "Vivienda",
+            "spent_home_cents": -250000,
+            "unconverted_count": 0,
+            "hashtag_breakdown": [],
+        },
+        {"name": "Vacío", "spent_home_cents": 0, "unconverted_count": 0, "hashtag_breakdown": []},
     ],
     "totals": {
-        "inflow_cents": 651900,
         "inflow_home_cents": 651900,
-        "outflow_cents": -341250,
         "outflow_home_cents": -385650,
-        "net_cents": 266250,
         "net_home_cents": 266250,
+        "unconverted_count": 0,
     },
 }
 
@@ -58,6 +67,26 @@ def test_static_sections_format():
     assert "BCP Soles" in accounts and "12,450.00" in accounts  # grouped major units
     totals = _text(_totals_table(SAMPLE["totals"]))
     assert "inflow" in totals and "net" in totals and "6,519.00" in totals
+    # The `native` column went with the engine keys behind it (2026-08-05); the
+    # survivor is named `Home`, matching the CLI's tables.
+    assert "native" not in totals
+    assert "Home" in totals
+
+
+def test_totals_table_unconvertible_collapses_to_one_line():
+    """The three figures share one count, so an unpriceable month is one line."""
+    totals = _text(
+        _totals_table(
+            {
+                "inflow_home_cents": None,
+                "outflow_home_cents": None,
+                "net_home_cents": None,
+                "unconverted_count": 3,
+            }
+        )
+    )
+    assert "3 unrated — no totals this month" in totals
+    assert "0.00" not in totals and "(null)" not in totals
 
 
 def test_categories_view_formats_and_resolves(monkeypatch):
@@ -66,6 +95,18 @@ def test_categories_view_formats_and_resolves(monkeypatch):
     assert "▼ Comida" in out and "-432.50" in out  # caret + amount
     assert "trabajo" in out and "-250.00" in out  # hashtag id resolved + child amount
     assert "Vivienda" in out  # leaf category (no caret/children)
+    assert "Vacío" not in out  # nothing spent → not drawn
+
+
+def test_categories_view_marks_the_unpriceable_and_hides_the_empty():
+    cats = [
+        {"name": "Viajes", "spent_home_cents": None, "unconverted_count": 3},
+        {"name": "Vacío", "spent_home_cents": 0, "unconverted_count": 0},
+    ]
+    out = _text(CategoriesView(cats, {})._build())
+    assert "Viajes" in out and "3 unrated" in out
+    assert "0.00" not in out and "(null)" not in out
+    assert "Vacío" not in out
 
 
 def test_categories_view_collapse_hides_children():
@@ -105,7 +146,11 @@ def test_home_header_stat_cluster_populates_from_worker(monkeypatch):
     returns. (Rendering of _stats into the cluster is covered in
     test_tui_home_header.py.)"""
     body = {
-        "totals": {"net_home_cents": 480000, "outflow_home_cents": 320000},
+        "totals": {
+            "net_home_cents": 480000,
+            "outflow_home_cents": 320000,
+            "unconverted_count": 0,
+        },
         "people": [{"current_balance_home_cents": 42000}],  # they owe you
     }
     monkeypatch.setattr(dashboard_cmd, "fetch_dashboard", lambda *a, **k: body)
@@ -118,7 +163,12 @@ def test_home_header_stat_cluster_populates_from_worker(monkeypatch):
             home = app.screen
             assert home.query_one("#brand", Static) is not None  # header up from first paint
             await wait_for(pilot, lambda: home._stats is not None)
-            assert home._stats == {"net": 480000, "spent": 320000, "owed": 42000}
+            assert home._stats == {
+                "net": 480000,
+                "spent": 320000,
+                "owed": 42000,
+                "unrated": 0,
+            }
 
     asyncio.run(scenario())
 

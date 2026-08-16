@@ -118,6 +118,62 @@ def format_cents(value: object) -> str:
     return f"-{body}" if negative else body
 
 
+UNRATED_SUFFIX = "unrated"
+
+
+def unconverted_of(payload: object) -> int:
+    """The `unconverted_count` on an aggregate object, or 0 when absent/odd.
+
+    Every home aggregate the engine returns — a category, a `hashtag_breakdown`
+    row, a month's `totals` — carries this count alongside its figure.
+    """
+    if not isinstance(payload, dict):
+        return 0
+    count = payload.get("unconverted_count")
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        return 0
+    return count
+
+
+def format_aggregate(value: object, unconverted_count: object = 0) -> str:
+    """Render a home-currency aggregate, which the engine may refuse to total.
+
+    Since the engine's read-time-currency change (2026-08-05) every aggregate is
+    nullable and paired with an `unconverted_count`: when any row in the group
+    falls on a date with no resolvable rate, the figure comes back `None` and the
+    count says how many rows are behind it.
+
+    **A `None` here is neither zero nor missing** — the engine declined to report
+    a partial total — so it renders as `3 unrated`, never `0.00`, and never by
+    falling back to a native figure (the exact bug the engine deleted: reading
+    USD cents as PEN cents understated by 3.58×). Phase 4 sketch, option C.
+
+    A present figure formats exactly as `format_cents` does.
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        return format_cents(value)
+    count = unconverted_of({"unconverted_count": unconverted_count})
+    if count > 0:
+        return f"{count} {UNRATED_SUFFIX}"
+    return format_cents(value)
+
+
+def has_aggregate(value: object, unconverted_count: object = 0) -> bool:
+    """Whether an aggregate row is worth drawing at all.
+
+    A category or hashtag combination with nothing spent this period is not
+    rendered — the engine returns every non-deleted category whether or not it
+    has activity, so the full-list view is `expense categories list`, not a
+    report (user decision, 2026-08-16; Phase 4 sketch).
+
+    A row the engine *could not price* is emphatically not empty: it keeps its
+    line and says `3 unrated`, so it is never mistaken for one with no spending.
+    """
+    if unconverted_of({"unconverted_count": unconverted_count}) > 0:
+        return True
+    return isinstance(value, int) and not isinstance(value, bool) and value != 0
+
+
 def format_field_value(key: object, value: object) -> str:
     """Render one `key: value` line for the single-resource `get` dumps.
 
@@ -408,19 +464,29 @@ def render_totals(totals: dict | None) -> None:
     """Render the canonical inflow/outflow/net block.
 
     Shared by `dashboard` and `reports monthly` (single-month view) — both
-    surface the same `{inflow, outflow, net}_cents` + `_home_cents` shape.
-    Empty/missing totals print '(no totals)'.
+    surface the same `{inflow, outflow, net}_home_cents` + `unconverted_count`
+    shape. Empty/missing totals print '(no totals)'.
+
+    Home-currency only since 2026-08-05: the native `{inflow, outflow,
+    net}_cents` were deleted engine-side, because a sum across accounts in
+    different currencies is a number in no currency at all. There is one figure
+    per line now, so the old `(home: …)` parenthetical has nothing to hold.
+
+    The three figures share a single `unconverted_count`, so they fail together
+    — an unpriceable month collapses the whole block to one line rather than
+    repeating the same count three times.
     """
     typer.echo("Totals:")
     if not isinstance(totals, dict):
         typer.echo("  (no totals)")
         return
-    for key in ("inflow_cents", "outflow_cents", "net_cents"):
-        home_key = key.replace("_cents", "_home_cents")
-        native_s = format_cents(totals.get(key))
-        home_s = format_cents(totals.get(home_key))
-        label = key.replace("_cents", "")
-        typer.echo(f"  {label}: {native_s} (home: {home_s})")
+    unconverted = unconverted_of(totals)
+    if unconverted > 0:
+        typer.echo(f"  {unconverted} {UNRATED_SUFFIX} — no totals this month")
+        return
+    for label in ("inflow", "outflow", "net"):
+        amount = format_aggregate(totals.get(f"{label}_home_cents"), unconverted)
+        typer.echo(f"  {label}: {amount}")
 
 
 def render_pagination_hint(body: Any, items: list[Any]) -> None:

@@ -28,94 +28,110 @@ def _strip_panel(output: str) -> str:
     return " ".join(no_box.split())
 
 
+# Aggregates are home-currency ONLY since the engine's 2026-08-05 read-time
+# currency change: `spent_cents` and the native month totals were deleted, and
+# every survivor is nullable with an `unconverted_count` beside it.
 SINGLE_MONTH_RESPONSE = {
     "month": {"year": 2026, "month": 3},
     "categories": [
         {
             "id": "cat-food",
             "name": "Food",
-            "spent_cents": -50000,
             "spent_home_cents": -50000,
+            "unconverted_count": 0,
             "hashtag_breakdown": [
                 {
                     "hashtag_ids": ["aaaa"],
-                    "spent_cents": -30000,
                     "spent_home_cents": -30000,
+                    "unconverted_count": 0,
                 },
                 {
                     "hashtag_ids": [],
-                    "spent_cents": -20000,
                     "spent_home_cents": -20000,
+                    "unconverted_count": 0,
                 },
             ],
         }
     ],
     "totals": {
-        "inflow_cents": 800000,
         "inflow_home_cents": 800000,
-        "outflow_cents": 50000,
         "outflow_home_cents": 50000,
-        "net_cents": 750000,
         "net_home_cents": 750000,
+        "unconverted_count": 0,
     },
 }
 
+
+def _cat(cat_id, name, home_cents, unconverted=0):
+    return {
+        "id": cat_id,
+        "name": name,
+        "spent_home_cents": home_cents,
+        "unconverted_count": unconverted,
+        "hashtag_breakdown": [],
+    }
+
+
+def _month(year, month, categories, net_home_cents, unconverted=0):
+    return {
+        "month": {"year": year, "month": month},
+        "categories": categories,
+        "totals": {
+            "inflow_home_cents": 0 if net_home_cents is not None else None,
+            "outflow_home_cents": 0 if net_home_cents is not None else None,
+            "net_home_cents": net_home_cents,
+            "unconverted_count": unconverted,
+        },
+    }
+
+
 RANGE_RESPONSE = {
     "months": [
-        {
-            "month": {"year": 2025, "month": 11},
-            "categories": [
-                {
-                    "id": "cat-food",
-                    "name": "Food",
-                    "spent_cents": -10000,
-                    "spent_home_cents": -10000,
-                    "hashtag_breakdown": [],
-                },
-                {
-                    "id": "cat-rent",
-                    "name": "Rent",
-                    "spent_cents": -200000,
-                    "spent_home_cents": -200000,
-                    "hashtag_breakdown": [],
-                },
+        _month(
+            2025, 11, [_cat("cat-food", "Food", -10000), _cat("cat-rent", "Rent", -200000)], -210000
+        ),
+        _month(
+            2025, 12, [_cat("cat-food", "Food", -15000), _cat("cat-rent", "Rent", -200000)], -115000
+        ),
+    ]
+}
+
+#: The three grid states side by side. `Gifts` has nothing in any month and must
+#: vanish; Food's December is a real zero (no activity → `—`) while its January
+#: is unpriceable (→ `3 unrated`). Conflating those two was the Phase 4 bug.
+RANGE_THREE_STATES = {
+    "months": [
+        _month(
+            2025,
+            11,
+            [
+                _cat("cat-food", "Food", -10000),
+                _cat("cat-gifts", "Gifts", 0),
+                _cat("cat-rent", "Rent", -200000),
             ],
-            "totals": {
-                "inflow_cents": 0,
-                "inflow_home_cents": 0,
-                "outflow_cents": 210000,
-                "outflow_home_cents": 210000,
-                "net_cents": -210000,
-                "net_home_cents": -210000,
-            },
-        },
-        {
-            "month": {"year": 2025, "month": 12},
-            "categories": [
-                {
-                    "id": "cat-food",
-                    "name": "Food",
-                    "spent_cents": -15000,
-                    "spent_home_cents": -15000,
-                    "hashtag_breakdown": [],
-                },
-                {
-                    "id": "cat-rent",
-                    "name": "Rent",
-                    "spent_cents": -200000,
-                    "spent_home_cents": -200000,
-                    "hashtag_breakdown": [],
-                },
+            -210000,
+        ),
+        _month(
+            2025,
+            12,
+            [
+                _cat("cat-food", "Food", 0),
+                _cat("cat-gifts", "Gifts", 0),
+                _cat("cat-rent", "Rent", -200000),
             ],
-            "totals": {
-                "inflow_cents": 100000,
-                "inflow_home_cents": 100000,
-                "outflow_cents": 215000,
-                "outflow_home_cents": 215000,
-                "net_cents": -115000,
-                "net_home_cents": -115000,
-            },
-        },
+            -200000,
+        ),
+        _month(
+            2026,
+            1,
+            [
+                _cat("cat-food", "Food", None, 3),
+                _cat("cat-gifts", "Gifts", 0),
+                _cat("cat-rent", "Rent", 0),
+            ],
+            None,
+            3,
+        ),
     ]
 }
 
@@ -175,6 +191,45 @@ def test_monthly_single_happy(configured):
     assert request.url.params.get("year") == "2026"
     assert request.url.params.get("month") == "3"
     assert "from_year" not in request.url.params
+
+
+@respx.mock
+def test_monthly_range_keeps_no_activity_and_unpriceable_apart(configured):
+    """The Phase 4 fix: `—` and `3 unrated` must not be the same cell."""
+    respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(200, json=RANGE_THREE_STATES)
+    )
+    result = runner.invoke(cli_app, ["reports", "monthly", "--from", "2025-11", "--to", "2026-01"])
+    assert result.exit_code == 0, result.output
+
+    lines = {ln.split()[0]: ln for ln in result.output.splitlines() if ln.strip()}
+    # Food: a figure, then a no-activity month, then an unpriceable one.
+    assert "-100.00" in lines["Food"]
+    assert "—" in lines["Food"]
+    assert "3 unrated" in lines["Food"]
+    # The unpriceable month propagates to the totals row.
+    assert "3 unrated" in lines["Totals"]
+    # A category with nothing in any month of the window is not drawn at all.
+    assert "Gifts" not in result.output
+    # ...but Rent, which is empty only in January, keeps its row and its dash.
+    assert "-2,000.00" in lines["Rent"]
+    assert "—" in lines["Rent"]
+    # Never a zero and never a bare null standing in for a refused total.
+    assert "(null)" not in result.output
+
+
+@respx.mock
+def test_monthly_range_json_keeps_the_rows_the_table_hides(configured):
+    """--json is the raw engine body — hiding is a rendering choice, not a filter."""
+    respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(200, json=RANGE_THREE_STATES)
+    )
+    result = runner.invoke(
+        cli_app, ["reports", "monthly", "--from", "2025-11", "--to", "2026-01", "--json"]
+    )
+    assert result.exit_code == 0
+    assert json.loads(result.output) == RANGE_THREE_STATES
+    assert "Gifts" in result.output
 
 
 @respx.mock

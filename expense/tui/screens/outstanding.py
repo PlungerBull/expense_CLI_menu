@@ -18,10 +18,29 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands import dashboard_cmd
-from expense.commands._resource import format_month
+from expense.commands._resource import format_aggregate, format_month, has_aggregate, unconverted_of
 from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
-from expense.tui.widgets.cells import amount_cell
+from expense.tui.widgets.cells import aggregate_cell, amount_cell
+
+
+def _cat_is_shown(cat: dict) -> bool:
+    """Whether a category earns a row: it spent something, or could not be priced.
+
+    A category with nothing spent this month is not drawn (user decision,
+    2026-08-16) — the engine returns every non-deleted category whether or not
+    it has activity, and this screen is a report, not a category list.
+    """
+    return has_aggregate(cat.get("spent_home_cents"), unconverted_of(cat))
+
+
+def _shown_breakdown(cat: dict) -> list[dict]:
+    """A category's hashtag combos, minus the ones with nothing spent."""
+    return [
+        sub
+        for sub in cat.get("hashtag_breakdown") or []
+        if has_aggregate(sub.get("spent_home_cents"), unconverted_of(sub))
+    ]
 
 
 def _accounts_table(items: list[dict], palette: Palette | None = None) -> RenderableType:
@@ -41,17 +60,31 @@ def _accounts_table(items: list[dict], palette: Palette | None = None) -> Render
 
 
 def _totals_table(totals: dict | None, palette: Palette | None = None) -> RenderableType:
+    """The inflow / outflow / net block, home currency only.
+
+    The `native` column is gone with the engine keys behind it (2026-08-05) — a
+    sum across accounts in different currencies is a number in no currency. The
+    survivor is called `Home`, matching the CLI's tables.
+
+    All three figures share one `unconverted_count`, so they fail together: an
+    unpriceable month collapses the block to a single `3 unrated` line rather
+    than repeating the count three times.
+    """
     if not isinstance(totals, dict):
         return Text("  (no totals)", style="dim")
+    unconverted = unconverted_of(totals)
+    if unconverted > 0:
+        text = Text(f"  {format_aggregate(None, unconverted)} — no totals this month")
+        if palette is not None:
+            text.stylize(palette.warning)
+        return text
     t = Table(box=box.SIMPLE, pad_edge=False, expand=True)
     t.add_column("Totals")
-    t.add_column("native", justify="right")
-    t.add_column("home", justify="right")
+    t.add_column("Home", justify="right")
     for key in ("inflow", "outflow", "net"):
         t.add_row(
             key,
-            amount_cell(totals.get(f"{key}_cents"), palette, AMOUNT_RULE),
-            amount_cell(totals.get(f"{key}_home_cents"), palette, AMOUNT_RULE),
+            aggregate_cell(totals.get(f"{key}_home_cents"), unconverted, palette, AMOUNT_RULE),
         )
     return t
 
@@ -79,7 +112,7 @@ class CategoriesView(Static):
         palette: Palette | None = None,
     ) -> None:
         super().__init__()
-        self._cats = categories
+        self._cats = [c for c in categories if _cat_is_shown(c)]
         self._name_map = name_map
         self._palette = palette
         self._collapsed: set[int] = set()
@@ -91,7 +124,7 @@ class CategoriesView(Static):
 
     @staticmethod
     def _has_kids(cat: dict) -> bool:
-        return bool(cat.get("hashtag_breakdown"))
+        return bool(_shown_breakdown(cat))
 
     def _render_tree(self) -> None:
         self.update(self._build())
@@ -108,15 +141,22 @@ class CategoriesView(Static):
             row_style = "reverse" if i == self._cursor else ""
             t.add_row(
                 caret + (cat.get("name") or "(unnamed)"),
-                amount_cell(cat.get("spent_cents"), self._palette, AMOUNT_RULE),
+                aggregate_cell(
+                    cat.get("spent_home_cents"), unconverted_of(cat), self._palette, AMOUNT_RULE
+                ),
                 style=row_style,
             )
             if kids and i not in self._collapsed:
-                for sub in cat["hashtag_breakdown"]:
+                for sub in _shown_breakdown(cat):
                     ids = sub.get("hashtag_ids") or []
                     t.add_row(
                         "    " + dashboard_cmd.hashtag_label(ids, self._name_map),
-                        amount_cell(sub.get("spent_cents"), self._palette, AMOUNT_RULE),
+                        aggregate_cell(
+                            sub.get("spent_home_cents"),
+                            unconverted_of(sub),
+                            self._palette,
+                            AMOUNT_RULE,
+                        ),
                         style="dim",
                     )
         return t

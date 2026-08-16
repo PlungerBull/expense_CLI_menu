@@ -46,30 +46,50 @@ def test_extract_stats_pulls_home_figures():
         "totals": {
             "net_home_cents": 480000,
             "outflow_home_cents": 320000,
-            "net_cents": 999,  # native — must be ignored
+            "unconverted_count": 0,
+            "net_cents": 999,  # native — deleted engine-side, must be ignored
             "outflow_cents": 111,
         },
         "people": [{"current_balance_cents": -4500, "current_balance_home_cents": -4500}],
     }
-    assert home._extract_stats(body) == {"net": 480000, "spent": 320000, "owed": -4500}
+    assert home._extract_stats(body) == {
+        "net": 480000,
+        "spent": 320000,
+        "owed": -4500,
+        "unrated": 0,
+    }
 
 
-def test_owed_sums_home_cents_skips_none_ignores_native():
+def test_owed_sums_home_cents_ignores_native_and_counts_the_unpriced():
     body = {
         "totals": {},
         "people": [
             {"current_balance_cents": 100, "current_balance_home_cents": 30000},
             {"current_balance_cents": 200, "current_balance_home_cents": -12000},
-            {"current_balance_cents": 999, "current_balance_home_cents": None},  # skipped
+            {"current_balance_cents": 999, "current_balance_home_cents": None},  # unpriceable
         ],
     }
     stats = home._extract_stats(body)
-    assert stats["owed"] == 30000 - 12000  # native ignored, None skipped
+    assert stats["owed"] == 30000 - 12000  # native ignored
     assert stats["net"] is None and stats["spent"] is None
+    # The dropped person is counted, not silently swallowed — that silent
+    # understatement is exactly what Phase 4 set out to fix.
+    assert stats["unrated"] == 1
+
+
+def test_unrated_adds_unpriced_transactions_to_unpriced_people():
+    body = {
+        "totals": {"net_home_cents": None, "outflow_home_cents": None, "unconverted_count": 3},
+        "people": [
+            {"current_balance_home_cents": 30000},
+            {"current_balance_home_cents": None},
+        ],
+    }
+    assert home._extract_stats(body)["unrated"] == 4
 
 
 def test_extract_stats_missing_blocks_are_safe():
-    assert home._extract_stats({}) == {"net": None, "spent": None, "owed": 0}
+    assert home._extract_stats({}) == {"net": None, "spent": None, "owed": 0, "unrated": 0}
 
 
 # ---- _stat_cluster -------------------------------------------------------
@@ -107,6 +127,27 @@ def test_cluster_drops_owed_when_zero():
     plain = text.plain
     assert "owed" not in plain and "you owe" not in plain
     assert plain == "net +4,800.00  ·  spent 3,200.00"
+
+
+def test_cluster_unrated_replaces_every_figure():
+    """Option J: nothing partially true is shown — the error stands alone."""
+    text = home._stat_cluster({"net": None, "spent": None, "owed": 42000, "unrated": 4}, PALETTE)
+    assert text.plain == "4 UNRATED"
+    # Even the owed figure goes: an unpriceable person makes it an understatement.
+    assert "420.00" not in text.plain
+    assert "net" not in text.plain and "spent" not in text.plain
+    assert PALETTE.warning in str(text.style)
+
+
+def test_cluster_unrated_zero_renders_the_normal_line():
+    text = home._stat_cluster({"net": 480000, "spent": 320000, "owed": 0, "unrated": 0}, PALETTE)
+    assert text.plain == "net +4,800.00  ·  spent 3,200.00"
+
+
+def test_cluster_unrated_uses_no_literal_color_when_palette_absent():
+    text = home._stat_cluster({"net": None, "spent": None, "owed": 0, "unrated": 2}, None)
+    assert text.plain == "2 UNRATED"
+    assert not ({"green", "red", "yellow"} & set(str(text.style).split()))
 
 
 def test_cluster_uses_no_literal_color_names_when_palette_absent():

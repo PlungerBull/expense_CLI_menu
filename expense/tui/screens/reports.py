@@ -24,7 +24,7 @@ from expense.commands._resource import load_hashtag_name_map
 from expense.commands.dashboard_cmd import hashtag_label
 from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
-from expense.tui.widgets.cells import amount_cell
+from expense.tui.widgets.cells import aggregate_cell
 
 WINDOW_MONTHS = 4
 
@@ -36,10 +36,17 @@ def shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
 
 
 def _grid_cell(value: object, palette: Palette | None) -> RenderableType:
-    """A month cell: signed amount, or a dim em-dash for no-activity months."""
-    if not isinstance(value, int):
-        return Text("—", style="dim")
-    return amount_cell(value, palette, AMOUNT_RULE)
+    """A month cell in one of three states.
+
+    A signed amount; a dim em-dash for a month with no activity; or the
+    warning-colored `3 unrated` when there *was* activity the engine could not
+    price. The third state used to be indistinguishable from the second, which
+    is what `build_range_grid`'s cell dict exists to fix.
+    """
+    if reports_cmd.cell_is_empty(value):
+        return Text(reports_cmd.NO_ACTIVITY_MARK, style="dim")
+    assert isinstance(value, dict)
+    return aggregate_cell(value.get("cents"), value.get("unconverted"), palette, AMOUNT_RULE)
 
 
 class MonthGridView(Static):
@@ -172,7 +179,10 @@ class MonthlyReportScreen(SectionScreen):
         return [
             Static(Text(f"Monthly report  ·  {span}  (home currency)"), classes="section-title"),
             MonthGridView(data["grid"], data["names"], palette=palette),
-            Static(Text("amounts are home-currency · — = no activity"), classes="legend"),
+            Static(
+                Text("amounts are home-currency · — = no activity · unrated = no exchange rate"),
+                classes="legend",
+            ),
         ]
 
     async def action_older(self) -> None:
