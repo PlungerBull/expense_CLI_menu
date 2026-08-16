@@ -26,7 +26,7 @@
 > arrow-key navigation. Theme = swappable token set, **neutral by default**.
 >
 > **What's wired (per [expense/tui/screens/home.py](../expense/tui/screens/home.py)):**
-> Outstanding Amounts, Monthly report, Log a transaction (quick-add + transfer), Inbox,
+> Outstanding Amounts, Monthly report, Log a transaction (quick-add), Inbox,
 > Transactions, Reconciliations, Accounts, Categories, Hashtags, Config, Auth & profile,
 > and the System reads (Sync · Activity · Rates). **Every menu entry is wired** — the
 > last `"soon"` stub (Monthly report) shipped 2026-07-08.
@@ -84,7 +84,7 @@ expense/tui/
     inbox.py        transactions.py  accounts.py  categories.py  hashtags.py
     reconciliations.py               # full lifecycle + $EDITOR reorder
     system.py       # Config / Auth / Sync / Activity / Rates screens
-    quick_log.py    # the transaction form (log / transfer / edit)
+    quick_log.py    # the transaction form (log / edit)
     create_forms.py # BarFormScreen + New{Account,Category,Hashtag} small forms
     modals.py       # RecordModal, SnapshotModal, ConfirmModal, PromptModal
 ```
@@ -200,6 +200,11 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 - **Exit criteria:** every read surface is browsable in the TUI.
 
 ### Phase 2 — Write flows · **1–2 weeks** · ✅ shipped (closed 2026-07-08)
+> **Retired 2026-08-16:** the quick-add **transfer sub-flow** (and its To-amount
+> auto-sign) was removed — the engine deleted the transfer feature 2026-08-10
+> ([client-breaking-changes.md](client-breaking-changes.md)). A move between
+> accounts is now two ordinary transactions.
+>
 > **Shipped:** Log/quick-add + transfer, edit transactions + inbox drafts, create forms
 > (account/category/hashtag), the **Manage edit flow** (Option B — see below), full
 > Reconciliations screen (assign/complete/revert/delete + account-first browse + reorder),
@@ -238,7 +243,8 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   deliberately **not** confirm-gated — reversible toggle, 2026-07-11.)
 - **The transaction form** (Log / Inbox-add / Transaction-edit — same fields): required
   fields, signed-amount validation, **tri-state cleared**, hashtag multi-select,
-  **conditional transfer sub-flow** (opposite-sign rule), inline 422 surfacing.
+  inline 422 surfacing. (The conditional transfer sub-flow was retired 2026-08-16 —
+  see the banner above.)
 - **Small forms** (reuse the form component): account, category, hashtag create ✅ /
   edit ✅ (`e` on the list row, the Manage edit flow above).
 - **Reconciliation** create/edit form; reorder — shell out to the existing `$EDITOR`

@@ -1,18 +1,15 @@
 """Log / edit a transaction — quick-add bar (Phase 2).
 
 One input bar cycles through fields; a summary fills below. Entity fields
-(account/category/hashtags/transfer-to) show a live-filtered suggestion list —
-pick existing entities only.
+(account/category/hashtags) show a live-filtered suggestion list — pick
+existing entities only.
 
-CREATE (record=None): Date › Title › Amount › Account › Transfer to? › Category ›
-Hashtags › Note. Filling "Transfer to?" makes it a transfer (… › To amount ›
-Note; no category/hashtags — the engine assigns @Transfer/@Debt). To amount is
-the opposite sign of Amount (auto-mirrored for same-currency accounts).
+CREATE (record=None): Date › Title › Amount › Account › Category ›
+Hashtags › Note.
 
 EDIT (record + resource): the same bar pre-filled. Sequence: Date › Title ›
-Amount › Account › Category › Cleared › Hashtags › Note. Transfer legs lock
-amount/account/date (shown faded, skipped). `ctrl+s` PUTs only the changed
-fields.
+Amount › Account › Category › Cleared › Hashtags › Note. `ctrl+s` PUTs only
+the changed fields.
 
 `enter` saves & advances · `ctrl+↑/↓` jump fields · `↑/↓` move the suggestion
 highlight · `ctrl+s` submits. Sign explicit (− expense / + income); currency
@@ -46,25 +43,18 @@ _LABELS = {
     "title": "TITLE",
     "amount": "AMOUNT",
     "account": "ACCOUNT",
-    "transfer_to": "TRANSFER TO?",
-    "to_amount": "TO AMOUNT",
     "category": "CATEGORY",
     "cleared": "CLEARED?",
     "hashtags": "HASHTAGS",
     "note": "NOTE",
 }
-_ENTITY = {"account", "transfer_to", "category", "hashtags"}
-_AMOUNTS = {"amount", "to_amount"}
+_ENTITY = {"account", "category", "hashtags"}
+_AMOUNTS = {"amount"}
 _HINTS = {
     "date": "YYYY-MM-DD · enter to accept, or type a date",
     "title": "free text · enter to save",
     "amount": "signed decimal · − expense / + income · in the account's currency",
     "account": "pick an existing account · ↑↓ highlight · enter select",
-    "transfer_to": "optional · pick a destination account → transfer · empty enter = skip",
-    "to_amount": (
-        "magnitude only — sign is auto-set opposite of Amount (engine transfer rule) "
-        "· same currency is auto-filled"
-    ),
     "category": "pick an existing category · ↑↓ highlight · enter select",
     "cleared": "type yes / no / unset · has it posted at the bank?",
     "hashtags": "type a tag · ↑↓ highlight · enter adds & stays · empty enter = done (optional)",
@@ -168,15 +158,10 @@ class QuickAddLogScreen(FormScreen):
         # deep: _commit_hashtag appends to _values["hashtags"] in place — a shallow
         # copy would alias the list and the edit diff would never see the change.
         self._original = copy.deepcopy(self._values)
-        # transfer legs lock amount/account/date (engine read-only); reconciliation
-        # locks rely on the engine's 422 (not reliably detectable from the row).
-        if rec.get("transfer_transaction_id"):
-            self._locked = {"amount", "account", "date"}
+        # no client-side field locks: reconciliation locks rely on the
+        # engine's 422 (not reliably detectable from the row).
 
     # ---- field sequence --------------------------------------------------
-    def _is_transfer(self) -> bool:
-        return self._mode == "create" and bool(self._values.get("transfer_to"))
-
     def _sequence(self) -> list[str]:
         if self._mode == "edit":
             seq = ["date", "title", "amount", "account", "category", "cleared"]
@@ -184,15 +169,11 @@ class QuickAddLogScreen(FormScreen):
                 seq.append("hashtags")
             seq.append("note")
             return seq
-        seq = ["date", "title", "amount", "account", "transfer_to"]
-        tail = ["to_amount", "note"] if self._is_transfer() else ["category", "hashtags", "note"]
-        return seq + tail
+        return ["date", "title", "amount", "account", "category", "hashtags", "note"]
 
     def _required(self) -> tuple[str, ...]:
         if self._mode == "edit":
             return ()  # diff-based; the record is already valid
-        if self._is_transfer():
-            return ("title", "amount", "account", "transfer_to", "to_amount")
         return ("title", "amount", "account", "category")
 
     def _after_mount(self) -> None:
@@ -245,9 +226,6 @@ class QuickAddLogScreen(FormScreen):
         self._recompute(self.query_one("#bar", Input).value)
         self._refresh_view()
 
-    def _account_currency(self, account_id) -> str | None:
-        return next((c for (i, n, c) in self._accounts if i == account_id), None)
-
     # ---- FormScreen hooks --------------------------------------------------
     def _label(self, key: str) -> str:
         return _LABELS[key]
@@ -275,9 +253,8 @@ class QuickAddLogScreen(FormScreen):
     def _recompute(self, text: str) -> None:
         key = self._key
         needle = text.strip().lower()
-        if key in ("account", "transfer_to"):
-            src = self._values.get("account") if key == "transfer_to" else None
-            pool = [(i, n, c) for (i, n, c) in self._accounts if needle in n.lower() and i != src]
+        if key == "account":
+            pool = [(i, n, c) for (i, n, c) in self._accounts if needle in n.lower()]
         elif key == "category":
             pool = [(i, n) for (i, n) in self._categories if needle in n.lower()]
         elif key == "hashtags":
@@ -331,10 +308,6 @@ class QuickAddLogScreen(FormScreen):
             self._advance()
         elif key == "cleared":
             self._commit_cleared(text)
-        elif key == "transfer_to":
-            self._commit_transfer_to(text)
-        elif key == "to_amount":
-            self._commit_to_amount(text)
         elif key == "hashtags":
             self._commit_hashtag(text)
             return
@@ -359,58 +332,6 @@ class QuickAddLogScreen(FormScreen):
         else:
             self.notify("Cleared: type yes / no / unset.", severity="error")
             return
-        self._advance()
-
-    def _commit_transfer_to(self, text: str) -> None:
-        if not text:
-            for k in ("transfer_to", "to_amount"):
-                self._values.pop(k, None)
-                self._display.pop(k, None)
-            self._advance()
-            return
-        picked = self._picked()
-        if picked is None:
-            self.notify(f"No account matches “{text}”.", severity="error")
-            return
-        # Mirrors the engine's 422 transfer.account_id "Must be a different
-        # account." (engine app/helpers/transfers.py — enforced but
-        # undocumented in engine-spec.md; spec gap flagged in backlog 2.5).
-        # Deliberately kept client-side.
-        if picked[0] == self._values.get("account"):
-            self.notify("Transfer destination must differ from the source.", severity="error")
-            return
-        self._values["transfer_to"] = picked[0]
-        self._display["transfer_to"] = picked[1]
-        from_cur = self._account_currency(self._values.get("account"))
-        to_cur = picked[2] if len(picked) > 2 else None
-        amount = self._values.get("amount")
-        if amount is not None and from_cur and to_cur and from_cur == to_cur:
-            self._values["to_amount"] = -amount
-            self._display["to_amount"] = format_cents(-amount)
-        else:
-            self._values.pop("to_amount", None)
-            self._display.pop("to_amount", None)
-        self._advance()
-
-    def _commit_to_amount(self, text: str) -> None:
-        raw = parse_amount(text) if text else self._values.get("to_amount")
-        if raw is None:
-            self.notify("Enter the destination amount, e.g. 500 or 270.50", severity="error")
-            return
-        # Mirrors the engine's 422 transfer.amount_cents "Must not be zero."
-        if raw == 0:
-            self.notify("Amount must be non-zero.", severity="error")
-            return
-        amount = self._values.get("amount", 0)
-        magnitude = abs(raw)
-        # SANCTIONED EXCEPTION (cli-spec.md "Sanctioned exceptions", backlog
-        # 2.1): deliberate client-side mirror of the engine's zero-sum
-        # transfer rule — both legs same sign → 422 (engine
-        # app/helpers/transfers.py; engine-spec.md Transfers §6). The field
-        # takes a magnitude, the sign is always the opposite of Amount, and
-        # the computed signed value is shown in the summary before submit.
-        self._values["to_amount"] = magnitude if amount < 0 else -magnitude
-        self._display["to_amount"] = format_cents(self._values["to_amount"])
         self._advance()
 
     def _commit_hashtag(self, text: str) -> None:
@@ -467,35 +388,20 @@ class QuickAddLogScreen(FormScreen):
                 return None
             return ("PUT", f"/{self._resource}/{self._record['id']}", payload, "Saving…")
         payload = self._create_payload()
-        busy = "Creating transfer…" if self._is_transfer() else "Creating transaction…"
-        return ("POST", "/transactions", payload, busy)
+        return ("POST", "/transactions", payload, "Creating transaction…")
 
     def _create_payload(self) -> dict:
         date = to_canonical_aware(self._values.get("date") or date_cls.today().isoformat())
-        if self._is_transfer():
-            payload = {
-                "id": str(uuid.uuid4()),
-                "title": self._values["title"],
-                "amount_cents": self._values["amount"],
-                "account_id": self._values["account"],
-                "date": date,  # no category_id — engine assigns @Transfer / @Debt
-                "transfer": {
-                    "id": str(uuid.uuid4()),
-                    "account_id": self._values["transfer_to"],
-                    "amount_cents": self._values["to_amount"],
-                },
-            }
-        else:
-            payload = {
-                "id": str(uuid.uuid4()),
-                "title": self._values["title"],
-                "amount_cents": self._values["amount"],
-                "account_id": self._values["account"],
-                "category_id": self._values["category"],
-                "date": date,
-            }
-            if self._values.get("hashtags"):
-                payload["hashtag_ids"] = self._values["hashtags"]
+        payload = {
+            "id": str(uuid.uuid4()),
+            "title": self._values["title"],
+            "amount_cents": self._values["amount"],
+            "account_id": self._values["account"],
+            "category_id": self._values["category"],
+            "date": date,
+        }
+        if self._values.get("hashtags"):
+            payload["hashtag_ids"] = self._values["hashtags"]
         if self._values.get("note"):
             payload["description"] = self._values["note"]
         return payload
@@ -520,5 +426,5 @@ class QuickAddLogScreen(FormScreen):
         if self._mode == "edit":
             self.notify("Saved.")
         else:
-            self.notify("Transfer created." if self._is_transfer() else "Transaction created.")
+            self.notify("Transaction created.")
         self.dismiss()

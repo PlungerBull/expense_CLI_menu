@@ -1,4 +1,4 @@
-"""Phase 2 quick-add Log screen tests (normal + transfer flows, fake client)."""
+"""Phase 2 quick-add Log screen tests (fake client)."""
 
 import asyncio
 
@@ -18,7 +18,7 @@ ACCOUNTS = [
 CATEGORIES = {
     "items": [
         {"id": "cat1", "name": "Mascotas", "is_system": False},
-        {"id": "catT", "name": "@Transfer", "is_system": True, "system_key": "transfer"},
+        {"id": "catO", "name": "@Opening", "is_system": True, "system_key": "opening_balance"},
     ]
 }
 HASHTAGS = {"items": [{"id": "h1", "name": "dog"}, {"id": "h2", "name": "traveling"}]}
@@ -142,7 +142,6 @@ def test_quick_log_normal_flow_submits_payload(fake_client, monkeypatch):
             _enter(screen, "Dog walker")  # title
             _enter(screen, "-99.92")  # amount
             _enter(screen, "BCP P")  # account → BCP PEN
-            _enter(screen, "")  # transfer to? → skip (normal)
             _enter(screen, "Masco")  # category → Mascotas
             _enter(screen, "#dog")  # hashtag add (# stripped)
             _enter(screen, "")  # hashtags done
@@ -152,85 +151,7 @@ def test_quick_log_normal_flow_submits_payload(fake_client, monkeypatch):
             assert path == "/transactions"
             assert body["amount_cents"] == -9992 and body["account_id"] == "acc1"
             assert body["category_id"] == "cat1" and body["hashtag_ids"] == ["h1"]
-            assert "transfer" not in body
-
-    asyncio.run(scenario())
-
-
-def test_quick_log_transfer_flow_submits_pair(fake_client, monkeypatch):
-    _patch(monkeypatch)
-
-    async def scenario():
-        app = ExpenseApp()
-        async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
-            await app.push_screen(screen)
-            await _wait_loaded(screen, pilot)
-            _enter(screen, "")  # date
-            _enter(screen, "Move to savings")  # title
-            _enter(screen, "-500")  # amount (from)
-            _enter(screen, "BCP P")  # account → BCP PEN
-            _enter(screen, "Ahorr")  # transfer to → Ahorros (same currency PEN)
-            assert screen._is_transfer()
-            assert screen._values["to_amount"] == 50000  # auto-mirrored opposite sign
-            _enter(screen, "")  # to amount → accept the auto value
-            _enter(screen, "")  # note → creates
-            await wait_for(pilot, lambda: fake_client.posts)
-            path, body = fake_client.posts[0]
-            assert path == "/transactions"
-            assert body["amount_cents"] == -50000 and body["account_id"] == "acc1"
-            assert "category_id" not in body  # engine assigns it for transfers
-            assert body["transfer"]["account_id"] == "acc3"
-            assert body["transfer"]["amount_cents"] == 50000  # opposite sign
-            assert "hashtag_ids" not in body  # transfers skip hashtags
-
-    asyncio.run(scenario())
-
-
-def test_to_amount_flip_pins_engine_opposite_sign_rule(fake_client, monkeypatch):
-    """The to-amount auto-sign is a sanctioned client-side mirror of the
-    engine's zero-sum transfer rule (backlog 2.1, cli-spec.md "Sanctioned
-    exceptions"): a typed magnitude — even an explicitly signed one — always
-    commits opposite to Amount, and the summary shows the signed value."""
-    _patch(monkeypatch)
-
-    async def scenario():
-        app = ExpenseApp()
-        async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
-            await app.push_screen(screen)
-            await _wait_loaded(screen, pilot)
-            _enter(screen, "")  # date
-            _enter(screen, "Move to savings")  # title
-            _enter(screen, "-500")  # amount (from) — expense
-            _enter(screen, "BCP P")  # account → BCP PEN
-            _enter(screen, "Ahorr")  # transfer to → Ahorros
-            _enter(screen, "-300")  # typed sign is overridden: opposite of −500 is +
-            assert screen._values["to_amount"] == 30000
-            assert screen._display["to_amount"] == "300.00"
-
-    asyncio.run(scenario())
-
-
-def test_to_amount_flip_negative_when_amount_positive(fake_client, monkeypatch):
-    """Reverse direction of the 2.1 rule: a positive Amount makes the
-    destination leg the expense side."""
-    _patch(monkeypatch)
-
-    async def scenario():
-        app = ExpenseApp()
-        async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
-            await app.push_screen(screen)
-            await _wait_loaded(screen, pilot)
-            _enter(screen, "")  # date
-            _enter(screen, "Pull from savings")  # title
-            _enter(screen, "500")  # amount (from) — income into the source
-            _enter(screen, "BCP P")  # account → BCP PEN
-            _enter(screen, "Ahorr")  # transfer to → Ahorros
-            _enter(screen, "300")  # unsigned magnitude → destination leg is negative
-            assert screen._values["to_amount"] == -30000
-            assert screen._display["to_amount"] == "-300.00"
+            assert "transfer" not in body  # fail-closed: feature removed 2026-08-10
 
     asyncio.run(scenario())
 
@@ -331,14 +252,6 @@ def test_edit_no_changes_does_not_submit(fake_client, monkeypatch):
             assert not fake_client.calls
 
     asyncio.run(scenario())
-
-
-def test_edit_transfer_leg_locks_amount_account_date():
-    leg = {**TXN, "transfer_transaction_id": "sibling1"}
-    screen = QuickAddLogScreen(record=leg, resource="transactions")
-    assert screen._locked == {"amount", "account", "date"}
-    # the first editable field skips the locked date → title
-    assert screen._sequence()[screen._first_editable()] == "title"
 
 
 def test_edit_inbox_sequence_has_no_hashtags():

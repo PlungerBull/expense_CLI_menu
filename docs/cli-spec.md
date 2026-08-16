@@ -29,7 +29,8 @@ Deliberate, reviewed deviations from the principles above — do not re-flag in 
 
 - **`accounts update --currency-code`** — exists solely to be rejected client-side with honest help text; currency is immutable after creation (the engine would 422 anyway). Fail-fast UX, not business logic. [`expense/commands/accounts_cmd.py`]
 - **`import --json`** — emits a client-composed plan/result summary. The import pipeline is a composite of many engine calls (resolve, create, batch) with no single engine response to pass through — the only non-verbatim `--json` in the layer. [`expense/commands/import_cmd.py`]
-- **TUI transfer "To amount" auto-sign** — the Log form takes a magnitude and applies the sign opposite to Amount, mirroring the engine's zero-sum transfer rule (both legs same sign → 422); the computed signed value is always visible before submit. Kept by explicit user decision (backlog 2.1, mockup `expense-world-transfer-to-amount-2.1.html`). [`expense/tui/screens/quick_log.py` `_commit_to_amount`]
+
+(A third exception — the TUI transfer "To amount" auto-sign — was retired 2026-08-16 with the engine's transfer-feature removal of 2026-08-10; the sign convention now has no UI exceptions. See [decisions.md](decisions.md).)
 
 ---
 
