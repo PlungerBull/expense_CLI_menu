@@ -198,9 +198,6 @@ def add(
     cleared: bool | None = typer.Option(
         None, "--cleared/--no-cleared", help="Has the transaction posted at the bank?"
     ),
-    exchange_rate: float | None = typer.Option(
-        None, "--exchange-rate", help="Override engine auto-fetch."
-    ),
     json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/inbox. Drop a partial draft into the inbox; fill in later, then promote.
@@ -226,8 +223,6 @@ def add(
         payload["description"] = description
     if cleared is not None:
         payload["cleared"] = cleared
-    if exchange_rate is not None:
-        payload["exchange_rate"] = exchange_rate
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}", json_body=payload)
@@ -248,7 +243,6 @@ def update(
     category_id: str | None = typer.Option(None, "--category-id"),
     description: str | None = typer.Option(None, "--description"),
     cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
-    exchange_rate: float | None = typer.Option(None, "--exchange-rate"),
     json_output: bool = JSON_OPT,
 ) -> None:
     """PUT /v1/inbox/{id}.
@@ -267,7 +261,6 @@ def update(
             "category_id": category_id,
             "description": description,
             "cleared": cleared,
-            "exchange_rate": exchange_rate,
         }
     )
 

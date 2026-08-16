@@ -26,7 +26,6 @@ TRANSACTION_RESPONSE = {
     "category_id": "cat-id",
     "description": None,
     "cleared": False,
-    "exchange_rate": 1.0,
     "transaction_type": 1,
     "transfer_transaction_id": None,
     "hashtag_ids": [],
@@ -143,29 +142,6 @@ def test_log_signed_positive_amount(configured):
     )
     body = json.loads(route.calls.last.request.content)
     assert body["amount_cents"] == 5000
-
-
-@respx.mock
-def test_log_422_rate_unavailable_prints_hint(configured):
-    respx.post("https://api.example.com/v1/transactions").mock(
-        return_value=httpx.Response(
-            422,
-            json={
-                "error": {
-                    "code": "RATE_UNAVAILABLE",
-                    "message": "No FX rate available.",
-                    "fields": {"exchange_rate": "No rate on or before 2026-04-24 for USD->PEN."},
-                }
-            },
-        )
-    )
-    result = runner.invoke(
-        cli_app,
-        ["log", "--title", "x", "--amount", "-100", "--account-id", "a", "--category-id", "c"],
-    )
-    assert result.exit_code == 1
-    assert "--exchange-rate" in result.output
-    assert "RATE_UNAVAILABLE" in result.output
 
 
 @respx.mock

@@ -270,7 +270,6 @@ def update(
     cleared: bool | None = typer.Option(
         None, "--cleared/--no-cleared", help="Set the cleared status."
     ),
-    exchange_rate: float | None = typer.Option(None, "--exchange-rate"),
     hashtag_ids: str | None = typer.Option(
         None, "--hashtag-ids", help="Comma-separated list; replaces the existing set."
     ),
@@ -293,7 +292,6 @@ def update(
             "category_id": category_id,
             "description": description,
             "cleared": cleared,
-            "exchange_rate": exchange_rate,
             "hashtag_ids": _parse_hashtag_ids(hashtag_ids) if hashtag_ids is not None else None,
             "reconciliation_id": reconciliation_id,
         }

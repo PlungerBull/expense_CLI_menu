@@ -218,9 +218,6 @@ def opening_balance(
     title: str | None = typer.Option(
         None, "--title", help='Seed transaction title. Engine defaults to "Opening balance".'
     ),
-    exchange_rate: float | None = typer.Option(
-        None, "--exchange-rate", help="Override engine auto-fetch."
-    ),
     json_output: bool = JSON_OPT,
 ) -> None:
     """POST /v1/accounts/{id}/opening-balance.
@@ -245,8 +242,6 @@ def opening_balance(
     }
     if title is not None:
         payload["title"] = title
-    if exchange_rate is not None:
-        payload["exchange_rate"] = exchange_rate
 
     with ExpenseClient(cfg, verbose=verbose) as client:
         body = client.post(f"/{_RESOURCE}/{account_id}/opening-balance", json_body=payload)

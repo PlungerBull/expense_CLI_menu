@@ -195,11 +195,6 @@ def build_tx_payload(row: ParsedRow, tx_id: str, res: ResolveResult) -> dict:
     }
     if row.description is not None:
         payload["description"] = row.description
-    if row.exchange_rate is not None:
-        # Decimal kept the rounding money-correct; the wire field is a JSON
-        # number and json.dumps can't emit Decimal, so cast at the boundary.
-        # Lossless for a 6-dp value: float -> shortest round-tripping repr.
-        payload["exchange_rate"] = float(row.exchange_rate)
     return payload
 
 
@@ -210,10 +205,6 @@ def build_opening_payload(row: OpeningRow, transaction_id: str) -> dict:
         "date": to_canonical_aware(row.date_iso),
         "title": row.title,
     }
-    if row.exchange_rate is not None:
-        # Same boundary cast as build_tx_payload: Decimal kept rounding
-        # money-correct; the wire field is a JSON number.
-        payload["exchange_rate"] = float(row.exchange_rate)
     return payload
 
 

@@ -1,7 +1,6 @@
 """respx-mocked apply tests + CLI dry-run for `expense import`."""
 
 import json
-from decimal import Decimal
 
 import httpx
 import respx
@@ -31,7 +30,6 @@ def _prow(line: int, **over: object) -> ParsedRow:
         currency="PEN",
         account="BCP PEN",
         description=None,
-        exchange_rate=None,
     )
     base.update(over)
     return ParsedRow(**base)  # type: ignore[arg-type]
@@ -49,7 +47,6 @@ def _orow(line: int, **over: object) -> OpeningRow:
         currency="PEN",
         date_iso="2022-12-01",
         amount_cents=350000,
-        exchange_rate=None,
     )
     base.update(over)
     return OpeningRow(**base)  # type: ignore[arg-type]
@@ -74,7 +71,6 @@ def test_apply_reuses_existing_and_creates_rest(configured):
             account="BCP USD",
             currency="USD",
             amount_cents=-10000,
-            exchange_rate=Decimal("3.68"),
             category="PERROS",
             hashtag="Viajes",
         ),
@@ -113,7 +109,7 @@ def test_apply_reuses_existing_and_creates_rest(configured):
     pen = next(i for i in items if i["account_id"] == "acc-pen")
     usd = next(i for i in items if i["account_id"] == "acc-usd")
     assert "exchange_rate" not in pen
-    assert usd["exchange_rate"] == 3.68
+    assert "exchange_rate" not in usd  # engine converts at read time; field is rejected
     assert len(pen["hashtag_ids"]) == 1
     assert pen["id"] == plan_mod.tx_id_for(rows[0])  # deterministic
     assert result.tx_created == 2
@@ -129,7 +125,6 @@ def test_apply_seeds_opening_balances(configured):
             4,
             account="Interbank USD",
             currency="USD",
-            exchange_rate=Decimal("3.68"),
             amount_cents=100000,
         ),
     ]
@@ -168,7 +163,7 @@ def test_apply_seeds_opening_balances(configured):
     assert body["date"].startswith("2022-12-01")
     assert "exchange_rate" not in body
     usd_body = json.loads(usd_route.calls.last.request.content)
-    assert usd_body["exchange_rate"] == 3.68
+    assert "exchange_rate" not in usd_body
 
 
 @respx.mock

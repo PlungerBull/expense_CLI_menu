@@ -1,8 +1,9 @@
 """Pure parsing: RawRow -> ParsedRow | SkippedRow. No I/O, no HTTP.
 
 Handles Excel serial dates, decimal->signed-cents conversion (float-artifact
-safe via Decimal), currency validation, and the per-row USD exchange rate read
-straight from the T.C. (tipo de cambio) column.
+safe via Decimal), and currency validation. A T.C. (tipo de cambio) column, if
+present, is ignored — the engine converts currency at read time and rejects
+per-row rates (2026-08-05 engine rework).
 """
 
 from dataclasses import dataclass
@@ -26,7 +27,6 @@ class ParsedRow:
     currency: str
     account: str
     description: str | None
-    exchange_rate: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,6 @@ class OpeningRow:
     currency: str
     date_iso: str
     amount_cents: int
-    exchange_rate: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -143,24 +142,6 @@ def amount_to_cents(value: object) -> int:
     return int(cents.to_integral_value(rounding=ROUND_HALF_UP))
 
 
-_RATE_QUANTUM = Decimal("0.000001")
-
-
-def parse_rate(value: object) -> Decimal | None:
-    """Parse the T.C. cell into a rate, quantized to 6 dp. None if absent/non-numeric.
-
-    Goes through ``Decimal`` (like ``amount_to_cents``) so the rate rounds the
-    money-correct way — ROUND_HALF_UP on the exact decimal, not banker's-rounded
-    float — rather than accumulating a binary-float artifact before it reaches
-    the payload. A non-positive rate is returned as-is (0 or negative) so the
-    caller can reject it distinctly from a missing one.
-    """
-    try:
-        return Decimal(str(value)).quantize(_RATE_QUANTUM, rounding=ROUND_HALF_UP)
-    except (InvalidOperation, TypeError, ValueError):
-        return None
-
-
 def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | OpeningRow | SkippedRow:
     def cell(field: str) -> object:
         i = index.get(field)
@@ -203,15 +184,6 @@ def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | OpeningRow | Sk
     if amount_cents == 0:
         return SkippedRow(raw.line, "zero-amount")
 
-    exchange_rate: Decimal | None = None
-    if currency == "USD":
-        rate = parse_rate(cell("rate"))
-        if rate is None:
-            return SkippedRow(raw.line, "usd-no-rate", str(cell("rate")))
-        if rate <= 0:
-            return SkippedRow(raw.line, "bad-rate", str(cell("rate")))
-        exchange_rate = rate
-
     if opening:
         return OpeningRow(
             line=raw.line,
@@ -220,7 +192,6 @@ def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | OpeningRow | Sk
             currency=currency,
             date_iso=date_iso,
             amount_cents=amount_cents,
-            exchange_rate=exchange_rate,
         )
 
     return ParsedRow(
@@ -233,7 +204,6 @@ def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | OpeningRow | Sk
         currency=currency,
         account=account,
         description=_clean(cell("description")),
-        exchange_rate=exchange_rate,
     )
 
 

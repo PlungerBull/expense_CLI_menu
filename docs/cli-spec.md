@@ -72,7 +72,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `accounts get <id>`
 - `accounts create`, `update`, `delete`, `restore`
 - `accounts archive <id>`, `accounts unarchive <id>`
-- `accounts opening-balance <id> --amount <signed-cents> [--date] [--title] [--exchange-rate]` → `POST /v1/accounts/{id}/opening-balance` — seeds the account's starting balance as a transaction under the `@Opening` system category (counts toward the balance, excluded from flow reports). One active opening per account; the engine's 409 says to edit/delete the existing seed instead.
+- `accounts opening-balance <id> --amount <signed-cents> [--date] [--title]` → `POST /v1/accounts/{id}/opening-balance` — seeds the account's starting balance as a transaction under the `@Opening` system category (counts toward the balance, excluded from flow reports). One active opening per account; the engine's 409 says to edit/delete the existing seed instead.
 - Currency immutability on update: pre-flight hint before the engine 422 lands.
 
 ### `expense categories`

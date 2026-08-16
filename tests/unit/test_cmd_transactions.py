@@ -24,7 +24,6 @@ TRANSACTION_RESPONSE = {
     "category_id": "cat-id",
     "description": None,
     "cleared": False,
-    "exchange_rate": 1.0,
     "transaction_type": 1,
     "transfer_transaction_id": None,
     "hashtag_ids": [],

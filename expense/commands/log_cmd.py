@@ -31,9 +31,6 @@ def log(
     ),
     description: str | None = typer.Option(None, "--description"),
     cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
-    exchange_rate: float | None = typer.Option(
-        None, "--exchange-rate", help="Override engine auto-fetch."
-    ),
     transfer: bool = typer.Option(
         False,
         "--transfer",
@@ -91,8 +88,6 @@ def log(
         payload["description"] = description
     if cleared is not None:
         payload["cleared"] = cleared
-    if exchange_rate is not None:
-        payload["exchange_rate"] = exchange_rate
     if hashtag_ids is not None:
         payload["hashtag_ids"] = [
             piece.strip() for piece in hashtag_ids.split(",") if piece.strip()
@@ -111,13 +106,7 @@ def log(
         try:
             body = client.post("/transactions", json_body=payload)
         except EngineError as err:
-            if err.code == "RATE_UNAVAILABLE":
-                typer.echo(
-                    "Hint: No FX rate available for the requested date and currency. "
-                    "Wait for the daily rate fetch, or pass --exchange-rate <float> to supply one.",
-                    err=True,
-                )
-            elif err.code == "SETTINGS_MISSING":
+            if err.code == "SETTINGS_MISSING":
                 typer.echo(
                     "Hint: Your user_settings row is missing. "
                     "Run 'expense auth bootstrap' to provision it.",

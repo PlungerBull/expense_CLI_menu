@@ -1,7 +1,5 @@
 """Pure parse/plan unit tests for `expense import` — no network, no xlsx file."""
 
-from decimal import Decimal
-
 import pytest
 
 from expense.import_ import plan as plan_mod
@@ -13,7 +11,6 @@ from expense.import_.parse import (
     amount_to_cents,
     build_column_index,
     is_opening_title,
-    parse_rate,
     parse_sheet,
     serial_to_iso,
     to_iso_date,
@@ -98,19 +95,31 @@ def test_parse_pen_row_no_rate_and_description():
     assert row.hashtag == "Salidas"
     assert row.amount_cents == -4400
     assert row.currency == "PEN"
-    assert row.exchange_rate is None
     assert row.description == "Regalo Mama"
     assert row.date_iso == "2022-12-01"
 
 
-def test_parse_usd_row_uses_tc_column():
+@pytest.mark.parametrize("tc", [3.68, "None", "garbage", -3.629])
+def test_parse_usd_row_ignores_tc_column(tc):
+    """The T.C. cell — present, absent, or garbage — is ignored: the engine
+    converts at read time and rejects per-row rates (2026-08-05 rework)."""
     parsed, openings, skipped = parse_sheet(
-        _sheet([_row(2, Moneda="USD", Monto=-100, **{"T.C.": 3.68})])
+        _sheet([_row(2, Moneda="USD", Monto=-100, **{"T.C.": tc})])
     )
     assert skipped == []
     (row,) = parsed
     assert row.currency == "USD"
-    assert row.exchange_rate == Decimal("3.68")  # Decimal now, not float
+
+
+def test_sheet_without_tc_column_imports():
+    headers = [h for h in HEADERS if h != "T.C."]
+    raw = _row(2)
+    cells = [c for h, c in zip(HEADERS, raw.cells, strict=True) if h != "T.C."]
+    parsed, openings, skipped = parse_sheet(
+        SheetData(headers=list(headers), rows=[RawRow(line=2, cells=cells)])
+    )
+    assert skipped == []
+    assert len(parsed) == 1
 
 
 def test_text_iso_date_cell_imports_not_skipped():
@@ -135,14 +144,6 @@ def test_to_iso_date_shapes(value, expected):
     assert to_iso_date(value) == expected
 
 
-def test_parse_rate_is_decimal_half_up():
-    """Rate goes through Decimal with ROUND_HALF_UP, quantized to 6 dp (backlog 6.4)."""
-    assert parse_rate("3.6295005") == Decimal("3.629501")  # half-up, not banker's
-    assert parse_rate(3.68) == Decimal("3.680000")
-    assert parse_rate("None") is None
-    assert parse_rate(None) is None
-
-
 def test_literal_none_notas_is_empty_description():
     (parsed, _, _) = parse_sheet(_sheet([_row(2, Notas="None")]))
     assert parsed[0].description is None
@@ -159,8 +160,6 @@ def test_literal_none_notas_is_empty_description():
         ({"Fecha": "not-a-date"}, "bad-date"),
         ({"Monto": 0}, "zero-amount"),
         ({"Monto": "abc"}, "bad-amount"),
-        ({"Moneda": "USD", "Monto": -100, "T.C.": "None"}, "usd-no-rate"),
-        ({"Moneda": "USD", "Monto": 100, "T.C.": -3.629}, "bad-rate"),
     ],
 )
 def test_skip_reasons(over, reason):
@@ -201,9 +200,9 @@ def test_category_and_hashtag_dedup_case_insensitive():
 
 
 def test_tx_id_deterministic_and_line_sensitive():
-    a = ParsedRow(2, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None, None)
-    again = ParsedRow(2, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None, None)
-    other_line = ParsedRow(3, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None, None)
+    a = ParsedRow(2, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None)
+    again = ParsedRow(2, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None)
+    other_line = ParsedRow(3, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None)
     assert plan_mod.tx_id_for(a) == plan_mod.tx_id_for(again)
     assert plan_mod.tx_id_for(a) != plan_mod.tx_id_for(other_line)
 
@@ -212,8 +211,8 @@ def test_identical_content_on_two_lines_both_planned():
     """Dedup is line-keyed, not content-based: identical rows on different
     sheet lines both import — the unreachable content-skip that advertised
     otherwise was deleted (backlog 6.4e)."""
-    a = ParsedRow(2, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None, None)
-    b = ParsedRow(3, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None, None)
+    a = ParsedRow(2, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None)
+    b = ParsedRow(3, "t", "c", "h", "2022-12-01", -100, "PEN", "BCP PEN", None)
     plan = plan_mod.build_plan([a, b], [], [])
     assert [r.line for r in plan.rows] == [2, 3]
     assert plan.tx_ids[2] != plan.tx_ids[3]
@@ -271,12 +270,13 @@ def test_opening_row_still_validates_shared_fields():
     assert [s.reason for s in skipped] == ["zero-amount"]
 
 
-def test_opening_usd_row_requires_rate():
+def test_opening_usd_row_needs_no_rate():
+    """A USD opening row without a T.C. value imports — rates are engine-side now."""
     _, openings, skipped = parse_sheet(
         _sheet([_row(2, Descripcion="SALDO INICIAL", Moneda="USD", Monto=100, **{"T.C.": "None"})])
     )
-    assert openings == []
-    assert [s.reason for s in skipped] == ["usd-no-rate"]
+    assert skipped == []
+    assert [o.currency for o in openings] == ["USD"]
 
 
 def test_plan_dedups_openings_per_account_keeping_first():
@@ -309,8 +309,8 @@ def test_plan_accounts_include_opening_only_accounts():
 
 
 def test_opening_id_deterministic_and_line_sensitive():
-    a = OpeningRow(2, "SALDO INICIAL", "BCP PEN", "PEN", "2022-12-01", 3500, None)
-    again = OpeningRow(2, "SALDO INICIAL", "BCP PEN", "PEN", "2022-12-01", 3500, None)
-    other = OpeningRow(3, "SALDO INICIAL", "BCP PEN", "PEN", "2022-12-01", 3500, None)
+    a = OpeningRow(2, "SALDO INICIAL", "BCP PEN", "PEN", "2022-12-01", 3500)
+    again = OpeningRow(2, "SALDO INICIAL", "BCP PEN", "PEN", "2022-12-01", 3500)
+    other = OpeningRow(3, "SALDO INICIAL", "BCP PEN", "PEN", "2022-12-01", 3500)
     assert plan_mod.tx_id_for(a) == plan_mod.tx_id_for(again)
     assert plan_mod.tx_id_for(a) != plan_mod.tx_id_for(other)

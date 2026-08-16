@@ -25,7 +25,6 @@ INBOX_RESPONSE = {
     "category_id": None,
     "description": None,
     "cleared": False,
-    "exchange_rate": 1.0,
     "transaction_type": 1,
     "transfer_account_id": None,
     "transfer_amount_cents": None,

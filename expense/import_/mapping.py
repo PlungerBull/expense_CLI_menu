@@ -22,7 +22,6 @@ FIELD_HEADERS = {
     "date": "fecha",
     "amount": "monto",
     "account": "cuenta",
-    "rate": "t.c.",
     "currency": "moneda",
     "description": "notas",
 }

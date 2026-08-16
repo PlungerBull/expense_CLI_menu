@@ -65,7 +65,7 @@ def test_read_then_parse_roundtrip(tmp_path):
     assert row.title == "Groomers" and row.account == "BCP PEN"
     assert row.date_iso == "2022-12-01"  # Excel serial resolved
     assert row.amount_cents == -4400  # majors → cents
-    assert row.currency == "PEN" and row.exchange_rate is None
+    assert row.currency == "PEN"
 
 
 def test_missing_file(tmp_path):
