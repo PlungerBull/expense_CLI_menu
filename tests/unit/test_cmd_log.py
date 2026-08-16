@@ -27,7 +27,6 @@ TRANSACTION_RESPONSE = {
     "description": None,
     "cleared": False,
     "transaction_type": 1,
-    "transfer_transaction_id": None,
     "hashtag_ids": [],
     "inbox_id": None,
     "reconciliation_id": None,
@@ -142,97 +141,6 @@ def test_log_signed_positive_amount(configured):
     )
     body = json.loads(route.calls.last.request.content)
     assert body["amount_cents"] == 5000
-
-
-@respx.mock
-def test_log_transfer_payload(configured):
-    route = respx.post("https://api.example.com/v1/transactions").mock(
-        return_value=httpx.Response(201, json=TRANSACTION_RESPONSE)
-    )
-    result = runner.invoke(
-        cli_app,
-        [
-            "log",
-            "--title",
-            "xfer",
-            "--amount",
-            "-1000",
-            "--account-id",
-            "acct-pen",
-            "--category-id",
-            "cat-id",
-            "--transfer",
-            "--to-account-id",
-            "acct-usd",
-            "--to-amount",
-            "280",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert "Created:" in result.output
-    assert "Created (transfer leg):" in result.output
-
-    body = json.loads(route.calls.last.request.content)
-    assert body["amount_cents"] == -1000
-    assert body["account_id"] == "acct-pen"
-    assert "transfer" in body
-    leg = body["transfer"]
-    assert leg["account_id"] == "acct-usd"
-    assert leg["amount_cents"] == 280
-    UUID(leg["id"])
-    UUID(body["id"])
-    assert leg["id"] != body["id"]
-
-
-def _collapse(s: str) -> str:
-    """Strip ANSI codes / panel borders / whitespace so substring checks survive
-    Typer's terminal-width-dependent error-panel line-wrapping."""
-    import re
-
-    return re.sub(r"[\s│╭╮╰╯─]+", " ", re.sub(r"\x1b\[[0-9;]*m", "", s))
-
-
-def test_log_transfer_requires_to_account_and_amount(configured):
-    result = runner.invoke(
-        cli_app,
-        [
-            "log",
-            "--title",
-            "xfer",
-            "--amount",
-            "-1000",
-            "--account-id",
-            "a",
-            "--category-id",
-            "c",
-            "--transfer",
-        ],
-    )
-    assert result.exit_code != 0
-    assert "--transfer requires" in _collapse(result.output)
-
-
-def test_log_to_account_without_transfer_errors(configured):
-    result = runner.invoke(
-        cli_app,
-        [
-            "log",
-            "--title",
-            "x",
-            "--amount",
-            "-100",
-            "--account-id",
-            "a",
-            "--category-id",
-            "c",
-            "--to-account-id",
-            "b",
-            "--to-amount",
-            "50",
-        ],
-    )
-    assert result.exit_code != 0
-    assert "only apply with --transfer" in _collapse(result.output)
 
 
 @respx.mock

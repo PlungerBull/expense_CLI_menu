@@ -92,7 +92,6 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ### `expense log`
 - `log` — direct ledger entry (all required fields supplied as flags).
-- `log --transfer --to-account <id>` — paired transfer creation in a single call.
 
 ### `expense transactions`
 - `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--cleared/--no-cleared`, `--search`, `--include-deleted`.

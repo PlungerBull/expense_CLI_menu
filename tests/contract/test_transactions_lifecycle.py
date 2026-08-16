@@ -111,51 +111,6 @@ def test_transactions_lifecycle(client):
         _safe_delete(client, f"/accounts/{account_id}")
 
 
-def test_transfer_pair_lifecycle(client):
-    pen_account = _make_account(client, currency_code="PEN")
-    usd_account = _make_account(client, currency_code="USD")
-    category_id = _make_category(client)
-    primary_id = str(uuid4())
-    sibling_id = str(uuid4())
-
-    try:
-        created = client.post(
-            "/transactions",
-            json_body={
-                "id": primary_id,
-                "title": "wire to USD",
-                "amount_cents": -1000,
-                "account_id": pen_account,
-                "category_id": category_id,
-                "date": _now_iso(),
-                "transfer": {
-                    "id": sibling_id,
-                    "account_id": usd_account,
-                    "amount_cents": 280,
-                },
-            },
-        )
-        assert created["id"] == primary_id
-        assert created["transfer_transaction_id"] == sibling_id
-
-        sibling = client.get(f"/transactions/{sibling_id}")
-        assert sibling["transfer_transaction_id"] == primary_id
-
-        # Deleting one leg cascades to the sibling atomically.
-        client.delete(f"/transactions/{primary_id}")
-        try:
-            sibling_after = client.get(f"/transactions/{sibling_id}")
-            assert sibling_after.get("deleted_at") is not None
-        except EngineError as err:
-            assert err.status == 404
-    finally:
-        _safe_delete(client, f"/transactions/{primary_id}")
-        _safe_delete(client, f"/transactions/{sibling_id}")
-        _safe_delete(client, f"/categories/{category_id}")
-        _safe_delete(client, f"/accounts/{pen_account}")
-        _safe_delete(client, f"/accounts/{usd_account}")
-
-
 def test_batch_create(client):
     account_id = _make_account(client)
     category_id = _make_category(client)

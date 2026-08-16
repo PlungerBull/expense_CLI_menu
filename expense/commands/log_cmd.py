@@ -31,19 +31,6 @@ def log(
     ),
     description: str | None = typer.Option(None, "--description"),
     cleared: bool | None = typer.Option(None, "--cleared/--no-cleared"),
-    transfer: bool = typer.Option(
-        False,
-        "--transfer",
-        help="Create a paired transfer. Requires --to-account-id and --to-amount.",
-    ),
-    to_account_id: str | None = typer.Option(
-        None, "--to-account-id", help="Sibling account for the transfer pair."
-    ),
-    to_amount: int | None = typer.Option(
-        None,
-        "--to-amount",
-        help="Sibling signed-cents amount. Must be opposite sign to --amount.",
-    ),
     hashtag_ids: str | None = typer.Option(
         None,
         "--hashtag-ids",
@@ -54,24 +41,8 @@ def log(
 ) -> None:
     """POST /v1/transactions. Direct ledger entry; bypasses the inbox.
 
-    Pass --transfer with --to-account-id and --to-amount to create a paired
-    transfer in a single atomic call (engine creates both legs and links them).
-
     Example: expense log --title Lunch --amount -1500 --account-id <id> --category-id <id>
     """
-    if transfer:
-        if to_account_id is None or to_amount is None:
-            raise typer.BadParameter(
-                "--transfer requires both --to-account-id and --to-amount.",
-                param_hint="--transfer",
-            )
-    else:
-        if to_account_id is not None or to_amount is not None:
-            raise typer.BadParameter(
-                "--to-account-id and --to-amount only apply with --transfer.",
-                param_hint="--to-account-id/--to-amount",
-            )
-
     cfg = config_module.ensure_loaded()
     verbose = get_verbose(ctx)
 
@@ -93,15 +64,6 @@ def log(
             piece.strip() for piece in hashtag_ids.split(",") if piece.strip()
         ]
 
-    sibling_id: str | None = None
-    if transfer:
-        sibling_id = str(uuid4())
-        payload["transfer"] = {
-            "id": sibling_id,
-            "account_id": to_account_id,
-            "amount_cents": to_amount,
-        }
-
     with ExpenseClient(cfg, verbose=verbose) as client:
         try:
             body = client.post("/transactions", json_body=payload)
@@ -116,6 +78,4 @@ def log(
 
     if not json_output:
         typer.echo(f"Created: {new_id}")
-        if sibling_id is not None:
-            typer.echo(f"Created (transfer leg): {sibling_id}")
     render_record(body, json_mode=json_output)
