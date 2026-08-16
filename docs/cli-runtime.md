@@ -39,7 +39,7 @@ What stays CLI-specific (and is OK to live only here):
 
 - `~/.expense-config` filesystem storage (a future mobile client would use its keychain)
 - [expense/dates.py](../expense/dates.py) — date input forgiveness for terminal humans
-- [expense/_editor.py](../expense/_editor.py) — `$EDITOR` flow for `reconcile reorder`
+- [expense/import_/](../expense/import_/) — the `.xlsx` reader behind `expense import`
 - `--json` flag and the human-output renderers — terminal UX
 
 What is NOT CLI-specific (and must never be): idempotency keys, sign convention (`debit_as_negative`), error envelope shape, RFC 3339 dates, IDs-only responses with client-side name resolution. These are multi-client contracts; the CLI uses them faithfully so future clients inherit working patterns, not just specs.

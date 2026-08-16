@@ -452,7 +452,7 @@ Adds `expense/menu/term.py` (deleted at 10.X) with `clear_screen()` (gentle view
 
 *Deliverable: Reconciliations group menu + all 10 reconcile flows including `$EDITOR` reorder.*
 
-Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-balance` mutual-exclusion guard), `update`, `delete`, `restore`, `complete`, `revert` (extra-strong confirm), `move` (with `--to | --before | --after` mutex), `reorder` (reuses [expense/_editor.py](../expense/_editor.py) without modification).
+Wires `list`, `get`, `create` (with `--source manual|chained` + `--beginning-balance` mutual-exclusion guard), `update`, `delete`, `restore`, `complete`, `revert` (extra-strong confirm), `move` (with `--to | --before | --after` mutex), `reorder` (reused `expense/_editor.py` without modification — both commands and that helper were deleted 2026-08-16, see the Step 6 banner).
 
 **Verify:** create chained vs manual; complete + revert prints lock/unlock counts; `move` reorders a single row; `reorder` opens `$EDITOR`, accepts the rearranged file, prints recalculated_count.
 
