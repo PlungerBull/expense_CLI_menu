@@ -1,6 +1,6 @@
 # Expense World CLI — Build Roadmap
 
-> Build order inside the CLI: skeleton → auth → core CRUD → inbox flow → ledger → dashboard → reconciliations → sync → niche reads. Nothing is built client-side that isn't already live on the engine.
+> Build order inside the CLI: skeleton → auth → core CRUD → inbox flow → ledger → dashboard → reconciliations → sync *(Step 7, retired 2026-08-06 with the engine's `GET /sync`)* → niche reads. Nothing is built client-side that isn't already live on the engine.
 >
 > Engine spec: [../../expense_world_engine/docs/engine-spec.md](../../expense_world_engine/docs/engine-spec.md)
 > API conventions: engine `CLAUDE.md` + `engine-spec.md` (api-design-principles.md was retired with the engine's roadmap-era docs, 2026-08-04)
@@ -10,7 +10,16 @@
 
 ## Status
 
-Engine feature-complete through Step 9.2 (PAT auth + ES256 JWT verification, shipped 2026-04-23); deployed to Render 2026-04, **relocated to the local deployment 2026-07-30** (`http://127.0.0.1:8000`, engine roadmap Step 11 + `deploy/local/README.md`; cloud mothballed). On top of auth, the engine also ships as part of the cross-cutting audit work: archive/unarchive on accounts, categories, hashtags; dashboard honors `include_archived` with lifetime-signed totals in `archived_accounts` / `archived_categories` / `archived_hashtags` panels; attach guard rejects `POST`/`PUT /v1/transactions` with 422 when `hashtag_ids` references an archived hashtag (and the equivalent for archived categories on transactions and pending inbox items); full `POST /v1/{resource}/{id}/restore` coverage on every soft-deletable resource; currencies locked at the schema to USD/PEN (no cross-rate math). (The engine `TODO.md` this paragraph once linked was retired with the 2026-08 rework docs; the daily exchange-rate fetch job has since shipped engine-side. ⚠️ Several other claims in this paragraph — categories/hashtags archive, the archived dashboard panels, the USD/PEN schema lock — are likewise superseded by that rework; current contract in [client-breaking-changes.md](client-breaking-changes.md), rewrite tracked as [backlog.md](backlog.md) Phase 7.) **All engine endpoints except `GET /health` are mounted under `/v1/`** — the CLI HTTP client's base path should be `<engine_url>/v1` with `/health` as the one special-case. CLI is Step 10 of the overall product roadmap (the engine's roadmap-era docs were retired 2026-08-04; the build-phase table lives in engine `CLAUDE.md`).
+The engine runs on the user's own Mac at `http://127.0.0.1:8000` — **relocated from Render 2026-07-30** (engine roadmap Step 11 + `deploy/local/README.md`; the cloud profile is mothballed until iOS). Auth is PAT (`ewe_pat_` prefix), with ES256 JWT verification alongside it, shipped 2026-04-23. **All engine endpoints except `GET /health` are mounted under `/v1/`** — the CLI HTTP client's base path is `<engine_url>/v1` with `/health` as the one special case.
+
+The **2026-08 engine rework** reshaped the contract this roadmap was written against. Current state, in the terms the steps below use:
+
+- **Archive is accounts-only.** The category and hashtag archive routes were deleted 2026-08-06; `--include-archived` survives on `accounts list` and `dashboard`, where it adds the `archived_accounts` and `archived_people` panels.
+- **Currency converts at read time.** Home currency is locked to PEN and is no longer updatable; there is no stored `exchange_rate` or `amount_home_cents`, and home aggregates are **nullable** — a group holding an unconvertible row reports `null` plus an `unconverted_count` rather than a partial total. `GET /v1/exchange-rates` and its history endpoint stay live and back `expense rates`.
+- **Reconciliations are unchained.** `sort_order`, `beginning_balance_source`, chaining and manual reorder are gone; `beginning_balance_cents` is required and `difference_cents` is the add-up check.
+- **Deleted outright:** the transfer feature (2026-08-10), the `cleared` column (2026-08-16, `sql/035`), `GET /v1/sync` and the local replica (2026-08-06), `POST /v1/inbox/{id}/restore` (2026-08-14), and most of `PUT /v1/auth/settings` — of the eight fields it once took, six were deleted 2026-08-06 and `main_currency` became read-only, leaving `display_timezone` as the only updatable one.
+
+Full per-change detail, including what each one broke client-side, is in [client-breaking-changes.md](client-breaking-changes.md); read the entry before touching a surface it names. The client recovery closed 2026-08-16 (backlog Phases 1–6). CLI is Step 10 of the overall product roadmap (the engine's roadmap-era docs were retired 2026-08-04; the build-phase table lives in engine `CLAUDE.md`).
 
 ---
 
@@ -56,13 +65,13 @@ Pure plumbing — no engine calls, no product decisions. Unblocked by the PAT vs
 
 For Step 1, the user obtains a PAT out-of-band (direct API call to `POST /v1/auth/pat` with their Supabase JWT, or via the future web dashboard) and pastes it into `expense config set --token <pat>`. CLI-side PAT create/revoke commands are deferred — not required for the daily-driver flow.
 
-1. **`expense config`** — `set` / `get` / `clear`. Store `token`, `engine_url`, `client_id` (auto-generated UUID), `main_currency` in `~/.expense-config` with `chmod 600`.
-2. **HTTP client wrapper** — attaches `Authorization: Bearer <token>`, prepends base URL, generates fresh `X-Idempotency-Key` UUID on every write, attaches `X-Client-Id`. Honors a global `--verbose` flag that prints request + response (method, URL, status, headers, body) for debugging; redact the `Authorization` header.
+1. **`expense config`** — `set` / `get` / `clear`. Store `token`, `engine_url`, `main_currency` in `~/.expense-config` with `chmod 600`. *(A `client_id` UUID was stored here too until 2026-08-06, when the engine stopped reading `X-Client-Id`; configs written earlier still carry it and it is ignored on load.)*
+2. **HTTP client wrapper** — attaches `Authorization: Bearer <token>`, prepends base URL, generates fresh `X-Idempotency-Key` UUID on every write. Honors a global `--verbose` flag that prints request + response (method, URL, status, headers, body) for debugging; redact the `Authorization` header. *(It also sent `X-Client-Id` until 2026-08-06 — see above.)*
 3. **Error translator** — renders the engine's standard error shape to the terminal. `--json` passes through verbatim.
 4. **`expense ping`** → `GET /health`. Confirms the engine is reachable.
 5. **`expense auth bootstrap`** → `POST /v1/auth/bootstrap`. First-login upsert. Idempotent: subsequent calls only bump `last_login_at`. The `--display-name` and `--timezone` flags are honored ONLY on the very first call (the INSERT); replays don't overwrite them.
 6. **`expense auth me`** (alias `whoami`) → `GET /v1/auth/me`. Proves the full auth stack works. Caches `main_currency` into config.
-7. **`expense auth settings`** → `PUT /v1/auth/settings`. Partial update of `user_settings` fields only: `theme`, `start_of_week`, `main_currency`, `transaction_sort_preference`, `display_timezone`, `sidebar_show_bank_accounts`, `sidebar_show_people`, `sidebar_show_categories`. Warn the user that changing `main_currency` triggers home-currency recalc on the engine.
+7. **`expense auth settings`** → `PUT /v1/auth/settings`. Partial update of `user_settings`. *(Rewritten 2026-08-16: as shipped this listed eight fields. The 2026-08-06 settings slimming deleted `theme`, `start_of_week`, `transaction_sort_preference` and the three `sidebar_*` toggles, and `main_currency` became read-only when home currency was locked to PEN on 2026-08-01 — so **`display_timezone` is the only field this command still updates**, and the request model is `extra="forbid"`, meaning any of the others now 422s. The home-currency recalc warning went with them.)*
 8. **`expense auth profile`** → `PUT /v1/auth/profile`. Partial update of `users` (identity) fields. Currently only `--display-name` is mutable in v1; the engine rejects `null` (clearing not supported). Shipped as a follow-on to Step 1 (engine commit `7017615`, CLI commit `99f9008`) to close the gap that bootstrap-idempotency leaves: post-login identity changes need a dedicated endpoint, not a settings overload.
 
 **Verify:** `expense config set … && expense ping && expense auth me` returns current user's settings from the live engine.
@@ -72,6 +81,16 @@ For Step 1, the user obtains a PAT out-of-band (direct API call to `POST /v1/aut
 ---
 
 ## Step 2 — Accounts, Categories, Hashtags
+
+> ⚠️ **Partially retired 2026-08-06 (backlog Phase 1).** The engine's schema
+> slimming deleted the four category/hashtag archive routes: **only accounts
+> archive now.** Wherever this step says "each group" or "same verbs" about
+> `archive` / `unarchive`, read "accounts only" — categories and hashtags kept
+> `list`, `get`, `create`, `update`, `delete`, `restore`, and their
+> `--include-archived` flag was dropped (the engine 404s it). The
+> archived-hashtag and archived-category attach guards went with them, since
+> neither state exists any more. Detail:
+> [client-breaking-changes.md](client-breaking-changes.md) 2026-08-06.
 
 *Deliverable: full CRUD + archive/unarchive/restore on the three core resource groups.*
 
@@ -96,15 +115,23 @@ Mirrors engine Step 4 (core CRUD), extended with the archive/unarchive/restore v
 
 ## Step 3 — Inbox + Promote + Log
 
+> ⚠️ **Partially retired 2026-08-14/16 (backlog Phases 1 and 6.1).**
+> `POST /v1/inbox/{id}/restore` was deleted — an inbox draft is a scratch
+> record, so `delete` is final and there is no `inbox restore`. The `--ready`
+> filter no longer has an archived-category clause (categories stopped
+> archiving 2026-08-06). Going the other way, drafts **gained** hashtags on
+> 2026-08-16 (backlog 6.1), which this step predates. Detail:
+> [client-breaking-changes.md](client-breaking-changes.md).
+
 *Deliverable: the daily capture flow works end-to-end from the terminal.*
 
 1. `expense inbox add` — partial-field capture (title + amount minimum).
-2. `expense inbox list` supports `--ready` (excludes items missing required fields or pointing at archived categories) and `--include-deleted`.
-3. `expense inbox get` / `update` / `delete` / `restore`.
+2. `expense inbox list` supports `--ready` (excludes items missing required fields) and `--include-deleted`.
+3. `expense inbox get` / `update` / `delete` / `restore` *(`restore` deleted 2026-08-14 — see the banner)*.
 4. `expense inbox promote <id>` → `POST /v1/inbox/{id}/promote`. On 422, pretty-print the missing/blocking fields and suggest the fix.
 5. `expense log` — direct ledger entry, single transaction. All required fields supplied as flags. Transfer creation (`--transfer --to-account`) was deferred to Step 4 alongside the rest of the transactions surface *(and later removed with the feature — see the Step 4 banner)*.
 
-**Verify:** add an incomplete inbox item, try to promote (expect a helpful error). Fill in, promote, confirm transaction appears in `expense transactions list` and inbox item is soft-deleted. Archive the category referenced by a ready inbox item and confirm `inbox list --ready` no longer surfaces it.
+**Verify:** add an incomplete inbox item, try to promote (expect a helpful error). Fill in, promote, confirm transaction appears in `expense transactions list` and inbox item is soft-deleted. *(A third check — archive the category a ready item points at, confirm `--ready` drops it — is unrunnable since 2026-08-06; categories no longer archive.)*
 
 **Commit:** `feat: inbox + log — add, list, edit, promote, direct ledger entry`
 
@@ -137,7 +164,7 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 
 *Deliverable: full ledger management including batch and restore.*
 
-1. `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--search`, `--include-deleted`. *(`--cleared/--no-cleared` shipped here and was removed 2026-08-17 — the engine deleted the column, `sql/035`.)* (Signed amounts are not opt-in: every stateless read sends `debit_as_negative=true`, matching the replica; the former `--debit-as-negative` flag was removed at the polish pass.) Pagination is offset-based: `--limit`, `--offset` (engine response shape `{items, total, limit, offset}`); human mode prints a `(showing N of M; pass --offset N --limit ... for more)` hint when truncated, `--json` is pass-through.
+1. `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--search`, `--include-deleted`. *(`--cleared/--no-cleared` shipped here and was removed 2026-08-16 — the engine deleted the column, `sql/035`.)* (Signed amounts are not opt-in: every read sends `debit_as_negative=true`; the former `--debit-as-negative` flag was removed at the polish pass.) Pagination is offset-based: `--limit`, `--offset` (engine response shape `{items, total, limit, offset}`); human mode prints a `(showing N of M; pass --offset N --limit ... for more)` hint when truncated, `--json` is pass-through.
 2. `transactions get <id>` — full detail. (`--with-activity` is deferred to Step 8: activity-log entries surface via `expense activity list --resource-type transaction --resource-id <id>`.)
 3. `transactions update <id>` — partial update. `hashtag_ids` (comma-separated) and `reconciliation_id` editable through update. Field locking under completed reconciliations and the transfer-pair edit guard surface as 422s with friendly hints.
 4. `transactions delete <id>` / `restore <id>` — `delete` confirms unless `--yes`. Both render the engine's `warnings: list[str]` envelope as `Warning: ...` lines in human mode; `--json` passes through verbatim.
@@ -194,7 +221,7 @@ The engine ships strict aware-only datetime acceptance alongside this step (Pyda
 > A batch is repositioned by editing its `--date-start`. The lifecycle
 > (create/get/update/delete/restore/complete/revert) stands.
 
-*Deliverable: `expense reconcile` matches the engine reconciliation state machine, including `sort_order` chaining and the bulk reorder endpoint.*
+*Deliverable: `expense reconcile` matches the engine reconciliation state machine, including `sort_order` chaining and the bulk reorder endpoint. **(Both of those were deleted 2026-08-06 — see the banner above.)***
 
 The engine ships `sort_order`, `beginning_balance_source` (`"manual"` or `"chained"`), `chained_from_reconciliation_id`, and a new `PUT /v1/accounts/{account_id}/reconciliations/order` bulk reorder endpoint alongside this step. `PUT /v1/reconciliations/{id}` rejects `beginning_balance_source: "chained" + beginning_balance_cents: <number>` with a field-scoped 422 — the CLI blocks the equivalent flag combination at parse time.
 
@@ -310,13 +337,29 @@ All command groups from [cli-spec.md](cli-spec.md) work end-to-end against the l
 - **`--json` works on every read command.** Same test asserts `json_output` parameter presence on the read-command allowlist + every `list`/`get` leaf.
 - **Engine errors surface cleanly.** Five live smokes ran clean: bad PAT → 401 with `expense config set` hint; engine unreachable → exit 6 with friendly URL message; missing config → exit 3 with `expense config set` hint; incomplete `inbox promote` → 422 fields table + `expense inbox update` hint; account/category delete with active transactions → 409 with `expense <resource> archive` hint. Zero Python tracebacks across all paths.
 - **A fresh user walks `expense config set` → `auth bootstrap` → `dashboard` with no surprises.** Wired as a live contract test at [tests/contract/test_freshman_flow.py](../tests/contract/test_freshman_flow.py), gated on `PYTEST_LIVE=1` + `EXPENSE_PAT`. Uses `CliRunner` with isolated `EXPENSE_CONFIG` / `EXPENSE_CACHE` paths so it never clobbers the dev install.
-- **Archive/delete distinction respected.** `accounts/categories/hashtags list` accept `--include-archived` + `--include-deleted`; `inbox/transactions list` accept `--include-deleted` only (those resources have no archive state, per engine spec).
+- **Archive/delete distinction respected.** `accounts list` accepts `--include-archived` + `--include-deleted`; `categories/hashtags/inbox/transactions list` accept `--include-deleted` only. *(As shipped, categories and hashtags took `--include-archived` too; they stopped archiving 2026-08-06, leaving accounts — and people, which are accounts — the only archivable resource.)*
 
 Next after this gate was Step 9.5 (interactive shell — shipped, then deleted at Step 10.X), then the `expense import` bulk importer and Step 10 (Textual TUI, current work). Post-Step-9 ergonomics (quick-add parser, shell completions, color conventions) follow Step 10.
 
 ---
 
 ## Step 9.5 — Interactive shell (`expense menu`)
+
+> ⛔ **Deleted 2026-07-02 (Step 10.X).** The questionary `expense menu` built in
+> this step was superseded by the Textual TUI (`expense world`, Step 10) and has
+> been **removed** — `expense/menu/`, the `test_menu_*.py` suite,
+> `test_freshman_flow_menu.py`, the `expense menu` Typer command, and the
+> now-unused `questionary` dependency are all gone. Retired ahead of full TUI
+> parity by decision; no capability was lost because the flat commands are the
+> complete contract-validator surface.
+>
+> **Everything from here to the end of Step 9.5 is retained as shipped history
+> and describes software that no longer exists.** Read it for what was built and
+> why, never as a live plan — it still names the local cache, the transfer
+> sub-flow, the `cleared` tri-state, the sync menu and `main_currency` updates,
+> all of which the 2026-08 engine rework deleted as well. Current surface:
+> [cli-spec.md](cli-spec.md); current contract:
+> [client-breaking-changes.md](client-breaking-changes.md).
 
 *Deliverable: a menu-driven UI that wraps the now-complete flat command surface, for management/inspection workflows.*
 
@@ -522,9 +565,7 @@ Walks `expense menu` through `Config → Set engine URL → Set token → Auth �
 
 ---
 
-**Step 9.5 done** — 9.5.16 landed; the freshman-flow menu walk passes against the live engine.
-
-> **Deleted 2026-07-02 (Step 10.X).** The questionary `expense menu` built in Step 9.5 was superseded by the Textual TUI (`expense world`, Step 10) and has been **removed** — `expense/menu/`, the `test_menu_*.py` suite, `test_freshman_flow_menu.py`, the `expense menu` Typer command, and the now-unused `questionary` dependency are all gone. Retired ahead of full TUI parity by decision; no capability was lost because the flat commands are the complete contract-validator surface. The narrative below is retained as shipped history.
+**Step 9.5 done** — 9.5.16 landed; the freshman-flow menu walk passed against the live engine. *(End of the retained history opened by the banner at the head of Step 9.5 — all of it deleted 2026-07-02 at Step 10.X.)*
 
 ---
 
@@ -532,7 +573,7 @@ Walks `expense menu` through `Config → Set engine URL → Set token → Auth �
 
 *Deliverable: a retained-mode Textual terminal app — the interactive front door, which replaced the questionary `expense menu` (deleted at Step 10.X). Full plan: [tui-plan.md](tui-plan.md).*
 
-The TUI is a new **client** of the same engine-integration layer (HTTP client, SQLite replica, error envelope, name resolution, `refresh_after_write`). It implements **zero** business logic — the thin-wrapper rule holds. The one enabling refactor is the **fetch/print split**: commands that fetch *and* print get a pure `fetch_*(cfg, …) -> dict` extracted, which both the typer command and the TUI call. The synchronous engine client runs inside a Textual `@work(thread=True)` worker so the UI never blocks.
+The TUI is a new **client** of the same engine-integration layer (HTTP client, error envelope, name resolution, post-write refresh — the SQLite replica named here as shipped was deleted 2026-08-06, so every read is live). It implements **zero** business logic — the thin-wrapper rule holds. The one enabling refactor is the **fetch/print split**: commands that fetch *and* print get a pure `fetch_*(cfg, …) -> dict` extracted, which both the typer command and the TUI call. The synchronous engine client runs inside a Textual `@work(thread=True)` worker so the UI never blocks.
 
 **Resolved open decisions** (from [tui-plan.md §9](tui-plan.md)): entry command is **`expense world`** (#1); the TUI **replaced** `expense menu`, now deleted (#2 — see 10.X); reconcile reorder **shelled out to `$EDITOR`** for v1 (#4 — the whole feature was deleted 2026-08-16 with the engine's de-chaining). Still open: designer's final theme tokens (#3), minimum terminal size fallback (#5).
 
@@ -543,16 +584,16 @@ The TUI is a new **client** of the same engine-integration layer (HTTP client, S
 List screens for Inbox, Transactions, Accounts, Categories, Hashtags (chips); interactive `▼/▶` category tree on Outstanding Amounts; record detail modals; loading/empty/error states. Every read surface browsable.
 
 ### Step 10.P2 — Write flows (shipped — closed 2026-07-08)
-Confirm modal (promote/delete/archive/restore/complete/revert/sync); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared *(retired 2026-08-17 with the engine's deletion of the column, `sql/035`)*, hashtag multi-select, conditional transfer sub-flow *(retired 2026-08-16 with the engine's transfer removal)*, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder *(reorder retired 2026-08-16 with the engine's de-chaining)*; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
+Confirm modal (promote/delete/archive/restore/complete/revert/sync *(the sync confirm went with the replica, 2026-08-06)*); the transaction form (Log / Inbox-add / edit — signed-amount validation, tri-state cleared *(retired 2026-08-16 with the engine's deletion of the column, `sql/035`)*, hashtag multi-select, conditional transfer sub-flow *(retired 2026-08-16 with the engine's transfer removal)*, inline 422s); small create/edit forms (account/category/hashtag); reconciliation lifecycle incl. `$EDITOR` reorder *(reorder retired 2026-08-16 with the engine's de-chaining)*; Config + Auth & profile forms. Post-write refresh reuses `refresh_after_write`.
 
-**Shipped so far:** Log/quick-add (+ transfer, retired 2026-08-16), edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile, and the **System reads (Sync · Activity · Rates)** screens ([expense/tui/screens/system.py](../expense/tui/screens/system.py) — wired as three direct System-group entries in [home.py](../expense/tui/screens/home.py); enabling refactor was the `fetch_activity` / `fetch_rate` extractions on the flat commands). Two bugs surfaced and were fixed while landing these: (1) the shared modal CSS only centered `RecordModal`, so `SnapshotModal` (Activity's before/after detail) collapsed invisibly in the top-left — the `align: center middle` rule now covers every modal screen; (2) activity name resolution matched plural `resource_type` strings (`expense_transactions`, …) but the engine writes them **singular** (`transaction`, `account`, …), so the Resource column always fell back to the UUID prefix — `_resolve_resource_name` now maps the engine's real strings (fixing the flat `expense activity list` too).
+**Shipped so far:** Log/quick-add (+ transfer, retired 2026-08-16), edit transactions + inbox drafts, create forms, full Reconciliations screen, Config, Auth & profile, and the **System reads (Activity · Rates)** screens ([expense/tui/screens/system.py](../expense/tui/screens/system.py) — wired as direct System-group entries in [home.py](../expense/tui/screens/home.py); enabling refactor was the `fetch_activity` / `fetch_rate` extractions on the flat commands). *(A third System screen, Sync, shipped here and was deleted 2026-08-06 with the replica.)*. Two bugs surfaced and were fixed while landing these: (1) the shared modal CSS only centered `RecordModal`, so `SnapshotModal` (Activity's before/after detail) collapsed invisibly in the top-left — the `align: center middle` rule now covers every modal screen; (2) activity name resolution matched plural `resource_type` strings (`expense_transactions`, …) but the engine writes them **singular** (`transaction`, `account`, …), so the Resource column always fell back to the UUID prefix — `_resolve_resource_name` now maps the engine's real strings (fixing the flat `expense activity list` too).
 **Closed 2026-07-08 with the final screen:** the **Monthly report** — a sliding **4-month grid** (categories × months, `▼/▶` hashtag rows, `[`/`]` slide the window), *not* the originally-sketched single-month view, which would have duplicated Outstanding Amounts (why + rejected alternatives: [decisions.md](decisions.md)). Enabling refactor was the `fetch_single_month`/`fetch_range`/`build_range_grid` extractions on the flat `reports` command. Every home-menu entry is now wired — no `"soon"` stubs remain. Detail: [tui-plan.md](tui-plan.md) Phase 2.
 
 **Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before code** (per [CLAUDE.md](../CLAUDE.md) "Mock every screen before building it").
 
 ### Step 10.P3 — Polish & hardening (in progress)
 Shipped so far via the **2026-07-02 quality-review backlog — all seven sections closed 2026-07-06** (item-by-item record removed from the live file by decision; last full copy at commit `2d42482`): keymap contract (r always refreshes, y alone confirms, enter never mutates), theme-resolved sign-colored amounts with a literal-color guard test, fake home status removed, q scoped to Home, unarchive prompt-free, Rates as a history table, the CLI/TUI dedup refactors (`EngineWriteMixin.run_write`, one `FormScreen` base, shared `_resource.py` helpers), error-handling/help-text passes, shared test conftest + coverage, and the review's final nits (reconcile list table, Deleted columns, engine-owned report validation).
-**Remaining:** the merged open-work queue in [backlog.md](backlog.md) — first the 2026-08 engine-rework recovery (Phases 1–5: the TUI/CLI surfaces the rework broke), then additive features and the polish tail (designer theme tokens; light theme + `NO_COLOR` paths; `?` help overlay; command palette; async edge cases + spinners; remaining Textual pilot tests). Exit criteria: shippable, feature-complete vs the flat command surface.
+**Remaining:** the merged open-work queue in [backlog.md](backlog.md). The 2026-08 engine-rework recovery **and** the additive features that followed it are done — Phases 1–6 all closed 2026-08-16 — leaving the polish tail (designer theme tokens; light theme + `NO_COLOR` paths; `?` help overlay; command palette; async edge cases + spinners; remaining Textual pilot tests). Exit criteria: shippable, feature-complete vs the flat command surface.
 
 ### Step 10.X — Delete `expense menu` (done — 2026-07-02)
 Removed `expense/menu/` and its tests (`test_menu_*.py`, `test_freshman_flow_menu.py`), dropped the `expense menu` Typer command from `expense/__main__.py`, and pruned the now-unused `questionary` dependency from `pyproject.toml`. Done ahead of the original gate (which waited on 10.P2 + 10.P3) by decision — the flat commands are the complete surface, so nothing was lost. The two front doors are now the flat commands + `expense world`. The flat commands and their freshman-flow contract test ([test_freshman_flow.py](../tests/contract/test_freshman_flow.py)) are untouched.
@@ -561,7 +602,7 @@ Removed `expense/menu/` and its tests (`test_menu_*.py`, `test_freshman_flow_men
 
 ## `expense import` — bulk `.xlsx` importer (shipped 2026-06-24)
 
-Landed between Step 9.5 and Step 10, outside the numbered steps: `expense import <file.xlsx> [--apply] [--chunk-size N] [--json]` — parses a spreadsheet, resolves names to ids against the replica, plans, and writes via the engine's `transactions batch` endpoint. Dry-run preview is the default; `--apply` writes. Package: [expense/import_/](../expense/import_/) (`reader` / `parse` / `mapping` / `plan` / `apply`) + [expense/commands/import_cmd.py](../expense/commands/import_cmd.py); optional `openpyxl` dep under the `[import]` extra.
+Landed between Step 9.5 and Step 10, outside the numbered steps: `expense import <file.xlsx> [--apply] [--chunk-size N] [--json]` — parses a spreadsheet, resolves names to ids against the engine's list endpoints (against the local replica until it was deleted 2026-08-06), plans, and writes via the engine's `transactions batch` endpoint. Dry-run preview is the default; `--apply` writes. Package: [expense/import_/](../expense/import_/) (`reader` / `parse` / `mapping` / `plan` / `apply`) + [expense/commands/import_cmd.py](../expense/commands/import_cmd.py); optional `openpyxl` dep under the `[import]` extra.
 
 **Commit:** `feat(import): expense import — bulk .xlsx → engine via batch endpoint`
 
@@ -591,11 +632,11 @@ These apply at every step — don't defer them.
 - **Never reimplement engine logic.** If a command needs a rule, call an endpoint. No balance math, no currency conversion, no validation beyond obvious flag-combination checks.
 - **Confirm destructive operations** unless `--yes` is passed.
 - **Engine errors surface intact.** Human mode may prettify; `--json` passes through verbatim.
-- **Archive ≠ delete.** Archive is "retired-but-real"; delete is "mistake/gone". The CLI honors both states distinctly in list output and dashboard views.
+- **Archive ≠ delete.** Archive is "retired-but-real"; delete is "mistake/gone". The CLI honors both states distinctly in list output and dashboard views. *(Accounts-only since 2026-08-06 — categories and hashtags have a deleted state but no archived one.)*
 - **Testing.** Unit tests under `tests/unit/` use `respx` to mock httpx — fast, deterministic, engine-response fixtures checked in. Contract tests under `tests/contract/` hit the live engine (the local deployment since 2026-07-30) and run only when `PYTEST_LIVE=1` is set; they're the safety net for engine-shape drift. Every new command lands with at least one unit test covering the happy path and one covering the primary error shape.
-- **Pagination.** Any endpoint the engine paginates (activity, transactions list, etc.) exposes `--limit` and `--cursor` flags. Human mode prints `next_cursor` as a hint under the table; `--json` passes it through verbatim.
+- **Pagination.** Any endpoint the engine paginates (activity, transactions list, etc.) exposes `--limit` and `--offset` flags against the engine's `{items, total, limit, offset}` shape. Human mode prints a `(showing N of M; pass --offset N --limit ... for more)` hint under the table; `--json` passes the response through verbatim. *(This originally specified cursor pagination — `--cursor` + a `next_cursor` hint — which the engine never shipped; it has been offset-based throughout.)*
 - **`--verbose`.** Global flag handled by the HTTP client wrapper. Prints request + response (method, URL, status, headers, body) to stderr. Redacts the `Authorization` header.
 
 ---
 
-*Last updated: 2026-07-06 (Step 10 TUI: P2 lacks only the Reports screen, P3 polish backlog fully closed; `expense import` + `rates list` recorded).*
+*Last updated: 2026-08-16 (backlog Phase 7 — the Status section rewritten against the post-rework engine, and dated retirement banners added to Steps 2, 3 and 9.5 so the shipped history stops reading as a live plan. Step 10 TUI: P2 closed 2026-07-08 with the Monthly report screen; P3 is the remaining polish tail.)*

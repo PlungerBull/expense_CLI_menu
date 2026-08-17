@@ -1,6 +1,6 @@
 # expense_CLI_menu
 
-The Hands — a Python (Typer) CLI that talks to the [`expense_world_engine`](https://expense-world-engine.onrender.com) via its HTTPS API. Every command is a thin wrapper around one or more engine endpoints; zero business logic lives here.
+The Hands — a Python (Typer) CLI that talks to the `expense_world_engine` over its HTTP API. Since 2026-07-30 that engine runs locally at `http://127.0.0.1:8000` (the Render deployment is mothballed until iOS), so the CLI's only pointer to it is the `engine_url` in `~/.expense-config`. Every command is a thin wrapper around one or more engine endpoints; zero business logic lives here.
 
 See [CLAUDE.md](CLAUDE.md) for conventions, [docs/roadmap.md](docs/roadmap.md) for the build plan and **live status**, [docs/cli-spec.md](docs/cli-spec.md) for the command surface, and [docs/decisions.md](docs/decisions.md) for why the big calls went the way they did.
 

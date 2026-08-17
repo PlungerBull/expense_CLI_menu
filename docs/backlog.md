@@ -23,6 +23,12 @@
 > **[UI]** items: even a pure-removal phase changes what the user sees.
 > (Phase 2's sketch was produced retroactively the same day:
 > [mockups/expense-world-phase2-sketch.html](mockups/expense-world-phase2-sketch.html).)
+>
+> **Exemption (2026-08-16, user decision).** A **docs-only** phase — one that
+> changes no command, screen or output, only prose — is exempt: there is
+> nothing to draw, and a before/after page of paragraphs is just the diff with
+> extra steps. Phase 7 was the first to use this. The rule is unchanged for
+> everything else; "docs-only" means *no* code touched, not "mostly docs".
 
 **Why phases:** the 2026-08 engine rework (transfers deleted, read-time
 currency, reconciliation de-chaining, schema slimming) removed or changed
@@ -31,8 +37,8 @@ Phase 5, the gate, closed 2026-08-16: the contract suite passes 9/9 against a
 real engine, which is the first real-engine check since the rework began.
 **Phase 6 — the new engine capability the clients did not surface — closed
 2026-08-16 as well**, so nothing the 2026-08 rework touched is outstanding.
-Phase 7 closes residual doc alignment; Phase 8 is pre-existing polish,
-schedulable anytime.
+**Phase 7 — residual doc alignment — closed 2026-08-16** as well, leaving
+**Phase 8 (pre-existing polish) as the only open phase**, schedulable anytime.
 (Phase 1 — the mechanical deletions: exchange-rate purge, settings slimming,
 categories/hashtags archive, inbox restore, tx-delete warnings — closed
 2026-08-15; Phase 2 — the transfer-feature removal, items 2.1–2.5 — closed
@@ -126,40 +132,38 @@ real engine: contract suite on `:8001`, including a new
 the settled-visibility rule — the one check that can see an additive endpoint at
 all.)*
 
-## Phase 7 — documentation alignment (residual sweep)
+## Phase 7 — documentation alignment — ✅ closed 2026-08-16
 
-Per-item doc scrubs ride Phases 1–6; this phase is what's left plus the final
-check.
+Deleted per the rule above; kept only as a closed-item note because three of
+its five items turned out to be mis-scoped, which is worth recording once.
 
-- [ ] **7.1** Rewrite the roadmap.md `## Status` paragraph — it still
-  describes the pre-rework engine (categories/hashtags archive, the
-  `archived_categories`/`archived_hashtags` dashboard panels, "currencies
-  locked at the schema to USD/PEN", Render-era framing); refresh the footer
-  "Last updated" line.
-- [ ] **7.2** CLAUDE.md refresh: Status section (point at this backlog's
-  phases instead of "the 2026-07-06 best-practices backlog"); doc-table row
-  for [client-breaking-changes.md](client-breaking-changes.md). *(The
-  `_editor.py` bullet was pruned with Phase 3.3, 2026-08-16.)*
-- [x] **7.3** decisions.md entries for the big engine deletions as they land
-  client-side — transfer removal + de-chaining both written 2026-08-16, each
-  pointing at its client-breaking-changes entry rather than duplicating it.
-  Any later deletion gets the same treatment.
-- [ ] **7.4** Final pass: `pytest tests/unit/test_docs_links.py` green, plus a
-  stale-term grep over `docs/` (`chained`, `--source`, `transfer`,
-  `exchange-rate`, `main-currency`, `include_archived` on cats/hashtags) with
-  every survivor either historical-and-bannered or deleted.
-- [ ] **7.5** Decide whether the engine-side uncommitted `git rm` of
-  `docs/client-breaking-changes.md` + `TODO.md` should be committed in the
-  engine repo (this repo now carries the file; two working trees currently
-  disagree with their HEADs).
+- **7.1 was bigger than its own description.** The item named the roadmap's
+  `## Status` paragraph; the file was stale throughout — Step 1's settings
+  list contradicted [cli-spec.md](cli-spec.md), Steps 2 and 3 had no banner at
+  all, and the Step 9.5 deletion banner sat *after* the ~200 lines it
+  disclaimed, saying "below" where it meant "above". Fixed by the user's
+  **banner-don't-rewrite** call: history stays, each superseded step gets a
+  dated banner, only false present-tense sentences were reworded.
+- **7.2 was ~80% already done.** The `client-breaking-changes.md` doc-table row
+  existed and the Status paragraph already pointed here. Its parenthetical
+  chased "the 2026-07-06 best-practices backlog" — a string that has never
+  appeared in CLAUDE.md. Real fix was one sentence: Phase 6 had closed.
+- **7.5 needed no action.** The engine had already committed the `git rm`
+  (engine commit `a44237e`); both working trees were clean, so the item's
+  premise was gone. Nothing was written to the engine repo.
+- Beyond the plan: the `cleared` removal was dated **2026-08-17** in seven
+  places — a date that had not happened (commit `02c95e8` landed 2026-08-16).
+  Also corrected: roadmap documented `--limit`/`--cursor` pagination the engine
+  never shipped (it is offset-based); [decisions.md](decisions.md) still listed
+  exit codes 4/5 as live and carried a dead cli-runtime.md anchor;
+  `cli-spec.md`'s rates heading named a command group (`exchange-rates`) that
+  is registered as `rates`.
 
 ## Phase 8 — pre-existing polish (unblocked; batch opportunistically)
 
 Survivors of the 2026-07-06 review §5 + tui-plan Phase 3 opens. None depend on
 Phases 1–7.
 
-- [ ] Connection errors exit with code 2 (`errors.py:85-86`), colliding with
-  Click's usage-error 2 — move to an unused code.
 - [ ] Reports: `_render_range_table` hand-rolls the width/format loop the
   shared `render_table` covers (`reports_cmd.py:131-186`).
 - [ ] `reconcile complete` inlines the hint-haystack scan that
@@ -194,3 +198,8 @@ the `reconcile move --json` empty-output nit and the `_validate_source_choice`
 Enum nit (both commands/flags were deleted outright in Phase 3), and the
 `--include-deleted` item's dependency on the old cache decision (the flag's
 [UI] half survives above).
+
+A fourth was **already fixed** and had gone unticked: "connection errors exit
+with code 2, colliding with Click's usage error." `expense/errors.py:83` maps
+`EngineConnectionError` to **6** — the move landed 2026-07-10 and has its own
+[decisions.md](decisions.md) entry. Removed from the list 2026-08-16 (Phase 7).

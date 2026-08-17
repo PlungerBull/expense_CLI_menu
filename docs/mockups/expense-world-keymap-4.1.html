@@ -200,7 +200,15 @@ bracketed default), keeps one-keystroke dismissal, and is self-revealing: the li
 there. This is the TUI analog of the flat CLI's required <b>--yes</b> on <b>reconcile revert</b>.</div>
 
 <!-- ================= 4. sync footer (4.5) ==================== -->
-<div class="step">4 · System › Sync — drop redundant bindings (4.5); s = "Sync" (mirrors `expense sync`); f confirms</div>
+<div class="note" style="border-left:4px solid var(--warn);padding-left:12px">
+  <b style="color:var(--warn)">Deleted 2026-08-06.</b> The whole System › Sync screen shown below — along with
+  <b>expense sync</b>, the <b>~/.expense-cache.sqlite3</b> replica it drove, and the s/f bindings settled here —
+  was removed when the engine deleted <b>GET /v1/sync</b>. Every read is live against the loopback engine now, so
+  there is nothing to refresh. The section is kept because the <i>keymap contract</i> it establishes (esc/r
+  inherited from SectionScreen, never re-declared; a destructive key earns a confirm) still governs every screen.
+  Rationale: <b>decisions.md</b> "Delete the local replica". Same treatment as the Reorder section further down.
+</div>
+<div class="step">4 · System › Sync — drop redundant bindings (4.5); s = "Sync" (mirrors `expense sync`); f confirms <b>— screen deleted 2026-08-06, see above</b></div>
 <div class="pair">
   <div class="term">
     <div class="bar"><div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>

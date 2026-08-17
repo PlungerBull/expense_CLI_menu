@@ -35,8 +35,9 @@
 > **What's wired (per [expense/tui/screens/home.py](../expense/tui/screens/home.py)):**
 > Outstanding Amounts, Monthly report, Log a transaction (quick-add), Inbox,
 > Transactions, Reconciliations, Accounts, Categories, Hashtags, Config, Auth & profile,
-> and the System reads (Sync · Activity · Rates). **Every menu entry is wired** — the
-> last `"soon"` stub (Monthly report) shipped 2026-07-08.
+> and the System reads (Activity · Rates). **Every menu entry is wired** — the
+> last `"soon"` stub (Monthly report) shipped 2026-07-08. *(A third System screen,
+> Sync, was wired here until 2026-08-06 and went with the replica.)*
 
 ## 1. Goal & shape
 
@@ -239,7 +240,8 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 > (account/category/hashtag), the **Manage edit flow** (Option B — see below), full
 > Reconciliations screen (assign/complete/revert/delete + account-first browse; the
 > reorder shipped here was *retired 2026-08-16* with the engine's de-chaining),
-> Config, Auth & profile, the **Sync · Activity · Rates** system-read screens, and the
+> Config, Auth & profile, the **Activity · Rates** system-read screens (Sync shipped
+> here too and was deleted 2026-08-06 with the replica), and the
 > **Monthly report** screen (below) — nothing remains before parity.
 >
 > **Monthly report — shipped 2026-07-08 (mockup Option A).** A sliding **4-month grid**
@@ -282,7 +284,7 @@ archives/unarchives **immediately — no confirm modal**
 - **The transaction form** (Log / Transaction-edit / Draft-edit): required fields,
   signed-amount validation, hashtag multi-select, inline 422 surfacing. (The
   conditional transfer sub-flow was retired 2026-08-16 — see the banner above. The
-  **tri-state cleared** field went 2026-08-17 with the engine's deletion of the
+  **tri-state cleared** field went 2026-08-16 with the engine's deletion of the
   column, `sql/035`. Both edit modes share one field set again as of 2026-08-16:
   Draft-edit offers the same hashtag multi-select as Transaction-edit — the
   resource gate that excluded drafts was the whole of backlog 6.1's TUI half,

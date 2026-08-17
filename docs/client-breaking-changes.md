@@ -56,7 +56,7 @@ on a row inside a completed batch. **Zero rows had it set.**
 
 ### What the client must do
 
-**Done 2026-08-17, commit `02c95e8`.** Removed: `transactions list
+**Done 2026-08-16, commit `02c95e8`.** Removed: `transactions list
 --cleared/--no-cleared` and the `cleared=` parameter on `fetch_transactions`;
 `transactions update --cleared/--no-cleared`; `log --cleared/--no-cleared`; the
 TUI quick-log `CLEARED?` field (label, hint, `_ENGINE_FIELD` entry, prefill

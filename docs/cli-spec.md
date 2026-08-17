@@ -57,7 +57,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 ## Command groups
 
 ### `expense config` *(CLI-local — not an engine feature)*
-- `config set [--token <t>] [--engine-url <u>]`
+- `config set [--token <t>] [--engine-url <u>] [--main-currency <code>]` — `--main-currency` caches the value for formatting; `auth me` normally sets it for you.
 - `config get`
 - `config clear`
 
@@ -97,7 +97,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `log` — direct ledger entry (all required fields supplied as flags).
 
 ### `expense transactions`
-- `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--search`, `--include-deleted`. *(`--cleared/--no-cleared` removed 2026-08-17: the engine deleted the column (sql/035). It was the one filter that failed silently — the engine stopped honouring `?cleared=` without erroring, so the command returned the full list looking like a filtered answer. Confirmation is a reconciliation question now: filter by `--reconciliation-id`.)*
+- `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--search`, `--include-deleted`. *(`--cleared/--no-cleared` removed 2026-08-16: the engine deleted the column (sql/035). It was the one filter that failed silently — the engine stopped honouring `?cleared=` without erroring, so the command returned the full list looking like a filtered answer. Confirmation is a reconciliation question now: filter by `--reconciliation-id`.)*
 - `transactions get <id>` — full detail; activity entries surface via `expense activity list --resource-type transaction --resource-id <id>`.
 - `transactions update <id>` — partial update; `hashtag_ids` and `reconciliation_id` are editable via update. Field locking under completed reconciliations surfaces the engine's 422 clearly.
 - `transactions delete <id>`, `transactions restore <id>`.
@@ -132,7 +132,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 ### `expense activity`
 - `activity list [--resource-type <t>] [--resource-id <id>]` → `GET /v1/activity` (paginated audit log).
 
-### `expense exchange-rates`
+### `expense rates`
 - `rates get --target <code> [--base USD] [--date YYYY-MM-DD]` → `GET /v1/exchange-rates`.
 - `rates list [--date YYYY-MM-DD] [--limit N] [--offset N]` → `GET /v1/exchange-rates/history`
   (stored daily rates, newest first, one row per pair per day; exact-day filter, no fallback).

@@ -25,7 +25,7 @@ Rules for this file:
 | The backlog holds only open work (file now `backlog.md`) | 2026-07-06 | full entry below |
 | Manage detail: system categories are editable, not immutable *(archive half moot since 2026-08-06)* | 2026-07-07 | full entry below |
 | Monthly report TUI is a sliding 4-month grid, not a single-month view | 2026-07-08 | full entry below |
-| `SyncContractError` + exit code 5 for /sync contract violations | 2026-07-08 | full entry below |
+| ~~`SyncContractError` + exit code 5 for /sync contract violations~~ *(**moot since 2026-08-06** — the error class went with the replica)* | 2026-07-08 | full entry below |
 | TUI writes: FIFO queue in EngineWriteMixin, error drops the queue | 2026-07-08 | full entry below |
 | Connection errors → exit code 6, off the click-usage collision on 2 | 2026-07-10 | full entry below |
 | TUI paints the terminal's own background (ANSI mode) — one surface, no seam | 2026-07-11 | full entry below |
@@ -105,6 +105,14 @@ Rules for this file:
 
 ## `SyncContractError` + exit code 5 for /sync contract violations (2026-07-08)
 
+> **Moot 2026-08-06.** `SyncContractError` and exit code 5 were deleted with the
+> local replica — there is no `/sync` response left to violate a contract. See
+> "Delete the local replica" below. The surviving exit-code family is **1**
+> (engine rejected the request), **3** (config), **6** (connection), with **2**
+> left to click alone; 4 (cache) and 5 (sync contract) are retired and should
+> not be reused. The reasoning below is kept because the *principle* it set —
+> a new meaning gets a fresh code, never an overloaded one — is still the rule.
+
 **Context.** Two cache-sync guards raised bare `RuntimeError` (backlog 6.1b): `_derive_user_id` when a /sync response has null settings and every resource empty (reachable by installing a PAT and running any list command before `auth bootstrap`), and `_fetch` when the engine omits `sync_token`. `handle_errors` catches only the domain errors, so both escaped as raw tracebacks — the exact freshman path the CLI exists to smooth.
 
 **Decision.** A new domain error, `SyncContractError` ("the engine responded but violated its own contract"), registered in the `_ENVELOPE_ERRORS` table in [expense/errors.py](../expense/errors.py) with envelope code `SYNC_CONTRACT` and **exit code 5** — a new family alongside 1 (engine rejected the request), 2 (connection), 3 (config), 4 (cache). The user-facing message carries the remedy ("run 'expense auth bootstrap' first"), so the TUI toast inherits the hint via `format_error`'s fallback.
@@ -123,7 +131,7 @@ Rules for this file:
 
 **Context.** `EngineConnectionError` mapped to exit **2** — the same code click/Typer emit for usage errors (bad flags, missing args). A script or CI run couldn't tell "engine unreachable" from "you called it wrong." The `SyncContractError` decision above had already flagged this as an open nit when it took 5 rather than overload 2.
 
-**Decision.** Move `EngineConnectionError` to **exit code 6** in the `_ENVELOPE_ERRORS` table ([expense/errors.py](../expense/errors.py)) — one row; `render()` and `handle_errors` inherit it automatically. The family is now 1 (engine rejected) · 3 (config) · 4 (cache) · 5 (sync contract) · **6 (connection)**, with **2 left to click alone**. Same principle as the exit-5 call: a new meaning gets a fresh code, never an overloaded one.
+**Decision.** Move `EngineConnectionError` to **exit code 6** in the `_ENVELOPE_ERRORS` table ([expense/errors.py](../expense/errors.py)) — one row; `render()` and `handle_errors` inherit it automatically. The family was then 1 (engine rejected) · 3 (config) · 4 (cache) · 5 (sync contract) · **6 (connection)**, with **2 left to click alone**. Same principle as the exit-5 call: a new meaning gets a fresh code, never an overloaded one. *(**Since 2026-08-06** the replica's deletion retired 4 and 5, so the live family is 1 · 3 · 6 — `expense/errors.py` `_ENVELOPE_ERRORS` is the source of truth. The retired codes stay retired rather than being recycled.)*
 
 **Rejected.** Reusing 2 with a distinguishing message (scripts branch on the code, not prose); renumbering the family so connection sits contiguous with 1–5 (churns four codes and their tests for cosmetics — appending 6 is the minimal, non-breaking move).
 
@@ -191,7 +199,7 @@ Rules for this file:
 
 ## Local-first deployment — the one engine moves to the user's Mac; cloud mothballed until iOS (2026-07-30)
 
-**Context.** The product is single-user for the foreseeable future (the 10k-user target is a someday-maybe, no longer a near-term design driver), and the cloud deployment made daily use slow: Render's free tier spins the engine down after idle, so the first command of a session eats a 30–60 s wake-up; `dashboard`/`reports` (engine-only reads per [cli-runtime.md](cli-runtime.md) "Home-currency drift warning") feel it hardest. Separately, the daily FX cron was never wired on Render (paid-only resource, deferred in engine `TODO.md` since 2026-04-28), leaving cross-currency PEN/USD writes blocked by `422 RATE_UNAVAILABLE` — and the user's ledger is exactly PEN+USD (engine migration `015_lock_currencies_to_pen_usd.sql`).
+**Context.** The product is single-user for the foreseeable future (the 10k-user target is a someday-maybe, no longer a near-term design driver), and the cloud deployment made daily use slow: Render's free tier spins the engine down after idle, so the first command of a session eats a 30–60 s wake-up; `dashboard`/`reports` (engine-only reads — they were never served from the replica, whose drift policy is recorded in [cli-runtime.md](cli-runtime.md) "Read semantics") feel it hardest. Separately, the daily FX cron was never wired on Render (paid-only resource, deferred in engine `TODO.md` since 2026-04-28), leaving cross-currency PEN/USD writes blocked by `422 RATE_UNAVAILABLE` — and the user's ledger is exactly PEN+USD (engine migration `015_lock_currencies_to_pen_usd.sql`).
 
 **Decision.** Move the *deployment*, not the architecture: the same engine runs on the user's Mac (launchd service) against local Homebrew Postgres, with a small stand-in for the Supabase-auth surface (PAT auth is engine-native and unchanged); the FX fetch (`app.jobs.fetch_exchange_rates`; provider swapped to fawazahmed0/currency-api during execution — Frankfurter turned out to serve ECB rates only, which exclude PEN, and the 15 pre-existing `rate=3.75` rows were wrong-by-~10% placeholders, deleted) runs as a daily launchd task — going local *unblocks* the feature the cloud never finished; a nightly `pg_dump` to iCloud Drive replaces Supabase as the durability layer (non-negotiable — with one machine, the backup *is* the ledger's survival); Supabase/Render are mothballed after a final full export. Every architectural invariant survives verbatim: exactly one engine as sole write authority, clients hold zero business logic, server-first writes with no offline queue, the §3b replica standard untouched — the CLI's only change is the `engine_url` in `~/.expense-config`. Reactivation on iOS day is a relocation: restore the latest dump into Supabase, redeploy the engine to a host, repoint clients; iOS then follows §3b (thin client + Todoist-style command outbox, engine still the only judge). Build order and specifics: engine `docs/roadmap.md` Step 11; ops procedures live as deployment profiles in the engine repo — `deploy/local/README.md` (active) and `deploy/cloud/README.md` (mothballed + reactivation checklist). A profile is a folder, not a repo: schema, logic, and sync protocol change together (every feature touches all three), so splitting "the scalable part" into its own repo was rejected as a false seam — only deployment config varies, and the engine is already stateless/env-configured precisely so deployments can swap without code changes.
 
