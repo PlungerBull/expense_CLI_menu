@@ -14,6 +14,7 @@ from expense.commands._resource import (
     build_update_payload,
     effective_limit,
     fetch_body,
+    format_bool,
     format_cents,
     format_hashtag_cell,
     format_short_date,
@@ -48,7 +49,16 @@ _RECONCILIATION_LOCK_HINT = (
 )
 
 
-def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
+def _render_transaction_list(body: dict, *, json_mode: bool, show_deleted: bool = False) -> None:
+    """Print the ledger table.
+
+    `show_deleted` mirrors the caller's `--include-deleted`, not the data: the
+    column is what explains why a deleted row is in the table at all, and its
+    only real use is picking the id to hand to `transactions restore`. Keying it
+    to the flag rather than to "is anything actually deleted" keeps the column
+    set stable for a given command line — the same invocation always prints the
+    same header, whatever the ledger happens to hold that day.
+    """
     if json_mode:
         typer.echo(json.dumps(body, indent=2))
         return
@@ -69,19 +79,24 @@ def _render_transaction_list(body: dict, *, json_mode: bool) -> None:
             "account": resolve_name(item.get("account_id"), accounts),
             "category": resolve_name(item.get("category_id"), categories),
             "hashtags": format_hashtag_cell(item.get("hashtag_ids"), hashtags, max_width=24),
+            **({"deleted": format_bool(item.get("deleted_at"))} if show_deleted else {}),
         }
         for item in items
     ]
+    headers = {
+        "title": "Title",
+        "description": "Description",
+        "amount": "Amount",
+        "date": "Date",
+        "account": "Account",
+        "category": "Category",
+        "hashtags": "Hashtags",
+    }
+    if show_deleted:
+        # Last, matching accounts/categories/hashtags.
+        headers["deleted"] = "Deleted"
     render_table(
-        headers={
-            "title": "Title",
-            "description": "Description",
-            "amount": "Amount",
-            "date": "Date",
-            "account": "Account",
-            "category": "Category",
-            "hashtags": "Hashtags",
-        },
+        headers=headers,
         rows=rows,
         align_right={"amount"},
     )
@@ -196,7 +211,7 @@ def list_(
         include_deleted=include_deleted,
         verbose=get_verbose(ctx),
     )
-    _render_transaction_list(body, json_mode=json_output)
+    _render_transaction_list(body, json_mode=json_output, show_deleted=include_deleted)
 
 
 @app.command("get")

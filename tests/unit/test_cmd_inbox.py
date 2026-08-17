@@ -124,7 +124,7 @@ def test_list_resolves_names_from_live_reference_lists(configured):
     assert accounts_route.called and categories_route.called and hashtags_route.called
     assert "BCP Soles" in result.output
     assert "Food" in result.output
-    assert "Tags" in result.output
+    assert "Hashtags" in result.output
     assert "club" in result.output
 
 
@@ -136,7 +136,7 @@ def test_list_untagged_draft_renders_dash_not_blank(configured):
     )
     result = runner.invoke(cli_app, ["inbox", "list"])
     assert result.exit_code == 0, result.output
-    assert "Tags" in result.output
+    assert "Hashtags" in result.output
     assert "—" in result.output
 
 
@@ -169,24 +169,29 @@ def test_list_json_mode(configured):
     assert json.loads(result.output) == LIST_RESPONSE
 
 
-@respx.mock
-def test_list_include_deleted_param(configured):
-    deleted = {
-        **INBOX_RESPONSE,
-        "id": "99999999-9999-9999-9999-999999999999",
-        "title": "deleted draft",
-        "deleted_at": "2026-06-01T09:00:00Z",
-    }
-    body = {"items": [INBOX_RESPONSE, deleted], "total": 2, "limit": 50, "offset": 0}
-    route = respx.get("https://api.example.com/v1/inbox").mock(
-        return_value=httpx.Response(200, json=body)
-    )
-    result = runner.invoke(cli_app, ["inbox", "list", "--include-deleted", "--json"])
-    assert result.exit_code == 0, result.output
-    assert json.loads(result.output) == body
+def test_list_rejects_include_deleted(configured):
+    """The inbox has no `--include-deleted`, unlike every other soft-deleting list.
 
-    request = route.calls.last.request
-    assert request.url.params.get("include_deleted") == "true"
+    Dismissal is final — the engine removed the inbox restore route 2026-08-14 —
+    so a listed dismissed draft cannot be restored, edited or promoted. The flag
+    would only surface rows the user can do nothing with, so the CLI does not
+    expose it even though `?include_deleted=true` still works engine-side
+    (backlog Phase 8, 2026-08-16).
+    """
+    result = runner.invoke(cli_app, ["inbox", "list", "--include-deleted"])
+    assert result.exit_code == 2
+    assert "No such option: --include-deleted" in result.output
+
+
+@respx.mock
+def test_list_never_asks_the_engine_for_deleted_drafts(configured):
+    """Belt and braces: the query the CLI actually sends carries no include_deleted."""
+    route = respx.get("https://api.example.com/v1/inbox").mock(
+        return_value=httpx.Response(200, json=LIST_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["inbox", "list"])
+    assert result.exit_code == 0, result.output
+    assert "include_deleted" not in route.calls.last.request.url.params
 
 
 @respx.mock

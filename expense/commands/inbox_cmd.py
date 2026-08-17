@@ -5,7 +5,6 @@ import typer
 
 from expense import config as config_module
 from expense.commands._resource import (
-    INCLUDE_DELETED_OPT,
     JSON_OPT,
     LIMIT_OPT,
     OFFSET_OPT,
@@ -84,8 +83,11 @@ def _render_inbox_list(body: dict, *, json_mode: bool) -> None:
             "account": "Account",
             "category": "Category",
             "status": "Status",
-            # Tags last, matching `transactions list` (backlog 6.1, sketch pick E).
-            "hashtags": "Tags",
+            # Last, matching `transactions list` (backlog 6.1, sketch pick E). The
+            # label is `Hashtags`, not `Tags`: the engine names the resource
+            # /hashtags and the field hashtag_ids, and the client follows the
+            # engine's vocabulary everywhere (backlog Phase 8, 2026-08-16).
+            "hashtags": "Hashtags",
         },
         rows=rows,
         align_right={"amount"},
@@ -98,7 +100,6 @@ def fetch_inbox(
     *,
     ready: bool = False,
     overdue: bool = False,
-    include_deleted: bool = False,
     limit: int | None = None,
     offset: int | None = None,
     verbose: bool = False,
@@ -106,12 +107,18 @@ def fetch_inbox(
     """GET /v1/inbox → the raw engine body. Pure data, no rendering.
 
     Shared by the flat `inbox list` command and the TUI's Inbox screen.
+
+    No `include_deleted`: the engine still accepts `?include_deleted=true` here,
+    but dismissal is final — the inbox restore route was removed 2026-08-14, so
+    a listed dismissed draft cannot be restored, edited or promoted. Surfacing
+    rows the user can do nothing with is the one thing the flag would buy, so
+    the CLI deliberately does not expose it (backlog Phase 8, 2026-08-16). Every
+    other soft-deleting resource keeps its flag, because each of those has a
+    restore route the flag feeds.
     """
     params: dict = {}
     if ready:
         params["ready"] = "true"
-    if include_deleted:
-        params["include_deleted"] = "true"
     if overdue:
         params["overdue"] = "true"
     if limit is not None:
@@ -134,7 +141,6 @@ def fetch_inbox(
 def list_(
     ctx: typer.Context,
     ready: bool = typer.Option(False, "--ready", help="Only items ready to promote."),
-    include_deleted: bool = INCLUDE_DELETED_OPT,
     overdue: bool = typer.Option(False, "--overdue", help="Only items with date in the past."),
     limit: int | None = LIMIT_OPT,
     offset: int | None = OFFSET_OPT,
@@ -150,7 +156,6 @@ def list_(
         cfg,
         ready=ready,
         overdue=overdue,
-        include_deleted=include_deleted,
         limit=limit,
         offset=offset,
         verbose=get_verbose(ctx),

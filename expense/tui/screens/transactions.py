@@ -27,7 +27,7 @@ from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.cursor_list import CursorList
 
-_HEADERS = ["Title", "Description", "Amount", "Date", "Account", "Cat", "Tags"]
+_HEADERS = ["Title", "Description", "Amount", "Date", "Account", "Cat", "Hashtags"]
 
 
 def transaction_rows(

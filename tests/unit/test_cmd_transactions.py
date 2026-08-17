@@ -180,6 +180,52 @@ def test_list_all_filters_pass_through(configured):
 
 
 @respx.mock
+def test_list_include_deleted_renders_deleted_column(configured):
+    """--include-deleted brings back deleted rows, so the table must say which.
+
+    Before backlog Phase 8 (2026-08-16) the flag returned deleted rows that were
+    visually identical to live ones — the only way to tell was re-running with
+    --json and reading deleted_at. The column's job is picking the id to hand to
+    `expense transactions restore`.
+    """
+    deleted = {
+        **TRANSACTION_RESPONSE,
+        "id": "99999999-9999-9999-9999-999999999999",
+        "title": "dropped row",
+        "deleted_at": "2026-04-24T10:00:00Z",
+    }
+    body = {"items": [TRANSACTION_RESPONSE, deleted], "total": 2, "limit": 50, "offset": 0}
+    respx.get("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    result = runner.invoke(cli_app, ["transactions", "list", "--include-deleted"])
+    assert result.exit_code == 0, result.output
+
+    lines = [ln for ln in result.output.splitlines() if ln.strip()]
+    header = lines[0]
+    assert "Deleted" in header
+    # Last column, matching accounts/categories/hashtags.
+    assert header.rstrip().endswith("Deleted")
+
+    live_row = next(ln for ln in lines if "coffee" in ln)
+    dead_row = next(ln for ln in lines if "dropped row" in ln)
+    assert live_row.rstrip().endswith("no")
+    assert dead_row.rstrip().endswith("yes")
+
+
+@respx.mock
+def test_list_without_include_deleted_has_no_deleted_column(configured):
+    """The column is keyed to the flag, not the data — a plain list is unchanged."""
+    respx.get("https://api.example.com/v1/transactions").mock(
+        return_value=httpx.Response(200, json=LIST_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["transactions", "list"])
+    assert result.exit_code == 0, result.output
+    assert "Deleted" not in result.output
+    assert result.output.splitlines()[0].rstrip().endswith("Hashtags")
+
+
+@respx.mock
 def test_list_rejects_retired_cleared_flag(configured):
     """--cleared/--no-cleared are gone from the surface entirely.
 

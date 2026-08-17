@@ -29,10 +29,12 @@ from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.cursor_list import CursorList
 
-# Tags sits before St, matching the Transactions screen's column order so the two
-# lists read the same way (backlog 6.1, sketch pick H). NOTE: ALIGN_RIGHT below is
-# a positional index into these cells — check it when moving any column.
-_HEADERS = ["", "Title", "Description", "Amount", "Date", "Account", "Category", "Tags", "St"]
+# Hashtags sits before St, matching the Transactions screen's column order so the
+# two lists read the same way (backlog 6.1, sketch pick H). The label follows the
+# engine's vocabulary — /hashtags, hashtag_ids — everywhere (backlog Phase 8,
+# 2026-08-16). NOTE: ALIGN_RIGHT below is a positional index into these cells —
+# check it when moving any column.
+_HEADERS = ["", "Title", "Description", "Amount", "Date", "Account", "Category", "Hashtags", "St"]
 _STATUS = {1: "pend", 2: "prom"}
 _FILTERS = ["all", "ready", "overdue"]
 
@@ -77,7 +79,7 @@ def inbox_rows(
 
 class InboxScreen(PagedListMixin, SectionScreen):
     crumb = ("Capture & ledger", "Inbox")
-    CARD_WIDTH = 110  # matches Transactions since the Tags column landed (backlog 6.1)
+    CARD_WIDTH = 110  # matches Transactions since the Hashtags column landed (backlog 6.1)
     BINDINGS = [
         ("f", "cycle_filter", "Filter"),
         ("p", "promote", "Promote"),

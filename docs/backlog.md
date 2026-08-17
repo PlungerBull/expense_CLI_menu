@@ -162,44 +162,88 @@ its five items turned out to be mis-scoped, which is worth recording once.
 ## Phase 8 — pre-existing polish (unblocked; batch opportunistically)
 
 Survivors of the 2026-07-06 review §5 + tui-plan Phase 3 opens. None depend on
-Phases 1–7.
+Phases 1–7. **Partially worked 2026-08-16** — the deleted-rows item shipped and
+three items were struck as already done (see below); the rest stay open.
+Sketch: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-sketch.html).
 
-- [ ] Reports: `_render_range_table` hand-rolls the width/format loop the
-  shared `render_table` covers (`reports_cmd.py:131-186`).
-- [ ] `reconcile complete` inlines the hint-haystack scan that
-  `transactions_cmd.py:104-117` wraps in `_update_hint_for` — hoist to
-  `_resource.py`. (`complete` survives de-chaining.)
-- [ ] **[UI]** *Optional (re-parked from Phase 2.6, 2026-08-16):* a
-  client-side "move between accounts" convenience = two ordinary
-  `POST /transactions` calls. New UX → mockup first. Not needed for parity.
-- [ ] **[UI]** Inbox and transactions lists accept `--include-deleted` but
-  render no Deleted column (accounts/reconcile have one) — proposed-columns
-  mockup first. *(No longer rides any cache decision — the replica is gone;
-  reads are live, so the flag is honest everywhere.)*
-- [ ] Import: the `.xlsx` reader materializes all rows (`reader.py:61`)
-  rather than streaming — **recorded deferral**, fine at personal scale;
-  documented at the materialization site.
-- [ ] Tests: ~37 remaining `pilot.pause(0.05)` sites across the TUI suite →
-  `wait_for` or bare `pilot.pause()` — mechanical, time-boxable sweep.
+- [ ] Tests: **26** remaining `pilot.pause(0.05)` sites across the TUI suite
+  (9 files) → `wait_for` ([tests/unit/helpers.py](../tests/unit/helpers.py))
+  or bare `pilot.pause()` — mechanical, time-boxable sweep. **6 of the 26 are
+  load-bearing**: they assert a *non-event* (an inert keypress, a confirm that
+  must not fire), so no `wait_for` predicate can replace them — those become a
+  bare pump-drain, not a condition wait. *(Count corrected from "~37"
+  2026-08-16; the old figure was never accurate.)*
 - [ ] TUI light theme + `NO_COLOR` palette (same `ansi_default` surface;
-  tui-plan §4) — needs the terminal-background detection piece.
-- [ ] TUI `?` help overlay; Textual command palette (tui-plan Phase 3).
-- [ ] Open decisions from tui-plan §9: designer's final theme tokens (#3);
-  minimum terminal size fallback (#5).
-- [ ] Post-Step-9 ergonomics (quick-add parser, shell completions, …) stay
-  planned in [roadmap.md](roadmap.md) "Post-Step-9 ergonomics" — pointer
-  only. **Unblocked 2026-08-16**: Phase 5's gate was their precondition and
-  it passed.
+  tui-plan §4). **Approach decided 2026-08-16 — auto-detect** the terminal
+  background (`OSC 11` + `COLORFGBG` fallback, dark default); see
+  [decisions.md](decisions.md) "The light theme will detect the terminal".
+  Textual ships **no** such detection (checked in 8.2.7), so the query is
+  hand-written in `run_world` before Textual takes the tty, with a timeout so
+  a silent terminal cannot hang the app. `NO_COLOR` stays a third mode
+  (`Theme(ansi=True)`), not the light theme.
+- [ ] TUI `?` help overlay — no binding, screen or mockup exists yet; `?` is
+  free (no collision) and `RecordModal` is the nearest template, but it must
+  be added to the `align: center middle` rule in `app.tcss` or it collapses
+  top-left. **[UI]** → mockup first.
+- [ ] TUI command palette: **already live** — Textual auto-binds `ctrl+p`
+  (`ENABLE_COMMAND_PALETTE` defaults true) and `theme.py` already relies on
+  it. The open work is *populating* it with app commands (a `Provider` on
+  `ExpenseApp.COMMANDS`), not enabling it. *(Reworded 2026-08-16; the item
+  previously read as if the palette were unbuilt.)*
+- [ ] Open decisions from tui-plan §9: designer's final theme tokens (#3 —
+  note it names a `theme.tcss` that was never created; tokens are `Theme`
+  fields in [theme.py](../expense/tui/theme.py)); minimum terminal size
+  fallback (#5 — partially handled already: `PAGE_ROWS_FLOOR = 5` degrades
+  rather than refuses).
+- [ ] Post-Step-9 ergonomics (quick-add parser, shell completions, the
+  "move between accounts" convenience, …) stay planned in
+  [roadmap.md](roadmap.md) "Post-Step-9 ergonomics" — pointer only.
+  **Unblocked 2026-08-16**: Phase 5's gate was their precondition and it
+  passed.
+
+### Closed 2026-08-16 (delete on next touch)
+
+**Deleted rows — shipped.** The item was "inbox and transactions accept
+`--include-deleted` but render no Deleted column". Reviewing it found the
+sharper question: the flag exists to feed `restore`, and **the inbox has no
+restore route** (removed engine-side 2026-08-14). So the two lists got
+different answers — `transactions list` gained a `Deleted` column (rendered
+only when the flag is passed, placed last), and `inbox list` **lost the flag
+entirely**. Also settled in the same pass: the tag column was labelled `Tags`
+on one list and `Hashtags` on the other while cli-spec claimed both said
+`Tags` — all four surfaces (both CLI tables, both TUI screens) now say
+`Hashtags`, following the engine's vocabulary. Both have [decisions.md](decisions.md)
+entries; the second reverses the *label* half of 6.1's sketch pick E, position
+untouched.
+
+### Struck as already done (recorded once, then delete on next touch)
+
+Three Phase 8 items were **fixed on 2026-07-10 in commit `fb47937`** and never
+ticked — verified at HEAD 2026-08-16:
+
+- *Reports `_render_range_table` hand-rolls the width loop* — it is 22 lines
+  and already calls the shared `render_table`, whose `footer=` parameter was
+  added in that same commit for this call site. No hand-rolled table loops
+  remain outside `_resource.py`.
+- *`reconcile complete` inlines the hint-haystack scan* — the duplicated half
+  was hoisted to `error_haystack` ([errors.py](../expense/errors.py)), whose
+  docstring names both call sites. What remains genuinely differs (different
+  anchor, alternates and hint constant), and a shared kwargs predicate would
+  trade a readable boolean for a worse one — **struck, not done**.
+- *Import reader materializes all rows* — the deferral is already documented
+  at the materialization site ([reader.py](../expense/import_/reader.py)),
+  with the reason (handle lifetime vs. error paths) and the scale judgement.
+  The backlog's `reader.py:61` and its `polish-backlog §5` cross-reference
+  were both stale.
+
+Phase 7 struck a **fourth** item from that very same commit (connection errors
+→ exit code 6). These three were its neighbours and were missed; that is the
+whole reason this section exists rather than a silent tick.
 
 ### Dropped as moot (recorded once, then delete on next touch)
 
 Three 2026-07-06 §5 nits died with the engine rework rather than being fixed:
 the `reconcile move --json` empty-output nit and the `_validate_source_choice`
 Enum nit (both commands/flags were deleted outright in Phase 3), and the
-`--include-deleted` item's dependency on the old cache decision (the flag's
-[UI] half survives above).
-
-A fourth was **already fixed** and had gone unticked: "connection errors exit
-with code 2, colliding with Click's usage error." `expense/errors.py:83` maps
-`EngineConnectionError` to **6** — the move landed 2026-07-10 and has its own
-[decisions.md](decisions.md) entry. Removed from the list 2026-08-16 (Phase 7).
+`--include-deleted` item's dependency on the old cache decision (its [UI] half
+shipped 2026-08-16, above).

@@ -173,7 +173,22 @@ terminal (the muted/semantic hexes assume a dark ground). The seam work is the
 foundation, not the finish: a real **light + auto** theme = add a light-tuned
 `Theme` object (widgets already read tokens via `resolve_palette`, so no widget
 changes) + terminal-background detection, all on the same `ansi_default` surface —
-tracked as the light/`NO_COLOR` item in Phase 3 below. Guard:
+tracked as the light/`NO_COLOR` item in Phase 3 below.
+
+> **Approach decided 2026-08-16 (backlog Phase 8; work not started).**
+> **Auto-detect**, not a stored setting: query the terminal's background
+> (`OSC 11`, `COLORFGBG` fallback, dark as final default), compute luminance,
+> pick the palette. Two implementation facts worth knowing before estimating —
+> **Textual ships no such detection** (verified in 8.2.7; `ansi_theme_dark` /
+> `ansi_theme_light` pick an ANSI→truecolor table from *your* theme's `dark`
+> flag, never from the terminal), so the query is hand-written in `run_world`
+> **before** Textual takes the tty, with a `select()` timeout so a terminal that
+> never answers cannot hang the app. `NO_COLOR` stays a **third** mode — a full
+> native-ANSI `Theme(ansi=True)` — not the light theme. Rationale and rejected
+> alternatives: [decisions.md](decisions.md) "The light theme will detect the
+> terminal, not ask the user".
+
+Guard:
 `tests/unit/test_tui_theme.py::test_base_fills_are_terminal_transparent`. Decision +
 rejected alternatives: [decisions.md](decisions.md); mockup
 `mockups/tui-ansi-transparent-background.html`.
@@ -386,5 +401,14 @@ Per-section difficulty: menus & lists *easy*; the tree & the transaction form
 **Still open:**
 
 3. **Neutral theme** — monochrome + single accent, dark default? Designer to finalize the
-   `theme.tcss` tokens; plan assumes dark-neutral.
+   tokens; plan assumed dark-neutral, and dark-neutral is what shipped.
+   *(Corrected 2026-08-16: this line named a `theme.tcss` that was **never created** —
+   the tokens are `Theme` fields in [theme.py](../expense/tui/theme.py), and §4's token
+   list above does not match what [app.tcss](../expense/tui/app.tcss) actually consumes.
+   The **light** half of this decision is now settled — auto-detect, see §4 — leaving only
+   the designer's final hexes open.)*
 5. **Minimum terminal size** — fallback/refuse below e.g. 80×24?
+   *(Partly answered in practice, 2026-08-16: the app **degrades** rather than refuses —
+   `SectionScreen.PAGE_ROWS_FLOOR = 5` clamps the page below a ~16-line terminal, and
+   `run_world` already exits 1 on a non-tty. What is still open is whether to add an
+   explicit size guard beside that tty check.)*
