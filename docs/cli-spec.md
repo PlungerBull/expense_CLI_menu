@@ -184,7 +184,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ## To Be Defined
 
-- **Quick-add natural-language parser (Post-Step-9)** — Todoist-style single-line capture (`expense $20 today #food` → parses amount/date/hashtag/title from free text). Sign stays literal: `$20` = income, `-$20` = expense; no default-to-expense magic. Pairs with `expense world` as the "fast capture" half of the dual-UX strategy.
+- **Quick-add natural-language parser (Post-Step-9)** — Todoist-style single-line capture (`expense $20 today #food` → parses amount/date/hashtag/title from free text). Sign stays literal: `$20` = income, `-$20` = expense; no default-to-expense magic. Pairs with `expense world` as the "fast capture" half of the dual-UX strategy. Design drawn ahead of the parser, so the *feel* can be settled before the grammar is: [mockups/quick-add-bar.html](mockups/quick-add-bar.html) (the bar's token highlighting + resolved pills), [mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html) (what appears on the hotkey), and state **d** of [mockups/expense-world-log-quickadd.html](mockups/expense-world-log-quickadd.html) (one line parsed into every field — states a–c are the bar-cycle form that already ships). All three are **speculative**: no pick is recorded, and none of it is built.
 - Shell completions (zsh, bash, fish)
 - `expense import csv` — CSV variant of the shipped `.xlsx` importer, only if a real migration needs it (see [roadmap.md](roadmap.md) Post-Step-9 ergonomics)
 

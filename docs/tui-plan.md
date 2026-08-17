@@ -9,8 +9,15 @@
 >
 > Status: **in progress (Step 10)** — Phases 0–2 shipped (Phase 2 closed 2026-07-08
 > with the Monthly report screen); Phase 3 partially delivered early via the 2026-07-02 quality-review backlog §4
-> (2026-07-05/06, all eight items closed: keymap contract, theme-resolved semantic colors,
-> form-label width, q scoped to Home, unarchive prompt-free, Rates as a history table)
+> (2026-07-05/06, all eight items closed: keymap contract
+> ([mockups/expense-world-keymap-4.1.html](mockups/expense-world-keymap-4.1.html) —
+> the `r`/`u`/`y`/`enter` rules plus the full key audit), theme-resolved semantic colors,
+> form-label width ([mockups/expense-world-field-width-4.4.html](mockups/expense-world-field-width-4.4.html) —
+> fixed at 14 cells, guarded by a test), q scoped to Home, unarchive prompt-free,
+> Rates as a history table —
+> [mockups/expense-world-rates-form-4.8.html](mockups/expense-world-rates-form-4.8.html),
+> whose "parked on an engine endpoint" banner is now spent: `GET /v1/exchange-rates/history`
+> shipped and `rates list` with it)
 > and §5 (2026-07-06, all six dedup refactors closed: `EngineWriteMixin.run_write` behind
 > every TUI write worker, one `FormScreen` base under all three bar-cycle forms, shared
 > `fetch_body`/`render_record`/`items_of` and friends in `_resource.py`).
@@ -83,7 +90,8 @@ expense/tui/
     reports.py      # Monthly report — sliding 4-month grid, ▼/▶ hashtag rows
     inbox.py        transactions.py  accounts.py  categories.py  hashtags.py
     reconciliations.py               # full lifecycle (reorder retired 2026-08-16)
-    system.py       # Config / Auth / Sync / Activity / Rates screens
+    system.py       # Config / Auth / Activity / Rates screens
+                    #   (Sync went with the local replica, 2026-08-06)
     quick_log.py    # the transaction form (log / edit)
     create_forms.py # BarFormScreen + New{Account,Category,Hashtag} small forms
                     #   New account carries a TYPE field (bank/person, prefilled
@@ -169,6 +177,11 @@ tracked as the light/`NO_COLOR` item in Phase 3 below. Guard:
 rejected alternatives: [decisions.md](decisions.md); mockup
 `mockups/tui-ansi-transparent-background.html`.
 
+**What sits on that ground.** Content cards use the **quiet border** treatment —
+picked 2026-07-11 alongside the wrapping-panel layout (L2), on the same transparent
+base: [mockups/expense-world-panelled-dossier.html](mockups/expense-world-panelled-dossier.html),
+which carries both picks. Home's menu stays deliberately boxless.
+
 ## 5. Phased delivery
 
 Estimates assume one dev comfortable with Python; **add ~1 week if new to Textual**.
@@ -182,7 +195,11 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   2026-07-10** into a single-line wordmark + live `net · spent · owed` stat cluster
   (one dashboard read on mount/resume, failure-silent) with the menu de-boxed onto the
   app background — mockup `mockups/expense-world-home-header.html`. Partially answers the
-  §4.3 "useful home header" itch with stats, not engine status.)*
+  §4.3 "useful home header" itch with stats, not engine status. The intermediate
+  step — collapsing the original ~4-row header to a single line — is
+  `mockups/home-header-singleline.html`, which carries its own forward-pointing
+  banner to the Phase 4 sketch that later replaced the stat cluster's failure
+  state with `4 UNRATED`.)*
 - **One real read view wired to live data: Outstanding Amounts** (start flat, then add
   the tree) via the worker helper, reusing `ensure_synced`.
 - **Exit criteria:** launch → navigate the menu → see real current-month data in your
