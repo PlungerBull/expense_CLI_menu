@@ -17,6 +17,7 @@ from expense.tui.screens.home import HomeScreen
 from expense.tui.screens.outstanding import (
     CategoriesView,
     OutstandingScreen,
+    PeopleView,
     _accounts_table,
     _totals_table,
 )
@@ -118,6 +119,52 @@ def test_categories_view_collapse_hides_children():
     assert "trabajo" not in collapsed  # child row hidden
 
 
+_PEOPLE = [
+    {"name": "Eliana", "currency_code": "PEN", "current_balance_cents": 20000},
+    {"name": "Ana", "currency_code": "PEN", "current_balance_cents": 0},
+    {"name": "Beto", "currency_code": "USD", "current_balance_cents": 0},
+]
+
+
+def test_people_view_folds_settled_but_keeps_the_count():
+    """Settled people start folded behind `▶ 2 settled` — folded, never dropped."""
+    view = PeopleView(_PEOPLE)
+    collapsed = _text(view._build())
+    assert "Eliana" in collapsed  # a live debt keeps its row
+    assert "▶ 2 settled" in collapsed  # the count is always stated
+    assert "Ana" not in collapsed and "Beto" not in collapsed
+
+
+def test_people_view_expands_to_name_the_settled():
+    view = PeopleView(_PEOPLE)
+    view.action_expand()
+    expanded = _text(view._build())
+    assert "▼ 2 settled" in expanded  # caret flips, same as the categories tree
+    assert "Ana" in expanded and "Beto" in expanded
+    view.action_collapse()
+    assert "Ana" not in _text(view._build())
+
+
+def test_people_view_leaves_the_focus_chain_with_nothing_to_fold():
+    """No settled people → nothing foldable, so it stays out of the tab order."""
+    view = PeopleView([_PEOPLE[0]])
+    assert view.can_focus is False
+    out = _text(view._build())
+    assert "Eliana" in out and "settled" not in out
+
+
+def test_people_view_settled_is_native_not_home():
+    """A person with no rate today is not "settled" — home currency never decides."""
+    view = PeopleView(
+        [
+            {"name": "Cora", "current_balance_cents": 20000, "current_balance_home_cents": None},
+            {"name": "Beto", "current_balance_cents": 0, "current_balance_home_cents": None},
+        ]
+    )
+    assert [p["name"] for p in view._outstanding] == ["Cora"]
+    assert [p["name"] for p in view._settled] == ["Beto"]
+
+
 def test_app_launches_home_with_outstanding_option():
     async def scenario():
         app = ExpenseApp()
@@ -194,5 +241,36 @@ def test_outstanding_screen_populates_and_tree_collapses(monkeypatch):
             assert view._collapsed == set()
             await pilot.press("left")  # collapse focused category
             assert view._collapsed == {0}
+
+    asyncio.run(scenario())
+
+
+def test_outstanding_screen_people_fold_opens_on_a_keypress(monkeypatch):
+    """The People panel is the same fold as the categories tree, driven for real."""
+    sample = {**SAMPLE, "people": [*SAMPLE["people"], *_PEOPLE]}
+    monkeypatch.setattr(dashboard_cmd, "fetch_dashboard", lambda *a, **k: sample)
+    monkeypatch.setattr(dashboard_cmd, "load_hashtag_name_map", lambda: {"x": "trabajo"})
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            await app.push_screen(OutstandingScreen())
+            await wait_for(
+                pilot,
+                lambda: (
+                    app.screen.query(PeopleView)
+                    and not app.screen.query("#content LoadingIndicator")
+                ),
+            )
+            view = app.screen.query(PeopleView).first()
+            assert view._collapsed is True  # settled people start folded
+            # The categories tree grabs focus on mount; the fold is reachable.
+            view.focus()
+            await wait_for(pilot, lambda: view.has_focus)
+            await pilot.press("right")
+            assert view._collapsed is False
+            await pilot.press("left")
+            assert view._collapsed is True
 
     asyncio.run(scenario())

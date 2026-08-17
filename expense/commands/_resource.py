@@ -363,6 +363,48 @@ def account_choices(
     return out
 
 
+def split_settled(people: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split person rows into `(outstanding, settled)`. Shared by every People panel.
+
+    "Settled" is **exactly zero in the person's own currency**
+    (`current_balance_cents == 0`). Three parts of that are load-bearing:
+
+    * **Native, not home.** Every People table shows `current_balance_cents`, and
+      a person whose currency has no rate today has a `null`
+      `current_balance_home_cents` — treating that as settled would mark someone
+      as square because an exchange rate was missing.
+    * **Only an `int` counts.** A missing or non-numeric balance is *unknown*, not
+      zero, so it stays in `outstanding` where it is visible.
+    * **Settled is folded, never dropped.** The engine returns every person and
+      explicitly refuses to filter on a computed balance (entry 2026-08-14): a
+      settled person and a never-recorded loan must not look alike, and a
+      coincidental net zero (lent 200, borrowed 200) is two live debts. Callers
+      must always render the count — `▸ 3 settled` — never silently omit the rows.
+      Deliberately *not* `has_aggregate`, which drops zero rows outright; that is
+      the flow-report rule and it is the opposite of this one.
+
+    Consumers: `expense dashboard` (`dashboard_cmd._render_people`) and the TUI
+    Outstanding screen (`outstanding.PeopleView`).
+    """
+    outstanding: list[dict] = []
+    settled: list[dict] = []
+    for person in people:
+        balance = person.get("current_balance_cents")
+        is_settled = isinstance(balance, int) and not isinstance(balance, bool) and balance == 0
+        (settled if is_settled else outstanding).append(person)
+    return outstanding, settled
+
+
+def settled_label(count: int) -> str:
+    """The fold line both People panels use: `▸ 3 settled` / `▸ 1 settled`.
+
+    One copy so the CLI's printed line and the TUI's collapsed caret row cannot
+    drift apart in wording. The TUI swaps the leading `▸` for `▶`/`▼` (its own
+    fold carets) and keeps the rest.
+    """
+    return f"▸ {count} settled"
+
+
 def parse_hashtag_ids(raw: str) -> list[str]:
     """`"a, b ,,c"` → `["a", "b", "c"]`. Shared by every command taking `--hashtag-ids`.
 

@@ -36,6 +36,8 @@ from expense.commands._resource import (
     render_totals,
     require_yes,
     run_toggle,
+    settled_label,
+    split_settled,
 )
 from expense.errors import EngineError, handle_errors
 
@@ -858,3 +860,58 @@ def test_render_table_footer_prints_when_rows_empty(capsys):
 def test_render_table_empty_without_footer_prints_nothing(capsys):
     render_table(headers={"name": "Name"}, rows=[])
     assert capsys.readouterr().out == ""
+
+
+# --------------------------------------------------------------------------- #
+# split_settled / settled_label — the People fold (backlog 6.2)
+# --------------------------------------------------------------------------- #
+
+
+def test_split_settled_partitions_on_the_native_balance():
+    people = [
+        {"name": "Eliana", "current_balance_cents": 20000},
+        {"name": "Ana", "current_balance_cents": 0},
+        {"name": "Marco", "current_balance_cents": -45000},
+    ]
+    outstanding, settled = split_settled(people)
+    assert [p["name"] for p in outstanding] == ["Eliana", "Marco"]
+    assert [p["name"] for p in settled] == ["Ana"]
+
+
+def test_split_settled_ignores_the_home_balance():
+    """A missing exchange rate must never read as "she paid me back"."""
+    people = [
+        # Square in her own currency, unpriceable in home — settled.
+        {"name": "Beto", "current_balance_cents": 0, "current_balance_home_cents": None},
+        # Owes 200 in her own currency, unpriceable in home — still outstanding.
+        {"name": "Cora", "current_balance_cents": 20000, "current_balance_home_cents": None},
+        # Home rounds to zero, native does not. Native decides.
+        {"name": "Dina", "current_balance_cents": 1, "current_balance_home_cents": 0},
+    ]
+    outstanding, settled = split_settled(people)
+    assert [p["name"] for p in outstanding] == ["Cora", "Dina"]
+    assert [p["name"] for p in settled] == ["Beto"]
+
+
+def test_split_settled_treats_an_unknown_balance_as_outstanding():
+    """Missing or non-numeric is *unknown*, not zero — it stays visible."""
+    people = [
+        {"name": "NoKey"},
+        {"name": "Null", "current_balance_cents": None},
+        {"name": "Text", "current_balance_cents": "0"},
+        {"name": "Bool", "current_balance_cents": False},  # not an int balance
+    ]
+    outstanding, settled = split_settled(people)
+    assert [p["name"] for p in outstanding] == ["NoKey", "Null", "Text", "Bool"]
+    assert settled == []
+
+
+def test_split_settled_never_drops_a_row():
+    people = [{"current_balance_cents": n} for n in (0, 1, 0, -2, 0)]
+    outstanding, settled = split_settled(people)
+    assert len(outstanding) + len(settled) == len(people)
+
+
+def test_settled_label_shape():
+    assert settled_label(3) == "▸ 3 settled"
+    assert settled_label(1) == "▸ 1 settled"

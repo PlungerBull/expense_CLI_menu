@@ -265,6 +265,89 @@ def test_opening_balance_happy(configured):
     UUID(body["transaction_id"])
 
 
+PERSON_RESPONSE = {
+    **ACCOUNT_RESPONSE,
+    "id": "44444444-4444-4444-4444-444444444444",
+    "name": "Eliana",
+    "is_person": True,
+    "current_balance_cents": 0,
+    "current_balance_home_cents": 0,
+}
+
+
+@respx.mock
+def test_create_person_happy(configured):
+    """POST /v1/people — the only people route, and `is_person` is never sent."""
+    route = respx.post("https://api.example.com/v1/people").mock(
+        return_value=httpx.Response(201, json=PERSON_RESPONSE)
+    )
+    result = runner.invoke(
+        cli_app,
+        ["accounts", "create-person", "--name", "Eliana", "--currency-code", "PEN"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Created:" in result.output
+
+    body = json.loads(route.calls.last.request.content)
+    assert body["name"] == "Eliana"
+    assert body["currency_code"] == "PEN"
+    UUID(body["id"])
+    # The endpoint implies the flag and 422s on the field — never send it.
+    assert "is_person" not in body
+
+
+@respx.mock
+def test_create_person_json_mode(configured):
+    respx.post("https://api.example.com/v1/people").mock(
+        return_value=httpx.Response(201, json=PERSON_RESPONSE)
+    )
+    result = runner.invoke(
+        cli_app,
+        ["accounts", "create-person", "--name", "Eliana", "--currency-code", "PEN", "--json"],
+    )
+    assert result.exit_code == 0
+    assert json.loads(result.output) == PERSON_RESPONSE
+    assert "Created:" not in result.output
+
+
+@respx.mock
+def test_create_person_conflict_explains_shared_name_list(configured):
+    """A person's name collides with a *bank account's* — one name list per currency."""
+    respx.post("https://api.example.com/v1/people").mock(
+        return_value=httpx.Response(
+            409,
+            json={
+                "error": {
+                    "code": "CONFLICT",
+                    "message": "An account with this name already exists.",
+                    "fields": None,
+                }
+            },
+        )
+    )
+    result = runner.invoke(
+        cli_app,
+        ["accounts", "create-person", "--name", "Eliana", "--currency-code", "PEN"],
+    )
+    assert result.exit_code == 1
+    assert "CONFLICT" in result.output
+    assert "share one name list" in result.output
+
+
+@respx.mock
+def test_create_stays_bank_only(configured):
+    """`accounts create` must never grow a person path — the engine 422s `is_person`."""
+    route = respx.post("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(201, json=ACCOUNT_RESPONSE)
+    )
+    result = runner.invoke(
+        cli_app,
+        ["accounts", "create", "--name", "BCP Soles", "--currency-code", "PEN"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "is_person" not in json.loads(route.calls.last.request.content)
+
+
 @respx.mock
 def test_opening_balance_conflict_surfaces_error(configured):
     respx.post("https://api.example.com/v1/accounts/acc-1/opening-balance").mock(

@@ -291,16 +291,30 @@ them to `archived_people` and makes the engine refuse to record against them.
 
 ### What the CLI must do
 
-1. **Add a create-person command.** `expense/tui/screens/create_forms.py:7`
-   currently notes "New account is bank-only — the engine forbids `is_person`";
-   that is still true of `POST /accounts`, but `POST /people` is now the door.
-2. **Render `archived_people`** next to the existing `archived_accounts` handling
-   in `expense/commands/dashboard_cmd.py:134` and the archived view in
-   `expense/tui/screens/accounts.py`.
-3. **Collapse settled people** in the People section (`home.py:101`,
-   `outstanding.py:168`) rather than hiding zero balances outright.
-4. **Do not add a client-side people list/edit path against `/people`** — use the
-   account routes, which already work on person rows.
+**Done 2026-08-16 (backlog 6.2).** Sketch:
+[mockups/expense-world-phase6-people.html](mockups/expense-world-phase6-people.html),
+picks B/D/G/J/L.
+
+1. **Add a create-person command.** ✅ `expense accounts create-person` →
+   `POST /people`, plus a **TYPE** field (`bank`/`person`, prefilled `bank`) on
+   the TUI New Account form that picks the endpoint. `is_person` is sent on
+   neither route. `create_forms.py`'s "New account is bank-only" note is gone,
+   and the edit form locks TYPE read-only — `is_person` is creation-time-only.
+2. **Render `archived_people`** ✅ as its own panel after `archived_accounts` in
+   `dashboard_cmd.py`. No TUI change was needed: the Accounts screen already
+   fetches `include_archived=True, include_people=True` and carries `Type` and
+   `Status` columns, so an archived person shows there with no new code.
+3. **Collapse settled people** ✅ — `split_settled` / `settled_label` in
+   `_resource.py`, printed as `▸ 3 settled` on the typed dashboard and folded
+   behind the categories tree's own `▼/▶` caret in `outstanding.PeopleView`.
+   "Settled" is exactly zero in the person's **own** currency, never the home
+   figure. *This entry's `home.py:101` anchor led nowhere:* home has no People
+   list, only the aggregated `owed` figure, which already drops out at zero — so
+   `home.py` was not touched.
+4. **Do not add a client-side people list/edit path against `/people`** ✅ — the
+   only `/people` call in the client is the create; rename/archive/delete/get all
+   go through `/accounts/{id}`, and `expense people` was drawn and **rejected**
+   (a group promising commands that will never exist).
 
 ### Engine references
 

@@ -29,7 +29,8 @@ currency, reconciliation de-chaining, schema slimming) removed or changed
 endpoints the CLI and TUI still call. **The recovery is verified done** —
 Phase 5, the gate, closed 2026-08-16: the contract suite passes 9/9 against a
 real engine, which is the first real-engine check since the rework began.
-Phase 6 builds the new engine capability the clients don't surface yet;
+**Phase 6 — the new engine capability the clients did not surface — closed
+2026-08-16 as well**, so nothing the 2026-08 rework touched is outstanding.
 Phase 7 closes residual doc alignment; Phase 8 is pre-existing polish,
 schedulable anytime.
 (Phase 1 — the mechanical deletions: exchange-rate purge, settings slimming,
@@ -57,10 +58,11 @@ accepted there, which 422'd and lost the whole write (removed; sketch:
 [mockups/expense-world-phase5-inbox-cleared.html](mockups/expense-world-phase5-inbox-cleared.html)).
 All five deleted per the rule above, see git history.)
 
-**Baseline (2026-08-16, after Phase 6.1):** 882 unit tests green, and the
-contract suite is 10/10 against the disposable engine on `:8001`. (868 after
-Phase 5; 6.1 added 14.) The note below still holds and is why 6.1 shipped with a
-live check rather than unit tests alone — worth repeating, because
+**Baseline (2026-08-16, after Phase 6.2):** 903 unit tests green, and the
+contract suite is 12/12 against the disposable engine on `:8001`. (868 after
+Phase 5; 6.1 added 14; 6.2 added 21 unit + 2 contract.) The note below still
+holds and is why 6.1 and 6.2 both shipped with a live check rather than unit
+tests alone — worth repeating, because
 [scripts/check_fixture_drift.py](../scripts/check_fixture_drift.py) cannot help
 with *additive* engine changes at all: it only detects fields the engine has
 **stopped** serving, never one a fixture is missing.
@@ -84,7 +86,10 @@ contract detail and engine references.
 
 ---
 
-## Phase 6 — additive engine capability (unusable until built)
+## Phase 6 — additive engine capability — ✅ closed 2026-08-16
+
+Both items shipped and verified against a real engine. Kept as closed-item notes
+only because each records what changed beyond its plan; delete on next touch.
 
 *(6.1 — inbox hashtags — closed 2026-08-16; deleted per the rule above, see git
 history. Sketch:
@@ -97,15 +102,29 @@ copies of one comma-split. Verified against a real engine: contract suite 10/10
 on `:8001`, including a new `test_inbox_hashtags_lifecycle` that pins all three
 PUT semantics and that promotion carries the tags across.)*
 
-- [ ] **6.2 [UI] People API.** [Entry 2026-08-14 "the People API ships".]
-  (a) a create-person command (`POST /people` — the only `/people` route ever;
-  everything else goes through `/accounts/{id}`, which already accepts person
-  rows — **never** build list/edit paths against `/people`); (b) render
-  `archived_people` beside `archived_accounts` (`dashboard_cmd.py:134`, TUI
-  accounts archived view); (c) **collapse settled people, never hide them**
-  (`home.py:101`, `outstanding.py:168`) — the entry's design rule + suggested
-  `▸ 3 settled` shape. All three are user-visible → mockups + naming proposal
-  (e.g. `expense people create` vs `accounts create-person`) before code.
+*(6.2 — the People API — closed 2026-08-16; deleted per the rule above, see git
+history. Sketch:
+[mockups/expense-world-phase6-people.html](mockups/expense-world-phase6-people.html),
+picks B/D/G/J/L. Shipped: `expense accounts create-person` → `POST /people`
+(with a 409 hint explaining that people and bank accounts share one name list per
+currency); the `archived_people` panel after `archived_accounts`; `split_settled`
+/ `settled_label` in `_resource.py` and the `▸ 3 settled` fold on the typed
+dashboard; `PeopleView` in `outstanding.py` — the same `▼/▶` fold as the
+categories tree, closed by default; and a **TYPE** field (`bank`/`person`,
+prefilled `bank`) on the TUI New Account form, locked read-only on edit.
+What it changed beyond the plan: **two of the item's three code anchors were
+stale, and one changed the work.** `home.py:101` is `_extract_stats`, and home
+has **no People list at all** — only the aggregated `owed` figure, which already
+vanishes when everything nets to zero, so item (c) had no home-screen half and
+`home.py` was not touched. The TUI half of item (b) was likewise a no-op: the
+Accounts screen already fetches `include_archived=True, include_people=True` and
+has `Type`/`Status` columns, so archived people appear there with no new code
+(shown as a real render in the sketch's §9). `outstanding.py:168` is inside
+`CategoriesView.action_move`; the People block was at 208-211. Verified against a
+real engine: contract suite on `:8001`, including a new
+`tests/contract/test_people_lifecycle.py` that pins all four shape decisions plus
+the settled-visibility rule — the one check that can see an additive endpoint at
+all.)*
 
 ## Phase 7 — documentation alignment (residual sweep)
 

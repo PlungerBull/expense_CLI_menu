@@ -79,13 +79,15 @@ expense/tui/
     _base.py        # EngineWriteMixin.run_write + SectionScreen (fetch workers, confirm, keymap)
     _form.py        # FormScreen base — fields, validation, bar-cycle plumbing
     home.py         # banner + section menu
-    outstanding.py  # balances + people + category ▼/▶ TREE + totals
+    outstanding.py  # balances + people ▼/▶ FOLD + category ▼/▶ TREE + totals
     reports.py      # Monthly report — sliding 4-month grid, ▼/▶ hashtag rows
     inbox.py        transactions.py  accounts.py  categories.py  hashtags.py
     reconciliations.py               # full lifecycle (reorder retired 2026-08-16)
     system.py       # Config / Auth / Sync / Activity / Rates screens
     quick_log.py    # the transaction form (log / edit)
     create_forms.py # BarFormScreen + New{Account,Category,Hashtag} small forms
+                    #   New account carries a TYPE field (bank/person, prefilled
+                    #   bank) that picks POST /accounts vs /people (§Phase 2)
     modals.py       # RecordModal, SnapshotModal, ConfirmModal, PromptModal
 ```
 
@@ -196,6 +198,17 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
   pagination, glyph columns, name resolution (all reused).
 - **Outstanding Amounts: interactive `▼/▶` tree** with arrow-key navigation (the
   preferred expand/collapse), fed by the existing category→`hashtag_breakdown` data.
+  > **People fold (2026-08-16, backlog 6.2 · sketch pick J).** The People panel is a
+  > second `▼/▶` fold on the same screen — `PeopleView`, same carets and same keys
+  > (`→/←`, `enter`) as the categories tree, so there is one collapse idiom, not two.
+  > Settled people (balance **exactly zero in their own currency**) start folded
+  > behind `▶ 3 settled`; one keypress names them. They are **folded, never
+  > dropped** — the engine returns them deliberately and refuses to filter on a
+  > computed balance, so hiding them client-side would make "she paid me back" and
+  > "I never recorded the loan" identical. With nobody settled there is nothing to
+  > fold, and the widget leaves the focus chain so it never competes with the tree
+  > for the arrow keys. `_build()` stays pure — the fold unit-tests without an
+  > event loop.
 - Record **detail modal** (view one row). Loading / empty / error states; status bar.
 - **Exit criteria:** every read surface is browsable in the TUI.
 
@@ -228,7 +241,14 @@ Estimates assume one dev comfortable with Python; **add ~1 week if new to Textua
 > (Option B, `manage_detail.py`) was **deleted**: it only repeated the list's columns. The
 > Accounts/Categories/Hashtags lists are now the whole surface (`ResourceListScreen` in
 > `_base.py`): `e` on the cursor row pushes the prefilled edit bar-form (`Edit*Screen` in
-> `create_forms.py`, PUT); `a` archives/unarchives **immediately — no confirm modal**
+> `create_forms.py`, PUT); `n` pushes the create bar-form — on Accounts that form's
+first field is **TYPE** (`bank` / `person`, prefilled `bank`), and picking `person`
+sends the same three fields to `POST /people` instead of `POST /accounts`
+(2026-08-16, backlog 6.2 · sketch pick L; `is_person` is a 422 on both routes, so
+the endpoint *is* the flag). The default is what keeps adding an ordinary account
+to `n`, `enter`, name…; and because `is_person` is settable only at creation, the
+edit form locks TYPE read-only exactly as it already locks `currency`. `a`
+archives/unarchives **immediately — no confirm modal**
 > (archive is a reversible toggle; a second `a` undoes, and the cursor is preserved on the
 > acted-on row across the reload); `enter` is a no-op. **System categories:** `e` is offered
 > (engine keys them by `system_key`, so rename/recolor is pipeline-safe — engine-spec

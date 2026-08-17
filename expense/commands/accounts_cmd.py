@@ -199,6 +199,70 @@ def create(
     render_record(body, json_mode=json_output)
 
 
+@app.command("create-person")
+@handle_errors
+def create_person(
+    ctx: typer.Context,
+    name: str = typer.Option(..., "--name", help="Person's name (unique per currency)."),
+    currency_code: str = typer.Option(
+        ..., "--currency-code", help="ISO 4217 currency code (e.g. USD, PEN)."
+    ),
+    color: str | None = typer.Option(
+        None, "--color", help="6-digit hex color, e.g. #3b82f6. Omit for the default blue."
+    ),
+    sort_order: int | None = typer.Option(None, "--sort-order"),
+    json_output: bool = JSON_OPT,
+) -> None:
+    """POST /v1/people. Creates a person account for tracking what you lent or borrowed.
+
+    A person *is* a bank account with `is_person = true`: money lent or borrowed
+    is an ordinary transaction against her, and the account's computed balance
+    **is** the debt (positive = they owe you, negative = you owe them).
+
+    This is the only `/people` route there is, and the only moment `is_person` is
+    settable. Everything afterwards is an ordinary accounts command — `update`,
+    `archive`, `unarchive`, `delete`, `restore`, `get` — and `list
+    --include-people` is the listing. There is no `expense people` group and no
+    `GET /v1/people`; the engine will not add either.
+
+    Two engine rules worth knowing: a person cannot be given an opening balance
+    (a debt is built from recorded rows, not seeded), and names are unique across
+    people *and* bank accounts together within a currency.
+
+    Example: expense accounts create-person --name "Eliana" --currency-code PEN
+    """
+    cfg = config_module.ensure_loaded()
+    verbose = get_verbose(ctx)
+
+    new_id = str(uuid4())
+    payload: dict = {
+        "id": new_id,
+        "name": name,
+        "currency_code": currency_code,
+    }
+    if color is not None:
+        payload["color"] = color
+    if sort_order is not None:
+        payload["sort_order"] = sort_order
+
+    # `is_person` is never sent: the endpoint implies it and 422s on the field.
+    with ExpenseClient(cfg, verbose=verbose) as client:
+        try:
+            body = client.post("/people", json_body=payload)
+        except EngineError as err:
+            if err.status == 409:
+                typer.echo(
+                    f"Hint: The name {name!r} is already taken in {currency_code}. "
+                    f"People and bank accounts share one name list per currency, "
+                    f"so a bank account with that name collides too.",
+                    err=True,
+                )
+            raise
+    if not json_output:
+        typer.echo(f"Created: {new_id}")
+    render_record(body, json_mode=json_output)
+
+
 @app.command("opening-balance")
 @handle_errors
 def opening_balance(

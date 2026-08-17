@@ -75,6 +75,49 @@ DASHBOARD_WITH_ARCHIVED = {
             "current_balance_home_cents": 0,
         }
     ],
+    # A *separate* panel from archived_accounts, never merged (engine 2026-08-14).
+    "archived_people": [
+        {
+            "id": "55555555-5555-5555-5555-555555555555",
+            "name": "Diego",
+            "currency_code": "PEN",
+            "current_balance_cents": 0,
+            "current_balance_home_cents": 0,
+        }
+    ],
+}
+
+#: Two people still owing/owed and three square. A settled person is folded
+#: behind a count, never dropped: the engine returns her deliberately and
+#: refuses to filter on a computed balance (entry 2026-08-14).
+DASHBOARD_WITH_SETTLED_PEOPLE = {
+    **DASHBOARD_RESPONSE,
+    "people": [
+        *DASHBOARD_RESPONSE["people"],
+        {
+            "id": "aaaaaaaa-0000-0000-0000-000000000001",
+            "name": "Eliana",
+            "currency_code": "PEN",
+            "current_balance_cents": 20000,
+            "current_balance_home_cents": 20000,
+        },
+        {
+            "id": "aaaaaaaa-0000-0000-0000-000000000002",
+            "name": "Ana",
+            "currency_code": "PEN",
+            "current_balance_cents": 0,
+            "current_balance_home_cents": 0,
+        },
+        {
+            "id": "aaaaaaaa-0000-0000-0000-000000000003",
+            "name": "Beto",
+            "currency_code": "USD",
+            "current_balance_cents": 0,
+            # No rate today: unpriced in home currency, but still settled at 0
+            # in its own currency. Home must never decide "settled".
+            "current_balance_home_cents": None,
+        },
+    ],
 }
 
 #: A month the engine refused to total, plus a category with nothing spent.
@@ -155,8 +198,69 @@ def test_dashboard_include_archived(configured):
     assert "Archived hashtags:" not in result.output
     assert "Lifetime spent" not in result.output
 
+    # Archived people are their own panel, and it sits after archived accounts
+    # (sketch pick D). They never merge: an archived person among the archived
+    # cards is exactly what the engine's record rules out.
+    assert "Archived people:" in result.output
+    assert "Diego" in result.output
+    assert result.output.index("Archived accounts:") < result.output.index("Archived people:")
+
     request = route.calls.last.request
     assert request.url.params.get("include_archived") == "true"
+
+
+@respx.mock
+def test_dashboard_omits_archived_people_panel_without_the_flag(configured):
+    """`archived_people` is null by default, and a null panel is not drawn."""
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(200, json=DASHBOARD_RESPONSE)
+    )
+    result = runner.invoke(cli_app, ["dashboard"])
+    assert result.exit_code == 0, result.output
+    assert "Archived people:" not in result.output
+
+
+@respx.mock
+def test_dashboard_folds_settled_people_behind_a_count(configured):
+    """Settled people collapse to `▸ 3 settled` — folded, never silently dropped."""
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(200, json=DASHBOARD_WITH_SETTLED_PEOPLE)
+    )
+    result = runner.invoke(cli_app, ["dashboard"])
+    assert result.exit_code == 0, result.output
+
+    # Alex (-45.00) and Eliana (200.00) still have a live debt and keep their rows.
+    assert "Eliana" in result.output
+    assert "Alex" in result.output
+    # The two zero-balance people are folded, and the count says so out loud —
+    # a settled person and a never-recorded loan must not look identical.
+    assert "▸ 2 settled" in result.output
+    assert "Ana" not in result.output
+    assert "Beto" not in result.output
+
+
+@respx.mock
+def test_dashboard_people_panel_survives_everyone_settled(configured):
+    """All square → the header and the count stay; the table has nothing to draw."""
+    payload = {
+        **DASHBOARD_RESPONSE,
+        "people": [
+            {
+                "id": "aaaaaaaa-0000-0000-0000-00000000000f",
+                "name": "Ana",
+                "currency_code": "PEN",
+                "current_balance_cents": 0,
+                "current_balance_home_cents": 0,
+            }
+        ],
+    }
+    respx.get("https://api.example.com/v1/dashboard").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    result = runner.invoke(cli_app, ["dashboard"])
+    assert result.exit_code == 0, result.output
+    assert "People:" in result.output
+    assert "▸ 1 settled" in result.output
 
 
 @respx.mock

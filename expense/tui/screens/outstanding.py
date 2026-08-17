@@ -3,10 +3,12 @@
 Reads live data via the shared `dashboard_cmd.fetch_dashboard` (the fetch/print
 split), off the UI thread in a worker so the screen never freezes.
 
-Accounts / people / totals are static Rich tables. The category → hashtag
-breakdown is an interactive `CategoriesView`: arrow-key navigation with `▼/▶`
-expand/collapse per category. Render helpers and `CategoriesView._build` are
-pure (no event loop), so formatting + collapse are unit-testable directly.
+Accounts and totals are static Rich tables. Two panels are interactive, sharing
+one `▼/▶` collapse idiom: `CategoriesView` (the category → hashtag breakdown,
+arrow-key navigation with expand/collapse per category) and `PeopleView` (people,
+with settled ones folded behind a `▶ 3 settled` row). Render helpers and both
+`_build`s are pure (no event loop), so formatting + collapse are unit-testable
+directly.
 """
 
 from rich import box
@@ -18,7 +20,14 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from expense.commands import dashboard_cmd
-from expense.commands._resource import format_aggregate, format_month, has_aggregate, unconverted_of
+from expense.commands._resource import (
+    format_aggregate,
+    format_month,
+    has_aggregate,
+    settled_label,
+    split_settled,
+    unconverted_of,
+)
 from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
 from expense.tui.widgets.cells import aggregate_cell, amount_cell
@@ -87,6 +96,90 @@ def _totals_table(totals: dict | None, palette: Palette | None = None) -> Render
             aggregate_cell(totals.get(f"{key}_home_cents"), unconverted, palette, AMOUNT_RULE),
         )
     return t
+
+
+class PeopleView(Static):
+    """People, with settled ones folded behind `▶ 3 settled`.
+
+    Same three columns as the bank-accounts table above it, so the two panels
+    read as one; the fold is the `CategoriesView` fold — same carets, same keys
+    (`→/←`, `enter`) — so there is only one collapse idiom on this screen
+    (sketch pick J, 2026-08-16).
+
+    A settled person is **folded, never dropped**: the engine returns her on
+    purpose and refuses to filter on a computed balance, because "she paid me
+    back" and "I never recorded the loan" must not look alike. The count row is
+    always drawn, and one keypress shows exactly who.
+
+    With nobody settled there is nothing to fold, so the widget drops out of the
+    focus chain and behaves as the plain table it used to be. `_build` is pure —
+    collapse is unit-testable without an event loop.
+    """
+
+    BINDINGS = [
+        Binding("right,l", "expand", "Expand"),
+        Binding("left,h", "collapse", "Collapse"),
+        Binding("enter,space", "toggle", show=False),
+    ]
+
+    def __init__(self, people: list[dict], palette: Palette | None = None) -> None:
+        super().__init__()
+        self._outstanding, self._settled = split_settled(people)
+        self._palette = palette
+        self._collapsed = True  # settled people start folded away
+        # Only foldable when there is something to fold; otherwise stay out of
+        # the way of the Categories tree in the tab order.
+        self.can_focus = bool(self._settled)
+
+    def on_mount(self) -> None:
+        self._render_tree()
+
+    def on_focus(self) -> None:
+        self._render_tree()
+
+    def on_blur(self) -> None:
+        self._render_tree()
+
+    def _render_tree(self) -> None:
+        self.update(self._build())
+
+    def _row(self, table: Table, person: dict, *, indent: str = "", style: str = "") -> None:
+        table.add_row(
+            indent + (person.get("name") or "(unnamed)"),
+            person.get("currency_code") or "?",
+            amount_cell(person.get("current_balance_cents"), self._palette, AMOUNT_RULE),
+            style=style,
+        )
+
+    def _build(self) -> RenderableType:
+        if not self._outstanding and not self._settled:
+            return Text("  (none)", style="dim")
+        t = Table(box=box.SIMPLE, pad_edge=False, expand=True)
+        t.add_column("Name")
+        t.add_column("Cur")
+        t.add_column("Balance", justify="right")
+        for person in self._outstanding:
+            self._row(t, person)
+        if self._settled:
+            caret = "▶ " if self._collapsed else "▼ "
+            label = settled_label(len(self._settled)).removeprefix("▸ ")
+            t.add_row(caret + label, "", "", style="reverse" if self.has_focus else "dim")
+            if not self._collapsed:
+                for person in self._settled:
+                    self._row(t, person, indent="   ", style="dim")
+        return t
+
+    def action_expand(self) -> None:
+        self._collapsed = False
+        self._render_tree()
+
+    def action_collapse(self) -> None:
+        self._collapsed = True
+        self._render_tree()
+
+    def action_toggle(self) -> None:
+        self._collapsed = not self._collapsed
+        self._render_tree()
 
 
 class CategoriesView(Static):
@@ -208,7 +301,7 @@ class OutstandingScreen(SectionScreen):
         people = body.get("people") or []
         if people:
             widgets.append(Static(Text("People"), classes="sect"))
-            widgets.append(Static(_accounts_table(people, palette)))
+            widgets.append(PeopleView(people, palette))
         widgets.append(Static(Text("Categories — spent this month"), classes="sect"))
         widgets.append(
             CategoriesView(body.get("categories") or [], data["tag_names"], palette=palette)

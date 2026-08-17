@@ -4,8 +4,11 @@ A lightweight bar-cycle form (same look as Log): cycle fields with the input
 bar, pick choices from a suggestion list, `ctrl+s` (or enter on the last field)
 POSTs. Reached with `n` on the Manage list screens.
 
-New account is bank-only — the engine forbids `is_person` on POST /accounts;
-person accounts need the (unshipped) People API.
+New account covers both kinds: its first field is TYPE (`bank` / `person`,
+prefilled `bank`), and a `person` picks `POST /people` instead of
+`POST /accounts` — the People API, shipped 2026-08-14 (backlog 6.2). `is_person`
+is never sent as a field; it is a 422 on both routes, and the endpoint is the
+flag. Editing cannot change it, so TYPE is locked read-only on the edit form.
 """
 
 import uuid
@@ -29,6 +32,9 @@ _PALETTE = [
     ("#8a8f98", "grey"),
 ]
 _CURRENCIES = [(c, c) for c in SUPPORTED_CURRENCIES]
+# Bank first: it is the prefilled default, so `enter` on an untouched TYPE field
+# keeps `bank` and adding an ordinary account still costs one keypress.
+_ACCOUNT_TYPES = [("bank", "bank"), ("person", "person")]
 
 
 class Field:
@@ -190,16 +196,56 @@ class NewCategoryScreen(BarFormScreen):
 
 
 class NewAccountScreen(BarFormScreen):
+    """New bank account *or* person — one form, one key, a TYPE field on top.
+
+    A person is a bank account with `is_person = true`, and the two take exactly
+    the same fields; the only difference is which endpoint the save goes to
+    (`POST /accounts` vs `POST /people`). So the choice is a field rather than a
+    second screen or a second key (sketch pick L, 2026-08-16), and it is
+    **prefilled to `bank`** — `n`, `enter`, name… still adds an ordinary account
+    without an extra decision.
+
+    `is_person` is never sent in the body: `POST /accounts` rejects it and
+    `POST /people` implies it, so on either route the field is a 422. The endpoint
+    *is* the flag.
+    """
+
     crumb = ("Manage", "Accounts", "New")
     RESOURCE = "accounts"
     NOUN = "account"
     FIELDS = [
+        Field(
+            "type",
+            "TYPE",
+            "choice",
+            choices=_ACCOUNT_TYPES,
+            required=True,
+            hint="bank or person · enter keeps bank",
+        ),
         Field("name", "NAME", required=True, hint="enter to save"),
         Field(
             "currency", "CURRENCY", "choice", choices=_CURRENCIES, required=True, hint="PEN or USD"
         ),
         Field("color", "COLOR", "color", choices=_PALETTE, hint="optional · empty enter to skip"),
     ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._values["type"] = "bank"
+
+    @property
+    def _is_person(self) -> bool:
+        return self._values.get("type") == "person"
+
+    def _submit_request(self) -> tuple[str, str, dict, str]:
+        # The one place the TYPE field is read. `/people` is the only people
+        # route there is — everything after creation is an account route.
+        resource = "people" if self._is_person else self.RESOURCE
+        return ("POST", f"/{resource}", self._payload(), "Creating…")
+
+    def _done(self) -> None:
+        self.notify("Person created." if self._is_person else "Account created.")
+        self.dismiss()
 
     def _payload(self) -> dict:
         payload = {
@@ -262,8 +308,12 @@ class EditAccountScreen(NewAccountScreen):
     def __init__(self, record: dict) -> None:
         super().__init__()
         self._id = record["id"]
-        self._locked = {"currency"}  # immutable after creation (engine rejects a change)
+        # Both immutable after creation. `currency` the engine rejects outright;
+        # `type` has no update path at all — `is_person` is settable only at the
+        # moment of creation, which is the entire reason `POST /people` exists.
+        self._locked = {"currency", "type"}
         self._values = {
+            "type": "person" if record.get("is_person") else "bank",
             "name": record.get("name") or "",
             "currency": record.get("currency_code") or "",
         }

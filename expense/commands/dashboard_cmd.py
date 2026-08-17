@@ -12,6 +12,8 @@ from expense.commands._resource import (
     load_hashtag_name_map,
     render_table,
     render_totals,
+    settled_label,
+    split_settled,
     unconverted_of,
 )
 from expense.context import get_verbose
@@ -43,6 +45,29 @@ def _render_account_table(items: list[dict] | None, *, empty_message: str) -> No
         rows=rows,
         align_right={"balance"},
     )
+
+
+def _render_people(people: list[dict] | None) -> None:
+    """The People panel: everyone still owing or owed, then `▸ 3 settled`.
+
+    A settled person (balance exactly `0` in her own currency) is **folded, not
+    dropped** — the engine returns her deliberately and refuses to filter on a
+    computed balance, so the count line is what keeps "she paid me back" distinct
+    from "I never wrote the loan down" (sketch pick G, 2026-08-16). A printed page
+    cannot be unfolded; `expense accounts list --include-people` names them.
+
+    The panel is skipped entirely only when there are no people at all, matching
+    the pre-existing behaviour for an empty list.
+    """
+    if not people:
+        return
+    outstanding, settled = split_settled(people)
+    typer.echo("People:")
+    if outstanding:
+        _render_account_table(outstanding, empty_message="  (no people)")
+    if settled:
+        typer.echo(settled_label(len(settled)))
+    typer.echo("")
 
 
 def hashtag_label(ids: list[str], name_map: dict[str, str]) -> str:
@@ -121,11 +146,7 @@ def _render_dashboard(body: dict, *, json_mode: bool) -> None:
     _render_account_table(body.get("bank_accounts"), empty_message="  (no bank accounts)")
     typer.echo("")
 
-    people = body.get("people") or []
-    if people:
-        typer.echo("People:")
-        _render_account_table(people, empty_message="  (no people)")
-        typer.echo("")
+    _render_people(body.get("people"))
 
     _render_categories_table(body.get("categories"))
     typer.echo("")
@@ -142,6 +163,20 @@ def _render_dashboard(body: dict, *, json_mode: bool) -> None:
         typer.echo("")
         typer.echo("Archived accounts:")
         _render_account_table(archived_accounts, empty_message="  (no archived accounts)")
+
+    # `archived_people` is a *separate* panel from `archived_accounts`, never
+    # merged (engine, 2026-08-14): people and bank accounts are two lists on
+    # every other surface, and merging them only here would sit an archived
+    # person among the archived cards. Both panels sit at the bottom so
+    # `--include-archived` adds one block rather than two scattered ones
+    # (sketch pick D, 2026-08-16). Settled people are *not* folded here — an
+    # archived person is a finished story, and folding would hide the whole
+    # panel, which is the one thing the flag was passed to see.
+    archived_people = body.get("archived_people")
+    if archived_people is not None:
+        typer.echo("")
+        typer.echo("Archived people:")
+        _render_account_table(archived_people, empty_message="  (no archived people)")
 
 
 def fetch_dashboard(
@@ -169,7 +204,7 @@ def dashboard(
     include_archived: bool = typer.Option(
         False,
         "--include-archived",
-        help="Add the archived-accounts panel.",
+        help="Add the archived-accounts and archived-people panels.",
     ),
     json_output: bool = JSON_OPT,
 ) -> None:
