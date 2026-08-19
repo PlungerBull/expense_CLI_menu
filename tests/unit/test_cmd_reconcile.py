@@ -1,5 +1,4 @@
 import json
-import re
 from uuid import UUID
 
 import httpx
@@ -7,20 +6,11 @@ import respx
 from typer.testing import CliRunner
 
 from expense.commands.reconcile_cmd import app as reconcile_app
-from tests.unit.helpers import make_cli_app
+from tests.unit.helpers import make_cli_app, strip_panel
 
 cli_app = make_cli_app(reconcile_app, "reconcile")
 
 runner = CliRunner()
-
-
-_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[mGKH]")
-
-
-def _strip_panel(output: str) -> str:
-    no_ansi = _ANSI_ESCAPE_RE.sub("", output)
-    no_box = "".join(c for c in no_ansi if c not in "│╭╮╰╯─\n\t")
-    return " ".join(no_box.split())
 
 
 RECON_DRAFT_RESPONSE = {
@@ -266,7 +256,7 @@ def test_create_without_beginning_balance_blocks_at_parse(configured):
         ],
     )
     assert result.exit_code == 2  # Click usage error
-    assert "--beginning-balance" in _strip_panel(result.output)
+    assert "--beginning-balance" in strip_panel(result.output)
 
 
 def test_create_without_date_start_blocks_at_parse(configured):
@@ -285,7 +275,7 @@ def test_create_without_date_start_blocks_at_parse(configured):
         ],
     )
     assert result.exit_code == 2
-    assert "--date-start" in _strip_panel(result.output)
+    assert "--date-start" in strip_panel(result.output)
 
 
 def test_create_rejects_retired_flags(configured):
@@ -309,7 +299,7 @@ def test_create_rejects_retired_flags(configured):
             ],
         )
         assert result.exit_code == 2, flag
-        assert "No such option" in _strip_panel(result.output)
+        assert "No such option" in strip_panel(result.output)
 
 
 @respx.mock
@@ -348,7 +338,7 @@ def test_update_rejects_retired_source_flag(configured):
         ],
     )
     assert result.exit_code == 2
-    assert "No such option" in _strip_panel(result.output)
+    assert "No such option" in strip_panel(result.output)
 
 
 @respx.mock

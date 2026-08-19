@@ -6,6 +6,7 @@ Keep this module free of Textual imports at module level so CLI command test
 files pay no TUI import cost.
 """
 
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -47,6 +48,33 @@ def make_cli_app(
     for command_name, callback in (commands or {}).items():
         cli_app.command(command_name)(callback)
     return cli_app
+
+
+# ---------------------------------------------------------------------------
+# CLI output normalisation
+# ---------------------------------------------------------------------------
+
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[mGKH]")
+
+
+def strip_panel(output: str) -> str:
+    """Flatten Typer/Rich error output to one plain, searchable line.
+
+    Rich decides whether to colour by sniffing the environment, so the *same*
+    error prints differently in CI than it does locally: GitHub Actions is
+    treated as a terminal, which wraps usage errors in a box AND highlights the
+    offending flag — splicing escape codes *inside* the token, so a plain
+    ``"No such option: --include-deleted" in result.output`` finds nothing
+    (`--include-deleted` arrives as `-` + `-include` + `-deleted`). CI was red
+    from 2026-08-17 to 2026-08-19 for exactly that reason.
+
+    Assert against this, never raw ``result.output``, whenever the expected text
+    contains a flag name or could wrap at the panel edge.
+    """
+    no_ansi = _ANSI_ESCAPE_RE.sub("", output)
+    no_box = "".join(c for c in no_ansi if c not in "│╭╮╰╯─\n\t")
+    return " ".join(no_box.split())
 
 
 # ---------------------------------------------------------------------------

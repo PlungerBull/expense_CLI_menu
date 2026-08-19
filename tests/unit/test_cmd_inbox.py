@@ -6,7 +6,7 @@ import respx
 from typer.testing import CliRunner
 
 from expense.commands.inbox_cmd import app as inbox_app
-from tests.unit.helpers import make_cli_app
+from tests.unit.helpers import make_cli_app, strip_panel
 
 cli_app = make_cli_app(inbox_app, "inbox")
 
@@ -180,7 +180,7 @@ def test_list_rejects_include_deleted(configured):
     """
     result = runner.invoke(cli_app, ["inbox", "list", "--include-deleted"])
     assert result.exit_code == 2
-    assert "No such option: --include-deleted" in result.output
+    assert "No such option: --include-deleted" in strip_panel(result.output)
 
 
 @respx.mock
