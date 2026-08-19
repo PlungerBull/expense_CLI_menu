@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — the terminal supplies the palette (2026-08-19)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     THE OTHER HALF OF THE ANSI WORK.
+
+     2026-07-11 made the *ground* the terminal's own (ansi_color=True). That
+     mockup — tui-ansi-transparent-background.html — says twice, in its own
+     closing note, that it "does NOT make the app readable on a light
+     terminal (the fixed muted/semantic hexes assume a dark ground); that's
+     the separate light/NO_COLOR theme backlog item, deliberately not
+     attempted here."
+
+     This page is that deferred half, and it proposes a different answer
+     than the one on the books. Backlog Phase 8 + decisions.md (2026-08-16)
+     commit to DETECTING the terminal's background with a hand-written
+     OSC 11 query in run_world. The proposal here is to detect nothing: put
+     every colour on an ANSI *slot* and let the terminal fill it in.
+
+     PROVENANCE, stated per pane:
+       · REAL (palette) — the ANSI colour values are the published profiles
+         of three real terminals, unmodified. Every coloured span in a
+         terminal-default pane reads its colour from a CSS variable set by
+         the terminal profile class (.t-dark / .t-basic / .t-solar), so the
+         SAME markup renders three ways — exactly the mechanism being
+         proposed, not an illustration of it.
+       · REAL (probe) — values generated from Textual 8.2.7 itself via
+         Theme.to_color_system().generate() and textual.color.Color.parse.
+         Quoted verbatim in §2 and §6.
+       · DRAWN (to source) — screen layout built from the real renderers:
+         panel border + border-title/subtitle app.tcss:150-155, row shape
+         transactions.py:49 via cells.py:33-45, cursor row "reverse"
+         cursor_list.py:216, stat cluster home.py:119-157, draft/pending
+         warning home.py:139 + cells.py:70. No key or column is invented.
+
+     WHAT IS BEING TRADED (the thing to judge on this page):
+       today  = one hand-tuned palette, identical on every machine, correct
+                on dark only.
+       after  = colours defined by whoever configured the terminal. Correct
+                everywhere; identical nowhere. §3 is the honest cost pane.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --term:#121216; --panel:#1d1d22;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9db1c2; --neg:#cf8d8d; --pos:#7fbf8f; --warn:#d8b779;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:22px;
+       padding:38px 20px 70px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  h1{width:min(1120px,100%);font-size:17px;font-weight:600;letter-spacing:.02em;margin:0}
+  .sub{width:min(1120px,100%);color:var(--dim);font-size:12.5px;line-height:1.65;margin:-10px 0 0}
+  .sub b{color:var(--muted)}
+  .lbl{width:min(1120px,100%);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .step{width:min(1120px,100%);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:14px}
+  .step.ask{color:var(--warn);border-bottom-color:#3a3125}
+  .pair{width:min(1120px,100%);display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .trio{width:min(1120px,100%);display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+  @media (max-width:900px){.pair,.trio{grid-template-columns:1fr}}
+  .term{background:var(--term);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:13px;line-height:1.6}
+  .term.wide{width:min(1120px,100%)}
+  .term.chosen{border-color:#2f5138}
+  .bar{display:flex;align-items:center;gap:9px;padding:8px 13px;background:#101015}
+  .ttl{color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .tag{margin-left:auto;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+       padding:2px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .tag.real{color:var(--accent);border-color:#2f3b46}
+  .tag.drawn{color:var(--dim);border-color:#33363d}
+  .tag.opt{color:var(--warn);border-color:#4a3f28}
+  .tag.gap{color:var(--neg);border-color:#4a2f2f}
+  .tag.now{color:var(--neg);border-color:#4a2f2f}
+  .legend{border-top:1px solid #1d1d24;margin-top:10px;padding-top:8px;color:var(--dim);
+          font-size:11.5px;white-space:normal;line-height:1.6;padding-left:16px;padding-right:16px;
+          padding-bottom:13px}
+  .legend b{color:var(--muted)}
+  .legend .cost{color:var(--neg)} .legend .win{color:var(--pos)}
+  .note{width:min(1120px,100%);color:var(--dim);font-size:12.5px;line-height:1.65}
+  .note b{color:var(--muted)} .note code{color:var(--accent)}
+  .note .hd{color:var(--accent);letter-spacing:.1em;text-transform:uppercase;font-size:11.5px;
+            display:block;margin:16px 0 4px}
+  .qbox{width:min(1120px,100%);background:#15130f;border:1px solid #33291c;border-radius:12px;
+        padding:14px 16px;color:var(--muted);font-size:12.5px;line-height:1.7}
+  .qbox b{color:var(--warn)}
+  .qbox ul{margin:8px 0 0;padding-left:20px} .qbox li{margin:5px 0}
+  .pick{display:inline-block;min-width:20px;color:var(--warn);font-weight:600}
+
+  /* ---------- the simulated terminal screen ---------- */
+  /* .app paints ONLY var(--bg0) — the terminal's own background. Every
+     coloured span reads a --c-* variable, so swapping the profile class
+     swaps every colour at once, which is precisely what an ANSI slot does. */
+  .app{padding:12px 16px 10px;white-space:pre;overflow-x:auto;
+       background:var(--bg0);color:var(--fg0);font-size:12.5px;line-height:1.62}
+  .app.sm{font-size:11.5px;line-height:1.55}
+
+  /* --- real terminal profiles, published values, unmodified --- */
+  .t-dark{                       /* VS Code Dark+ integrated terminal      */
+    --bg0:#1e1e1e; --fg0:#cccccc;
+    --c-red:#cd3131; --c-green:#0dbc79; --c-yellow:#e5e510; --c-blue:#2472c8;
+    --c-magenta:#bc3fbc; --c-cyan:#11a8cd; --c-brblack:#666666;
+    --c-brred:#f14c4c; --c-brgreen:#23d18b;
+  }
+  .t-basic{                      /* macOS Terminal.app "Basic" — the default,
+                                    and it is BLACK ON WHITE                */
+    --bg0:#ffffff; --fg0:#000000;
+    --c-red:#990000; --c-green:#00a600; --c-yellow:#999900; --c-blue:#0000b2;
+    --c-magenta:#b200b2; --c-cyan:#00a6b2; --c-brblack:#666666;
+    --c-brred:#e50000; --c-brgreen:#00d900;
+  }
+  .t-solar{                      /* Solarized Light (Ethan Schoonover)      */
+    --bg0:#fdf6e3; --fg0:#657b83;
+    --c-red:#dc322f; --c-green:#859900; --c-yellow:#b58900; --c-blue:#268bd2;
+    --c-magenta:#d33682; --c-cyan:#2aa198; --c-brblack:#93a1a1;
+    --c-brred:#cb4b16; --c-brgreen:#586e75;
+  }
+
+  /* --- TODAY: colours pinned to theme.py hexes, ignoring the profile --- */
+  .pin .pos{color:#7fbf8f} .pin .neg{color:#cf8d8d} .pin .wrn{color:#d6b878}
+  .pin .acc{color:#9aa7b2} .pin .mut{color:#878b94} .pin .brd{color:#3e3e3e}
+  .pin{color:#d6d6da}
+
+  /* --- AFTER: colours come from the terminal's slots --- */
+  .ansi .pos{color:var(--c-green)} .ansi .neg{color:var(--c-red)}
+  .ansi .wrn{color:var(--c-yellow)} .ansi .acc{color:var(--c-blue)}
+  .ansi .mut{opacity:.55} .ansi .brd{color:var(--c-brblack)}
+  .ansi.v-magenta .wrn{color:var(--c-magenta)}
+  .ansi.v-cyan    .wrn{color:var(--c-cyan)}
+  .ansi.v-plain   .wrn{color:inherit;font-weight:700}
+  .ansi.a-cyan    .acc{color:var(--c-cyan)}
+  .ansi.b-none    .brd{color:transparent}
+  .ansi.no-color  .pos,.ansi.no-color .neg,.ansi.no-color .wrn,
+  .ansi.no-color  .acc{color:inherit}
+  .rev{background:var(--fg0);color:var(--bg0)}
+  .bold{font-weight:700}
+
+  /* colour chips */
+  .chips{width:min(1120px,100%);display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media (max-width:900px){.chips{grid-template-columns:1fr}}
+  .chipcard{border:1px solid #23232a;border-radius:10px;overflow:hidden;background:var(--term)}
+  .chipcard .h{padding:8px 12px;background:#101015;color:var(--muted);font-size:11.5px}
+  .chiprow{display:flex;align-items:center;gap:10px;padding:5px 12px;font-size:11.5px;color:var(--dim)}
+  .chiprow .sw{width:30px;height:15px;border-radius:3px;border:1px solid #00000055;flex:none}
+  .chiprow .nm{color:var(--muted);width:74px;flex:none}
+  .chipcard .ground{height:26px;border-top:1px solid #23232a}
+</style>
+</head>
+<body>
+
+<h1>expense world — the terminal supplies the palette</h1>
+<p class="sub">
+The deferred half of the 2026-07-11 ANSI work. That change made the <b>ground</b> the
+terminal's own and said, twice, that it did <b>not</b> make the app readable on a light
+terminal. This page proposes finishing it <b>without the terminal-detection</b> that
+backlog Phase 8 and <b>decisions.md</b> (2026-08-16) currently commit to: put every colour
+on an ANSI slot, and let the terminal fill it in. <b>Five picks at the end. Nothing gets
+written until you pick.</b>
+</p>
+
+<!-- ================================================================= -->
+<div class="step">1 · the problem, on a real light terminal</div>
+
+<div class="note">
+Both panes below are the <b>same screen with the same colours</b> —
+<code>#7fbf8f</code> positive, <code>#cf8d8d</code> negative, <code>#d6b878</code> draft,
+<code>#d6d6da</code> body, the real values at
+<code>theme.py:31-44</code>. The only difference is the terminal underneath, because
+today the app pins its foreground regardless (<code>app.tcss:13-15</code>,
+<code>Screen:ansi { color: $foreground }</code>).
+</div>
+
+<div class="pair">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>VS Code Dark+</b> · today's palette</span><span class="tag real">real (palette)</span></div>
+<div class="app pin t-dark"><span class="acc">◈</span>  EXPENSE WORLD          net <span class="neg">−189.00</span> <span class="mut">·</span> <span class="wrn">2 UNRATED</span>
+<span class="brd">╭─</span> <span class="acc">Transactions</span> <span class="brd">───────────────</span> <span class="mut">page 1 of 7</span> <span class="brd">─╮</span>
+<span class="brd">│</span> <span class="mut">Title          Amount      Date        Category </span> <span class="brd">│</span>
+<span class="brd">│</span> Rent August  <span class="neg">-1,800.00</span>  2026-08-01  Housing   <span class="brd">│</span>
+<span class="brd">│</span> Salary       <span class="pos">+4,200.00</span>  2026-08-01  @Income   <span class="brd">│</span>
+<span class="brd">│</span> <span class="rev">Groceries      -186.40   2026-08-03  Food     </span> <span class="brd">│</span>
+<span class="brd">│</span> Draft: taxi     <span class="wrn">-34.00</span>  2026-08-05  <span class="wrn">pending</span>   <span class="brd">│</span>
+<span class="brd">╰──────────────────────────────────────────────╯</span>
+ <span class="mut">↓ Navigate  ⏎ Open  e Edit  n New  esc Back</span></div>
+<div class="legend"><b>This is correct, and it is what you use every day.</b> The palette was
+tuned against a near-black ground and it reads exactly as intended.</div>
+  </div>
+
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>macOS Terminal "Basic"</b> · today's palette</span><span class="tag now">the gap</span></div>
+<div class="app pin t-basic"><span class="acc">◈</span>  EXPENSE WORLD          net <span class="neg">−189.00</span> <span class="mut">·</span> <span class="wrn">2 UNRATED</span>
+<span class="brd">╭─</span> <span class="acc">Transactions</span> <span class="brd">───────────────</span> <span class="mut">page 1 of 7</span> <span class="brd">─╮</span>
+<span class="brd">│</span> <span class="mut">Title          Amount      Date        Category </span> <span class="brd">│</span>
+<span class="brd">│</span> Rent August  <span class="neg">-1,800.00</span>  2026-08-01  Housing   <span class="brd">│</span>
+<span class="brd">│</span> Salary       <span class="pos">+4,200.00</span>  2026-08-01  @Income   <span class="brd">│</span>
+<span class="brd">│</span> <span class="rev">Groceries      -186.40   2026-08-03  Food     </span> <span class="brd">│</span>
+<span class="brd">│</span> Draft: taxi     <span class="wrn">-34.00</span>  2026-08-05  <span class="wrn">pending</span>   <span class="brd">│</span>
+<span class="brd">╰──────────────────────────────────────────────╯</span>
+ <span class="mut">↓ Navigate  ⏎ Open  e Edit  n New  esc Back</span></div>
+<div class="legend"><b>Same app, default macOS terminal.</b> Body text <code>#d6d6da</code> is
+near-invisible; the amber draft marker is gone entirely; the sage and rose amounts have
+almost no contrast left. <b class="cost">This is the bug</b> — and note the ground is already
+correct, because that half shipped in July.</div>
+  </div>
+</div>
+
+<!-- ================================================================= -->
+<div class="step">2 · why slots fix it, and what a slot is</div>
+
+<div class="note">
+The proposal rests on one fact worth seeing before judging anything else.
+<code>green</code> in a terminal <b>is not a colour</b> — it is <b>slot 2</b>, and the
+terminal decides what goes in it. Probed from Textual and Rich directly:
+<code>Color.parse("green") → type=STANDARD, number=2</code>;
+<code>Color.parse("ansi_default") → Color(0,0,0, ansi=-1)</code> — an
+<b>opaque</b> fill in the terminal's own colour, not a see-through one.
+Here is slot 1/2/3 as three real terminals define them:
+</div>
+
+<div class="chips">
+  <div class="chipcard">
+    <div class="h">VS Code Dark+ <span style="color:var(--dim)">— a dark profile</span></div>
+    <div class="chiprow"><span class="sw" style="background:#cd3131"></span><span class="nm">slot 1 red</span>#cd3131</div>
+    <div class="chiprow"><span class="sw" style="background:#0dbc79"></span><span class="nm">slot 2 green</span>#0dbc79</div>
+    <div class="chiprow"><span class="sw" style="background:#e5e510"></span><span class="nm">slot 3 yellow</span>#e5e510</div>
+    <div class="ground" style="background:#1e1e1e"></div>
+  </div>
+  <div class="chipcard">
+    <div class="h">macOS Terminal Basic <span style="color:var(--dim)">— light</span></div>
+    <div class="chiprow"><span class="sw" style="background:#990000"></span><span class="nm">slot 1 red</span>#990000</div>
+    <div class="chiprow"><span class="sw" style="background:#00a600"></span><span class="nm">slot 2 green</span>#00a600</div>
+    <div class="chiprow"><span class="sw" style="background:#999900"></span><span class="nm">slot 3 yellow</span>#999900</div>
+    <div class="ground" style="background:#ffffff"></div>
+  </div>
+  <div class="chipcard">
+    <div class="h">Solarized Light <span style="color:var(--dim)">— light</span></div>
+    <div class="chiprow"><span class="sw" style="background:#dc322f"></span><span class="nm">slot 1 red</span>#dc322f</div>
+    <div class="chiprow"><span class="sw" style="background:#859900"></span><span class="nm">slot 2 green</span>#859900</div>
+    <div class="chiprow"><span class="sw" style="background:#b58900"></span><span class="nm">slot 3 yellow</span>#b58900</div>
+    <div class="ground" style="background:#fdf6e3"></div>
+  </div>
+</div>
+
+<div class="note">
+The dark profile's green is bright because it has to survive black; both light profiles
+darken it because it has to survive white. <b>Nobody detected anything</b> — the person who
+configured the terminal already made this decision, and every other TUI on their machine
+already honours it. Note also that <b>slot 3 yellow on white is the weakest of the nine</b>;
+that is the whole reason decision <b>A/B/C</b> exists below.
+</div>
+
+<!-- ================================================================= -->
+<div class="step">3 · the cost, stated first — you no longer control the colours</div>
+
+<div class="note">
+Three panes, <b>one markup block</b>, three profile classes. This is not a drawing of the
+mechanism, it <b>is</b> the mechanism: every span reads <code>var(--c-green)</code> etc.
+</div>
+
+<div class="trio">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>VS Code Dark+</b></span><span class="tag real">real (palette)</span></div>
+<div class="app ansi t-dark sm"><span class="acc">◈</span>  EXPENSE WORLD    net <span class="neg">−189.00</span> <span class="mut">·</span> <span class="wrn">2 UNRATED</span>
+<span class="brd">╭─</span> <span class="acc">Transactions</span> <span class="brd">──────</span> <span class="mut">page 1/7</span> <span class="brd">─╮</span>
+<span class="brd">│</span> <span class="mut">Title         Amount   Category </span> <span class="brd">│</span>
+<span class="brd">│</span> Rent Aug   <span class="neg">-1,800.00</span>  Housing   <span class="brd">│</span>
+<span class="brd">│</span> Salary     <span class="pos">+4,200.00</span>  @Income   <span class="brd">│</span>
+<span class="brd">│</span> <span class="rev">Groceries    -186.40  Food     </span> <span class="brd">│</span>
+<span class="brd">│</span> Draft taxi    <span class="wrn">-34.00</span>  <span class="wrn">pending</span>   <span class="brd">│</span>
+<span class="brd">╰──────────────────────────────────╯</span></div>
+<div class="legend"><b>Louder than today.</b> <code>#0dbc79</code> and <code>#cd3131</code> are
+more saturated than the sage and rose you chose.</div>
+  </div>
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>macOS Basic</b></span><span class="tag real">real (palette)</span></div>
+<div class="app ansi t-basic sm"><span class="acc">◈</span>  EXPENSE WORLD    net <span class="neg">−189.00</span> <span class="mut">·</span> <span class="wrn">2 UNRATED</span>
+<span class="brd">╭─</span> <span class="acc">Transactions</span> <span class="brd">──────</span> <span class="mut">page 1/7</span> <span class="brd">─╮</span>
+<span class="brd">│</span> <span class="mut">Title         Amount   Category </span> <span class="brd">│</span>
+<span class="brd">│</span> Rent Aug   <span class="neg">-1,800.00</span>  Housing   <span class="brd">│</span>
+<span class="brd">│</span> Salary     <span class="pos">+4,200.00</span>  @Income   <span class="brd">│</span>
+<span class="brd">│</span> <span class="rev">Groceries    -186.40  Food     </span> <span class="brd">│</span>
+<span class="brd">│</span> Draft taxi    <span class="wrn">-34.00</span>  <span class="wrn">pending</span>   <span class="brd">│</span>
+<span class="brd">╰──────────────────────────────────╯</span></div>
+<div class="legend"><b class="win">Readable — the whole point.</b> But see the draft row:
+slot-3 yellow <code>#999900</code> on white is the weakest thing on this pane.</div>
+  </div>
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>Solarized Light</b></span><span class="tag real">real (palette)</span></div>
+<div class="app ansi t-solar sm"><span class="acc">◈</span>  EXPENSE WORLD    net <span class="neg">−189.00</span> <span class="mut">·</span> <span class="wrn">2 UNRATED</span>
+<span class="brd">╭─</span> <span class="acc">Transactions</span> <span class="brd">──────</span> <span class="mut">page 1/7</span> <span class="brd">─╮</span>
+<span class="brd">│</span> <span class="mut">Title         Amount   Category </span> <span class="brd">│</span>
+<span class="brd">│</span> Rent Aug   <span class="neg">-1,800.00</span>  Housing   <span class="brd">│</span>
+<span class="brd">│</span> Salary     <span class="pos">+4,200.00</span>  @Income   <span class="brd">│</span>
+<span class="brd">│</span> <span class="rev">Groceries    -186.40  Food     </span> <span class="brd">│</span>
+<span class="brd">│</span> Draft taxi    <span class="wrn">-34.00</span>  <span class="wrn">pending</span>   <span class="brd">│</span>
+<span class="brd">╰──────────────────────────────────╯</span></div>
+<div class="legend">The case <b>detection could never have served well</b> — a cream ground with
+muted accents. Slot-based colour lands on it correctly without knowing it exists.</div>
+  </div>
+</div>
+
+<div class="note">
+<b class="cost">Cost, plainly:</b> the app stops looking the same on every machine, and on a
+stock profile it is louder than the palette you approved. <b class="win">Win:</b> it is
+correct on all three above, plus Gruvbox, Nord, high-contrast and anything else — a wider
+target than the light/dark binary detection could reach, with <b>no OSC 11 query, no
+<code>select()</code> timeout, and no second palette to keep in step</b>.
+</div>
+
+<!-- ================================================================= -->
+<div class="step ask">4 · pick A / B / C — the draft &amp; pending colour</div>
+
+<div class="note">
+Amber <code>#d6b878</code> today, and slot-3 yellow is its natural successor — but §2 shows
+yellow is the one slot that fails on white. Textual's own two ANSI themes disagree here and
+nowhere else: <code>ansi-dark</code> uses <code>ansi_yellow</code>,
+<code>ansi-light</code> swaps to <code>ansi_bright_red</code>. Five places wear this colour:
+the <code>N UNRATED</code> stat (<code>home.py:139</code>), reconciliation status
+(<code>reconciliations.py:469</code>), unconverted aggregates (<code>cells.py:70</code>),
+the rate-staleness <code>!</code> (<code>header.py:43</code>), Outstanding
+(<code>outstanding.py:88</code>). Each pane below is shown on <b>white</b>, where the
+decision is actually made.
+</div>
+
+<div class="trio">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>A · magenta</b></span><span class="tag opt">option</span></div>
+<div class="app ansi v-magenta t-basic sm"><span class="acc">◈</span>  EXPENSE WORLD    net <span class="neg">−189.00</span> <span class="mut">·</span> <span class="wrn">2 UNRATED</span>
+
+<span class="brd">│</span> Draft taxi    <span class="wrn">-34.00</span>  <span class="wrn">pending</span>   <span class="brd">│</span>
+<span class="brd">│</span> Rent Aug   <span class="neg">-1,800.00</span>  Housing   <span class="brd">│</span>
+<span class="brd">│</span> Salary     <span class="pos">+4,200.00</span>  @Income   <span class="brd">│</span>
+ <span class="wrn">!</span> rates 3 days stale</div>
+<div class="legend"><b class="win">Win:</b> strong on both grounds, and distinct from the
+red/green sign pair so "pending" never reads as "negative".
+<b class="cost">Cost:</b> magenta is not amber — a bigger visual change than the
+others.</div>
+  </div>
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>B · cyan</b></span><span class="tag opt">option</span></div>
+<div class="app ansi v-cyan t-basic sm"><span class="acc">◈</span>  EXPENSE WORLD    net <span class="neg">−189.00</span> <span class="mut">·</span> <span class="wrn">2 UNRATED</span>
+
+<span class="brd">│</span> Draft taxi    <span class="wrn">-34.00</span>  <span class="wrn">pending</span>   <span class="brd">│</span>
+<span class="brd">│</span> Rent Aug   <span class="neg">-1,800.00</span>  Housing   <span class="brd">│</span>
+<span class="brd">│</span> Salary     <span class="pos">+4,200.00</span>  @Income   <span class="brd">│</span>
+ <span class="wrn">!</span> rates 3 days stale</div>
+<div class="legend"><b class="win">Win:</b> reads as calm/informational, which suits
+"pending" better than a warning colour does. <b class="cost">Cost:</b> weakest of the three
+for an <b>alert</b> — the stale-rate <code>!</code> is meant to nag.</div>
+  </div>
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>C · no colour, bold</b></span><span class="tag opt">option</span></div>
+<div class="app ansi v-plain t-basic sm"><span class="acc">◈</span>  EXPENSE WORLD    net <span class="neg">−189.00</span> <span class="mut">·</span> <span class="wrn">2 UNRATED</span>
+
+<span class="brd">│</span> Draft taxi    <span class="wrn">-34.00</span>  <span class="wrn">pending</span>   <span class="brd">│</span>
+<span class="brd">│</span> Rent Aug   <span class="neg">-1,800.00</span>  Housing   <span class="brd">│</span>
+<span class="brd">│</span> Salary     <span class="pos">+4,200.00</span>  @Income   <span class="brd">│</span>
+ <span class="wrn">!</span> rates 3 days stale</div>
+<div class="legend">Uses the vocabulary the app <b>already has</b> — <code>bold</code> and
+<code>dim</code> appear ~40 times and are terminal-native.
+<b class="win">Win:</b> cannot fail on any ground, ever; sign-colour stays the only colour
+that carries meaning. <b class="cost">Cost:</b> "pending" gets quieter than it is
+today.</div>
+  </div>
+</div>
+
+<!-- ================================================================= -->
+<div class="step ask">5 · pick D / E — the accent, and F / G — the panel border</div>
+
+<div class="note">
+<b>Accent</b> paints panel titles, focus borders and help-key glyphs — 5 rules in
+<code>app.tcss</code> plus <code>help.py:237</code>. <b>The border is not a preference:</b>
+<code>CursorList, CheckList { border: round $surface-lighten-2 }</code>
+(<code>app.tcss:151</code>) and a probe of Textual shows
+<code>$surface-lighten-2 → transparent</code> under any ANSI theme — <b>the quiet border
+disappears</b>. It needs an explicit slot or a deliberate removal.
+</div>
+
+<div class="pair">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>D + F</b> · blue accent, bright-black border</span><span class="tag opt">option</span></div>
+<div class="app ansi t-basic"><span class="brd">╭─</span> <span class="acc">Transactions</span> <span class="brd">─────────────</span> <span class="mut">rows 1-4 of 133</span> <span class="brd">─╮</span>
+<span class="brd">│</span> <span class="mut">Title          Amount      Date        Category </span> <span class="brd">│</span>
+<span class="brd">│</span> Rent August  <span class="neg">-1,800.00</span>  2026-08-01  Housing   <span class="brd">│</span>
+<span class="brd">│</span> <span class="rev">Groceries      -186.40   2026-08-03  Food     </span> <span class="brd">│</span>
+<span class="brd">│</span> Salary       <span class="pos">+4,200.00</span>  2026-08-01  @Income   <span class="brd">│</span>
+<span class="brd">╰────────────────────────────────────────────────╯</span></div>
+<div class="legend"><b>D</b> <code>ansi_blue</code> title · <b>F</b>
+<code>ansi_bright_black</code> border. <b class="win">Win:</b> keeps the quiet-border
+"panelled dossier" look picked 2026-07-11, and blue is the one slot no other role uses.
+<b class="cost">Cost:</b> bright-black is grey on both grounds but its exact weight varies
+per profile.</div>
+  </div>
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>E + G</b> · cyan accent, no border</span><span class="tag opt">option</span></div>
+<div class="app ansi a-cyan b-none t-basic"> <span class="acc">Transactions</span>                     <span class="mut">rows 1-4 of 133</span>
+ <span class="mut">Title          Amount      Date        Category</span>
+ Rent August  <span class="neg">-1,800.00</span>  2026-08-01  Housing
+ <span class="rev">Groceries      -186.40   2026-08-03  Food    </span>
+ Salary       <span class="pos">+4,200.00</span>  2026-08-01  @Income
+</div>
+<div class="legend"><b>E</b> <code>ansi_cyan</code> title · <b>G</b> border dropped, title
+and page-status stand alone. <b class="win">Win:</b> nothing to get wrong on an exotic
+profile; more room per row. <b class="cost">Cost:</b> reverses the 2026-07-11
+panelled-dossier pick, and the page-status has no rail to sit on.</div>
+  </div>
+</div>
+
+<!-- ================================================================= -->
+<div class="step ask">6 · pick H / I — modals, the only thing that still paints</div>
+
+<div class="note">
+Two rules paint an opaque non-terminal ground and both break:
+<code>#modal { background: $panel }</code> (<code>app.tcss:117</code>) — <code>$panel</code>
+probes to <b><code>transparent</code></b> under ANSI, so the modal card would let the list
+show through it — and the scrim <code>ModalScreen:ansi { background: $background 60% }</code>
+(<code>app.tcss:104</code>), which probes to <code>Color(0,0,0, a=0.6)</code>, i.e. it
+<b>drops the ANSI marker and becomes plain 60% black</b>. The fix for the card is settled by
+the probe in §2: <code>ansi_default</code> is an <b>opaque</b> fill in the terminal's own
+colour, so it hides what is behind while still painting nothing foreign. The scrim is the
+open half.
+</div>
+
+<div class="pair">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>H</b> · card + dim scrim kept</span><span class="tag opt">option</span></div>
+<div class="app ansi t-basic sm"><span class="mut">╭─ Transactions ────────────────────────╮</span>
+<span class="mut">│ Rent August  -1,800.00  2026-08-01    │</span>
+<span class="mut">│ </span>  <span class="acc">╭─ Delete transaction ──────────╮</span>  <span class="mut">│</span>
+<span class="mut">│ </span>  <span class="acc">│</span> Delete <span class="bold">Groceries</span> −186.40?     <span class="acc">│</span>  <span class="mut">│</span>
+<span class="mut">│ </span>  <span class="acc">│</span> <span class="mut">This cannot be undone.</span>        <span class="acc">│</span>  <span class="mut">│</span>
+<span class="mut">│ </span>  <span class="acc">│</span> <span class="rev"> y Yes </span>  n No                <span class="acc">│</span>  <span class="mut">│</span>
+<span class="mut">│ </span>  <span class="acc">╰───────────────────────────────╯</span>  <span class="mut">│</span>
+<span class="mut">╰───────────────────────────────────────╯</span></div>
+<div class="legend">Card fills <code>ansi_default</code>; everything behind it is dimmed by
+the 60%-black scrim. <b class="win">Win:</b> the modal is unmistakably modal — focus goes
+where it should. <b class="cost">Cost:</b> the scrim is the one thing on the page that is
+<b>not</b> terminal-derived; on a light terminal it dims toward black rather than toward the
+ground.</div>
+  </div>
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>I</b> · card only, no scrim</span><span class="tag opt">option</span></div>
+<div class="app ansi t-basic sm">╭─ <span class="acc">Transactions</span> ────────────────────────╮
+│ Rent August  <span class="neg">-1,800.00</span>  2026-08-01    │
+│   <span class="acc">╭─ Delete transaction ──────────╮</span>  │
+│   <span class="acc">│</span> Delete <span class="bold">Groceries</span> −186.40?     <span class="acc">│</span>  │
+│   <span class="acc">│</span> <span class="mut">This cannot be undone.</span>        <span class="acc">│</span>  │
+│   <span class="acc">│</span> <span class="rev"> y Yes </span>  n No                <span class="acc">│</span>  │
+│   <span class="acc">╰───────────────────────────────╯</span>  │
+╰───────────────────────────────────────╯</div>
+<div class="legend">Nothing outside the card changes. <b class="win">Win:</b> the app paints
+zero foreign colour anywhere — the §4 principle held absolutely.
+<b class="cost">Cost:</b> a confirm prompt competes with a full screen of live text behind
+it; the border is doing all the work.</div>
+  </div>
+</div>
+
+<!-- ================================================================= -->
+<div class="step ask">7 · pick J / K — does <code>NO_COLOR</code> survive?</div>
+
+<div class="note">
+The backlog pairs the light theme with a third <code>NO_COLOR</code> mode. Under slot-based
+colour the premise weakens: the terminal already owns every colour, and the flat CLI
+already honours <code>NO_COLOR</code> on its own (<code>_resource.py:50-55</code>).
+</div>
+
+<div class="pair">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>J</b> · keep it — colour off, sign carries meaning</span><span class="tag opt">option</span></div>
+<div class="app ansi no-color t-basic sm">◈  EXPENSE WORLD    net −189.00 · <span class="bold">2 UNRATED</span>
+╭─ Transactions ──────── rows 1-4 ─╮
+│ <span class="mut">Title         Amount   Category</span>  │
+│ Rent Aug   -1,800.00  Housing   │
+│ Salary     +4,200.00  @Income   │
+│ <span class="rev">Groceries    -186.40  Food     </span> │
+╰──────────────────────────────────╯</div>
+<div class="legend">Sign is read from <code>-</code>/<code>+</code>, emphasis from
+<code>bold</code>/<code>dim</code>/<code>reverse</code>. <b class="win">Win:</b> honours the
+convention for screen readers, logs and monochrome terminals.
+<b class="cost">Cost:</b> a second theme to maintain for a case the terminal may already
+handle.</div>
+  </div>
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>K</b> · drop the item</span><span class="tag opt">option</span></div>
+<div class="app ansi t-basic sm">◈  EXPENSE WORLD    net <span class="neg">−189.00</span> · <span class="wrn">2 UNRATED</span>
+╭─ <span class="acc">Transactions</span> ──────── rows 1-4 ─╮
+│ <span class="mut">Title         Amount   Category</span>  │
+│ Rent Aug   <span class="neg">-1,800.00</span>  Housing   │
+│ Salary     <span class="pos">+4,200.00</span>  @Income   │
+│ <span class="rev">Groceries    -186.40  Food     </span> │
+╰──────────────────────────────────╯</div>
+<div class="legend">One theme, always. <b class="win">Win:</b> one less mode; a user who
+wants no colour configures the terminal they already configured.
+<b class="cost">Cost:</b> <code>NO_COLOR</code> is a real cross-tool convention and the flat
+CLI honours it — the TUI would be the odd one out.</div>
+  </div>
+</div>
+
+<!-- ================================================================= -->
+<div class="step">8 · what changes, and what does not</div>
+
+<div class="note">
+<span class="hd">What actually changes</span>
+<code>theme.py</code>: <code>EXPENSE_DARK</code>'s ten hexes become ANSI slots on one
+<code>Theme(ansi=True)</code>. <code>resolve_palette</code> gains a
+<code>removeprefix("ansi_")</code> — Rich rejects Textual's <code>ansi_green</code> spelling
+but accepts <code>green</code> as slot 2. <code>app.tcss</code>: the
+<code>Screen:ansi { color: $foreground }</code> pin goes, so text follows the terminal's own
+foreground; the border and modal rules follow your picks above.
+
+<span class="hd">What does NOT change</span>
+The ground — that shipped 2026-07-11 and this builds on it. The cursor row
+(<code>reverse</code>) and every <code>dim</code>/<code>bold</code> — already
+terminal-native, ~40 sites, untouched. Account and category swatches — those render the
+user's own stored hex from the engine, not a theme colour. <b>The flat CLI</b> — monochrome
+apart from those swatches, and already <code>NO_COLOR</code>-aware. <code>run_world</code>
+— untouched, which is the entire saving.
+
+<span class="hd">What this deletes from the plan of record</span>
+The <code>OSC 11</code> query, the <code>COLORFGBG</code> fallback, the
+<code>select()</code> timeout, the luminance calculation, and the second hand-tuned
+palette. All of it.
+</div>
+
+<div class="qbox">
+<b>Two things stated, not asked</b> — say so if you disagree:
+<ul>
+  <li>This <b>reverses two recorded decisions</b> — the 2026-07-11 seam entry rejected a full
+      native-ANSI theme for "throwing away the tuned sign-color palette", and the 2026-08-16
+      entry commits to terminal detection. Both get superseded in
+      <b>decisions.md</b>, <b>backlog.md</b> and <b>tui-plan.md</b> with the reversal stated
+      plainly, not quietly edited.</li>
+  <li>The <b>§4 theming principle stands and gets stronger</b>: recolour foreground and
+      semantic spans only, never paint a base surface. Option <b>I</b> honours it
+      absolutely; <b>H</b> keeps one deliberate exception for the modal scrim.</li>
+</ul>
+</div>
+
+<div class="note" style="margin-top:4px">
+<b>Pick one letter from each:</b>
+<span class="pick">A</span>/<span class="pick">B</span>/<span class="pick">C</span> draft colour ·
+<span class="pick">D</span>/<span class="pick">E</span> accent ·
+<span class="pick">F</span>/<span class="pick">G</span> border ·
+<span class="pick">H</span>/<span class="pick">I</span> modal ·
+<span class="pick">J</span>/<span class="pick">K</span> <code>NO_COLOR</code>.
+<br/><b>Nothing gets written until you pick.</b>
+</div>
+
+</body>
+</html>
