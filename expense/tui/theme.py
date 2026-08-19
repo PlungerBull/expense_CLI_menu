@@ -12,7 +12,10 @@ widgets inject them as styles. It reads `app.current_theme`'s own fields
 roundtrips colors and can drift a channel by one bit, the `text-*` variants
 are auto-tinted, and `text-muted` ("auto 60%") isn't Rich-parseable at all.
 Screens re-render on `app.theme_changed_signal`, so baked hexes follow
-runtime theme switches (the ctrl+p palette ships Textual's theme picker).
+runtime theme switches. There is no in-app theme *picker* any more — the
+command palette that carried Textual's was removed 2026-08-17 (see
+docs/decisions.md); the signal still matters because the light theme will set
+`app.theme` from terminal detection at startup.
 
 The two rule constants are the backlog-4.2 product decision (approved via
 docs/mockups/expense-world-amount-colors-4.2.html): amounts and account

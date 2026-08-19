@@ -28,6 +28,7 @@ from textual.worker import get_current_worker
 
 from expense.commands._resource import DEFAULT_PAGE_ROWS
 from expense.errors import format_error
+from expense.tui.screens.help import HelpBindingMixin
 from expense.tui.widgets.header import Breadcrumb
 
 
@@ -233,10 +234,11 @@ class PagedListMixin:
         self._load()
 
 
-class SectionScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
+class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Screen):
     BINDINGS = [
         ("escape", "app.pop_screen", "Back"),
         ("r", "reload", "Refresh"),
+        *HelpBindingMixin.BINDINGS,
     ]
     crumb: tuple[str, ...] = ()
     CARD_WIDTH: int | None = 64  # cap the content card; None = fill width

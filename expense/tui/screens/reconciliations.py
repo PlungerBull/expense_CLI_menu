@@ -55,6 +55,7 @@ from expense.tui.screens._base import (
     screen_fetch_kwargs,
 )
 from expense.tui.screens._form import FormScreen
+from expense.tui.screens.help import HelpBindingMixin
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
 from expense.tui.theme import AMOUNT_RULE, BALANCE_RULE, Palette, resolve_palette
@@ -483,7 +484,7 @@ def _txn_sub(it: dict, cat_names: dict, tag_names: dict) -> str:
     return "  ·  ".join(parts)
 
 
-class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen):
+class ReconciliationDetailScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Screen):
     """One batch: header + a transaction checklist (draft) or read-only list
     (completed). `space` toggles membership; `c`/`u`/`d` complete/revert/delete;
     `r` refetches the batch + checklist (r = refresh everywhere, never a write)."""
@@ -494,6 +495,7 @@ class ReconciliationDetailScreen(EngineWriteMixin, ContentSwapLockMixin, Screen)
         ("c", "complete", "Complete"),
         ("u", "revert", "Revert"),
         ("d", "delete", "Delete"),
+        *HelpBindingMixin.BINDINGS,
     ]
 
     def __init__(self, record: dict) -> None:

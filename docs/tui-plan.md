@@ -321,7 +321,21 @@ archives/unarchives **immediately — no confirm modal**
   confirms — scoped to delete/revert/promote since archive is confirm-free (2026-07-11),
   enter never mutates — on the Manage lists it's a literal no-op; **standing constraint:**
   any future rename action on Manage screens ships as `e`, never `r` — two older mockups
-  showing `r rename` are superseded), `?` help overlay ⬜, Textual command palette ⬜.
+  showing `r rename` are superseded), `?` help overlay ✅ (2026-08-17), Textual command
+  palette ✅ **removed** (2026-08-17).
+  *(`?` opens `HelpModal` — a two-column card, variant C of
+  [mockups/expense-world-phase8-discoverability.html](mockups/expense-world-phase8-discoverability.html).
+  Its content is **derived** from BINDINGS by walking the screen's and the focused
+  widget's MRO and keeping only classes declared under `expense.tui`, which is what
+  keeps Textual's own `home`/`end`/`tab`/`Copy selected text` out without a suppression
+  list. Two blocks are hand-written because no walk can produce them: the §4.1 keymap
+  contract, and the app-wide keys. `Binding.tooltip` carries the card's fuller wording
+  (`Archive / unarchive`) while `description` stays the terse footer label (`Archive`) —
+  one declaration, two audiences. `?` is bound per screen root via `HelpBindingMixin`,
+  never on the App: letters bubble up from lists, the same reason there is no app-level
+  `q`. Forms have no help key by decision — a focused `Input` swallows printable keys, so
+  `?` types a question mark there. The command palette was **removed rather than
+  populated** — see [decisions.md](decisions.md).)*
 - Adaptive pagination ✅ (2026-07-11, rows adaptive since 2026-07-13): every
   `CursorList`/`CheckList` renders one window of **min(20, what fits the
   terminal)** rows — the page IS the screenful (pick A + cap 20), so the panel

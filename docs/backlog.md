@@ -162,9 +162,11 @@ its five items turned out to be mis-scoped, which is worth recording once.
 ## Phase 8 — pre-existing polish (unblocked; batch opportunistically)
 
 Survivors of the 2026-07-06 review §5 + tui-plan Phase 3 opens. None depend on
-Phases 1–7. **Partially worked 2026-08-16** — the deleted-rows item shipped and
-three items were struck as already done (see below); the rest stay open.
-Sketch: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-sketch.html).
+Phases 1–7. **Worked in two passes** — 2026-08-16 (deleted-rows shipped, three
+items struck as already done) and **2026-08-17 (the discoverability pair)**; the
+rest stay open.
+Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-sketch.html),
+[mockups/expense-world-phase8-discoverability.html](mockups/expense-world-phase8-discoverability.html).
 
 - [ ] Tests: **26** remaining `pilot.pause(0.05)` sites across the TUI suite
   (9 files) → `wait_for` ([tests/unit/helpers.py](../tests/unit/helpers.py))
@@ -181,15 +183,6 @@ Sketch: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-
   hand-written in `run_world` before Textual takes the tty, with a timeout so
   a silent terminal cannot hang the app. `NO_COLOR` stays a third mode
   (`Theme(ansi=True)`), not the light theme.
-- [ ] TUI `?` help overlay — no binding, screen or mockup exists yet; `?` is
-  free (no collision) and `RecordModal` is the nearest template, but it must
-  be added to the `align: center middle` rule in `app.tcss` or it collapses
-  top-left. **[UI]** → mockup first.
-- [ ] TUI command palette: **already live** — Textual auto-binds `ctrl+p`
-  (`ENABLE_COMMAND_PALETTE` defaults true) and `theme.py` already relies on
-  it. The open work is *populating* it with app commands (a `Provider` on
-  `ExpenseApp.COMMANDS`), not enabling it. *(Reworded 2026-08-16; the item
-  previously read as if the palette were unbuilt.)*
 - [ ] Open decisions from tui-plan §9: designer's final theme tokens (#3 —
   note it names a `theme.tcss` that was never created; tokens are `Theme`
   fields in [theme.py](../expense/tui/theme.py)); minimum terminal size
@@ -200,6 +193,30 @@ Sketch: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-
   [roadmap.md](roadmap.md) "Post-Step-9 ergonomics" — pointer only.
   **Unblocked 2026-08-16**: Phase 5's gate was their precondition and it
   passed.
+
+### Closed 2026-08-17 (delete on next touch)
+
+**The `?` help overlay + the command palette — both closed, one by building and
+one by deleting.** The two items were worked as one because they render the same
+inventory. Auditing first changed both premises: the palette was **already
+advertised** (Textual's `Footer` prints `^p palette` by default), and a keys
+panel **already existed** (`HelpPanel` via `ctrl+p → Keys`, captured against our
+own bindings in the sketch §1.2) — so the choice was curate or accept Textual's,
+not build-from-nothing. Shipped: `?` → `HelpModal`, the two-column card of sketch
+pick C, in [expense/tui/screens/help.py](../expense/tui/screens/help.py); the
+palette **removed** (`ENABLE_COMMAND_PALETTE = False`), which also drops the
+`^p palette` strip from every footer for free.
+What changed beyond the plan: **the item's own description was wrong twice.**
+It said no mockup existed *and* that the palette's open work was populating it —
+the audit inverted the second. Three things the drawing did not anticipate:
+`Binding.tooltip` had to carry the card's fuller wording so the footer could stay
+terse from one declaration; `enter` is a **literal no-op on the Manage lists**
+(no screen handles `CursorList.Selected` there), so the card had to learn to drop
+a key the screen cannot service rather than advertise `⏎ Open` falsely; and `?`
+could not be bound on the App — letters bubble up from lists, the same reason
+there is no app-level `q` — so it is a per-screen-root mixin. Forms deliberately
+have **no** help key. Rationale, and the four rejected shapes:
+[decisions.md](decisions.md) "The command palette is removed, not populated".
 
 ### Closed 2026-08-16 (delete on next touch)
 

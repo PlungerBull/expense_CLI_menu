@@ -25,6 +25,7 @@ from expense.tui.screens._base import screen_fetch_kwargs
 from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.categories import CategoriesScreen
 from expense.tui.screens.hashtags import HashtagsScreen
+from expense.tui.screens.help import HelpBindingMixin
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
@@ -184,10 +185,10 @@ def _build_header(
     return grid
 
 
-class HomeScreen(Screen):
+class HomeScreen(HelpBindingMixin, Screen):
     # q lives here, not on the App — a stray q mid-flow (modal, list) must
     # never kill the app (backlog 4.6). ctrl+q stays the everywhere-quit.
-    BINDINGS = [("q", "app.quit", "Quit")]
+    BINDINGS = [("q", "app.quit", "Quit"), *HelpBindingMixin.BINDINGS]
 
     _stats: dict | None = None
 

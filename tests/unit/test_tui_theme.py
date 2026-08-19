@@ -92,7 +92,7 @@ def test_no_literal_color_styles_in_tui():
 
 
 def test_theme_change_rebuilds_section_screens(monkeypatch):
-    """Switching themes at runtime (ctrl+p palette) must rebuild the card — Rich
+    """Switching themes at runtime must rebuild the card — Rich
     bakes resolved hexes at build time — but must NOT re-fetch: it repaints from
     the data already in memory (backlog §5)."""
     fetches: list = []

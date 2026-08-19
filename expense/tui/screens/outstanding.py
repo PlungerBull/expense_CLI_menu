@@ -119,7 +119,7 @@ class PeopleView(Static):
     BINDINGS = [
         Binding("right,l", "expand", "Expand"),
         Binding("left,h", "collapse", "Collapse"),
-        Binding("enter,space", "toggle", show=False),
+        Binding("enter,space", "toggle", "Expand or collapse", show=False),
     ]
 
     def __init__(self, people: list[dict], palette: Palette | None = None) -> None:
@@ -191,11 +191,11 @@ class CategoriesView(Static):
 
     can_focus = True
     BINDINGS = [
-        Binding("down,j", "move(1)", "Navigate"),
-        Binding("up,k", "move(-1)", show=False),
+        Binding("down,j", "move(1)", "Navigate", tooltip="Down"),
+        Binding("up,k", "move(-1)", "Up", show=False),
         Binding("right,l", "expand", "Expand"),
         Binding("left,h", "collapse", "Collapse"),
-        Binding("enter,space", "toggle", show=False),
+        Binding("enter,space", "toggle", "Expand or collapse", show=False),
     ]
 
     def __init__(

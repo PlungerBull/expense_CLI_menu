@@ -8,6 +8,8 @@ EditAccountScreen); `a` toggles archive immediately — a second `a` undoes.
 `enter` does nothing.
 """
 
+from textual.binding import Binding
+
 from expense.commands import accounts_cmd
 from expense.tui.screens._base import ResourceListScreen
 from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
@@ -46,7 +48,7 @@ class AccountsScreen(ResourceListScreen):
     # schema slimming, so the `a` toggle lives here, not on the shared scaffold.
     BINDINGS = [
         *ResourceListScreen.BINDINGS,
-        ("a", "archive", "Archive"),
+        Binding("a", "archive", "Archive", tooltip="Archive / unarchive"),
     ]
 
     def fetch_items(self, cfg, **kw):

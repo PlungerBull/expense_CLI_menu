@@ -76,11 +76,11 @@ RowInput = Row | tuple
 class CursorList(Static):
     can_focus = True
     BINDINGS = [
-        Binding("down,j", "move(1)", "Navigate"),
-        Binding("up,k", "move(-1)", show=False),
+        Binding("down,j", "move(1)", "Navigate", tooltip="Down"),
+        Binding("up,k", "move(-1)", "Up", show=False),
         Binding("enter", "select", "Open"),
-        Binding("pagedown,full_stop", "page(1)", "Next", key_display="pgdn/."),
-        Binding("pageup,comma", "page(-1)", "Prev", key_display="pgup/,"),
+        Binding("pagedown,full_stop", "page(1)", "Next", key_display="pgdn/.", tooltip="Next page"),
+        Binding("pageup,comma", "page(-1)", "Prev", key_display="pgup/,", tooltip="Previous page"),
     ]
 
     class Selected(Message):

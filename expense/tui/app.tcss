@@ -94,7 +94,7 @@ Screen:ansi {
 }
 
 /* modal screens — center the #modal box (else it collapses top-left) */
-RecordModal, SnapshotModal, ConfirmModal, PromptModal {
+RecordModal, SnapshotModal, ConfirmModal, PromptModal, HelpModal {
     align: center middle;
 }
 /* In ANSI mode Textual's ModalScreen:ansi drops the dim backdrop

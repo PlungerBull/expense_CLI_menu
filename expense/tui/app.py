@@ -30,6 +30,16 @@ class ExpenseApp(App):
     CSS_PATH = "app.tcss"
     # no app-level `q` — it would fire from inside ConfirmModal and every list
     # (letters bubble to the App). HomeScreen binds q; ctrl+q quits everywhere.
+    # `?` is bound the same way, per screen root, via HelpBindingMixin.
+
+    # The command palette is OFF (2026-08-17). It offered five commands, four of
+    # them Textual's own dev affordances (Quit — ^q already does it — Maximize,
+    # Screenshot) and a theme picker over 21 built-in themes we never designed
+    # against our one. Its fifth, the Keys panel, is what `?` replaces, curated
+    # and themed. Turning it off also drops Textual's `^p palette` strip from
+    # every footer, since Footer gates that key on this same flag. Rationale and
+    # the rejected alternative (populating it with a Provider): docs/decisions.md.
+    ENABLE_COMMAND_PALETTE = False
 
     # None = not yet known (pre-fetch, offline, unconfigured). Never rendered as
     # an alert — "don't know" must look like silence, not like a warning.
