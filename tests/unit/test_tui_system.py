@@ -70,7 +70,7 @@ def test_config_screen_reads_and_saves(monkeypatch):
             await wait_for(pilot, lambda: screen._cfg is not None)
             assert screen._cfg.engine_url == "https://engine.example"
             screen._save(engine_url="https://new.example")  # e-action path
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: "cfg" in saved)
             assert saved["cfg"].engine_url == "https://new.example"
             assert saved["cfg"].token == "ewe_pat_abcd1234wxyz"  # other fields preserved
 
@@ -93,7 +93,7 @@ def test_config_screen_rejects_bad_engine_url(monkeypatch):
             await app.push_screen(screen)
             await wait_for(pilot, lambda: screen._cfg is not None)
             screen._save(engine_url="engine.example")  # no scheme
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: notices)  # the rejection toast
             assert not saved  # nothing written
             assert any("scheme and host" in m for m in notices)
             assert not any("Config saved" in m for m in notices)
@@ -121,8 +121,7 @@ def test_auth_provisioned_shows_identity(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = AuthScreen()
             await app.push_screen(screen)
-            await wait_for(pilot, lambda: bool(app.screen.query(".section-title")))
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: "Alex" in _screen_text(app.screen))
             card = _screen_text(app.screen)
             assert "display name" in card and "Alex" in card
             assert "main currency" in card and "PEN" in card
@@ -145,7 +144,7 @@ def test_auth_not_provisioned_bootstraps(fake_client, monkeypatch):
             await app.push_screen(screen)
             await wait_for(pilot, lambda: bool(app.screen.query(".legend")))
             screen.action_bootstrap()
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: bool(app.screen.query("#prompt")))
             app.screen.query_one("#prompt").value = "Alex"
             await pilot.press("enter")  # submit display name
             await wait_for(pilot, lambda: fake_client.posts)
@@ -177,7 +176,7 @@ def test_bootstrap_undetectable_timezone_notifies_not_crash(fake_client, monkeyp
             await app.push_screen(screen)
             await wait_for(pilot, lambda: bool(app.screen.query(".legend")))
             screen.action_bootstrap()
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: bool(app.screen.query("#prompt")))
             app.screen.query_one("#prompt").value = "Alex"
             await pilot.press("enter")  # submit display name → detection fails
             await wait_for(pilot, lambda: notices)
@@ -337,12 +336,12 @@ def test_rates_screen_date_filter_refetches(monkeypatch):
             await app.push_screen(screen)
             await wait_for(pilot, lambda: calls)
             await pilot.press("f")
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: bool(app.screen.query("#prompt")))
             app.screen.query_one("#prompt").value = "2026-07-04"
             await pilot.press("enter")
             await wait_for(pilot, lambda: calls[-1] == "2026-07-04")
             await pilot.press("f")  # blank enter clears the filter
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: bool(app.screen.query("#prompt")))
             app.screen.query_one("#prompt").value = ""
             await pilot.press("enter")
             await wait_for(pilot, lambda: len(calls) >= 3 and calls[-1] is None)

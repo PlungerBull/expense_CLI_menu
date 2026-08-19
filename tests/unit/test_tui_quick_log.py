@@ -120,7 +120,7 @@ def test_edit_with_null_hashtag_ref_renders_dash_not_crash(fake_client, monkeypa
             screen = QuickAddLogScreen(record=record, resource="transactions")
             await app.push_screen(screen)
             await _wait_loaded(screen, pilot)
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: "—" in screen._display.get("hashtags", ""))
             assert app.is_running
             assert "—" in screen._display["hashtags"]  # null id → em-dash
             assert "—" in screen._tag_display_names()
@@ -163,13 +163,13 @@ def test_quick_log_guards_double_submit(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = QuickAddLogScreen()
             await app.push_screen(screen)
-            await pilot.pause(0.05)
+            await _wait_loaded(screen, pilot)
             screen._values.update(title="x", amount=-500, account="acc1", category="cat1")
             screen.action_submit()
             screen.action_submit()  # in flight → ignored
             screen.action_submit()
             await wait_for(pilot, lambda: fake_client.posts)
-            await pilot.pause(0.1)
+            await pilot.pause()  # let the ignored submits settle, then assert a non-event
             assert len(fake_client.posts) == 1
 
     asyncio.run(scenario())
@@ -294,7 +294,7 @@ def test_edit_no_changes_does_not_submit(fake_client, monkeypatch):
             await app.push_screen(screen)
             await _wait_loaded(screen, pilot)
             screen.action_submit()  # nothing changed
-            await pilot.pause(0.1)
+            await pilot.pause()  # let the no-op submit settle, then assert a non-event
             assert not fake_client.calls
 
     asyncio.run(scenario())

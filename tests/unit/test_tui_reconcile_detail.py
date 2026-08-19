@@ -240,7 +240,7 @@ def test_toggle_error_drops_queued_intents_and_resyncs(fake_client, monkeypatch)
             screen._list._cursor = 1
             screen._list.action_toggle()  # queued behind the failing PUT
             await wait_for(pilot, lambda: notices)
-            await pilot.pause(0.05)
+            await pilot.pause()  # let the queue drain settle, then assert a non-event
             assert not screen._write_queue  # stale intent dropped, not sent
             assert len(fake_client.puts) == 1
 
@@ -345,7 +345,7 @@ def test_complete_confirms_then_posts(fake_client, monkeypatch):
             await app.push_screen(screen)
             await _wait_list(screen, pilot)
             screen.action_complete()  # opens confirm
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
             await pilot.press("y")  # confirm
             await wait_for(pilot, lambda: fake_client.posts)
             assert fake_client.posts == [("/reconciliations/r1/complete", None)]
@@ -479,7 +479,7 @@ def test_revert_posts(fake_client, monkeypatch):
             await app.push_screen(screen)
             await _wait_list(screen, pilot)
             screen.action_revert()
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
             await pilot.press("y")
             await wait_for(pilot, lambda: fake_client.posts)
             assert fake_client.posts == [("/reconciliations/r1/revert", None)]
@@ -535,7 +535,7 @@ def test_r_refreshes_record_by_id_and_never_writes(fake_client, monkeypatch):
             await _wait_list(screen, pilot)
             await pilot.press("r")
             await wait_for(pilot, lambda: screen._record.get("ending_balance_cents") == 999999)
-            await pilot.pause(0.05)
+            await pilot.pause()  # let the refresh settle, then assert a non-event
             assert fetched_ids == ["r1"]  # single-record fetch, not a collection scan
             assert "transactions" not in screen._record  # embedded window stripped
             assert app.screen is screen  # not dismissed — the 6.2b false positive
@@ -585,7 +585,7 @@ def test_confirm_modal_enter_cancels(fake_client, monkeypatch):
             await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
             await pilot.press("enter")
             await wait_for(pilot, lambda: app.screen is screen)  # modal gone
-            await pilot.pause(0.05)
+            await pilot.pause()  # let the cancel settle, then assert a non-event
             assert not fake_client.deletes
 
     asyncio.run(scenario())
@@ -604,11 +604,11 @@ def test_q_inert_inside_confirm_modal(fake_client, monkeypatch):
             await pilot.press("d")  # delete → confirm modal
             await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
             await pilot.press("q")
-            await pilot.pause(0.05)
+            await pilot.pause()  # let the (inert) keypress settle, then assert a non-event
             assert app.is_running
             assert isinstance(app.screen, ConfirmModal)  # modal still up, undecided
             await pilot.press("escape")
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: app.screen is screen)  # modal dismissed
             assert not fake_client.deletes
 
     asyncio.run(scenario())

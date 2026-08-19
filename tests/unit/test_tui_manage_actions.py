@@ -12,11 +12,11 @@ import asyncio
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.categories import CategoriesScreen
-from expense.tui.screens.create_forms import EditAccountScreen
+from expense.tui.screens.create_forms import EditAccountScreen, EditHashtagScreen
 from expense.tui.screens.hashtags import HashtagsScreen
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.widgets.cursor_list import CursorList
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_list
 
 ACCOUNT = {
     "id": "a1",
@@ -33,13 +33,6 @@ SYS_CAT = {"id": "c1", "name": "@Opening", "is_system": True, "color": None}
 HASHTAG = {"id": "h1", "name": "trabajo"}
 
 
-async def _wait_loaded(app, pilot):
-    await wait_for(
-        pilot,
-        lambda: app.screen.query(CursorList) and not app.screen.query("#content LoadingIndicator"),
-    )
-
-
 def test_archive_is_immediate_no_modal(fake_client, monkeypatch):
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: [ACCOUNT])
 
@@ -48,7 +41,7 @@ def test_archive_is_immediate_no_modal(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)
-            await _wait_loaded(app, pilot)
+            await wait_for_list(pilot, app)
             await pilot.press("a")  # straight to the write — no ConfirmModal
             assert not isinstance(app.screen, ConfirmModal)
             await wait_for(pilot, lambda: fake_client.calls)
@@ -67,7 +60,7 @@ def test_unarchive_is_direct(fake_client, monkeypatch):
         app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
-            await _wait_loaded(app, pilot)
+            await wait_for_list(pilot, app)
             await pilot.press("a")
             assert not isinstance(app.screen, ConfirmModal)
             await wait_for(pilot, lambda: fake_client.calls)
@@ -88,7 +81,7 @@ def test_archive_toggle_keeps_cursor_on_row(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)
-            await _wait_loaded(app, pilot)
+            await wait_for_list(pilot, app)
             await pilot.press("down")  # cursor → a2
             await pilot.press("a")
             await wait_for(pilot, lambda: fake_client.calls)
@@ -113,7 +106,7 @@ def test_archive_toggle_restores_cursor_across_pages(fake_client, monkeypatch):
         async with app.run_test(size=(120, 40)) as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)
-            await _wait_loaded(app, pilot)
+            await wait_for_list(pilot, app)
             cursor_list = screen.query(CursorList).first()
             cursor_list.set_cursor(cursor_list.index_of("a22"))
             await pilot.press("a")
@@ -134,10 +127,9 @@ def test_edit_prefills_and_puts(fake_client, monkeypatch):
         app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
-            await _wait_loaded(app, pilot)
+            await wait_for_list(pilot, app)
             await pilot.press("e")  # → prefilled EditAccountScreen
-            await pilot.pause(0.05)
-            assert isinstance(app.screen, EditAccountScreen)
+            await wait_for(pilot, lambda: isinstance(app.screen, EditAccountScreen))
             await pilot.press("ctrl+s")  # save unchanged → PUT
             await wait_for(pilot, lambda: fake_client.calls)
 
@@ -160,11 +152,11 @@ def test_categories_have_no_archive_action(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = CategoriesScreen()
             await app.push_screen(screen)
-            await _wait_loaded(app, pilot)
+            await wait_for_list(pilot, app)
             assert not hasattr(screen, "action_archive")
             assert screen.check_action("edit", ()) is True  # edit still offered
             await pilot.press("a")  # inert — no confirm, no write
-            await pilot.pause(0.05)
+            await pilot.pause()  # let the (inert) keypress settle, then assert a non-event
             assert not isinstance(app.screen, ConfirmModal)
             assert not fake_client.calls
 
@@ -178,9 +170,9 @@ def test_hashtag_edit_puts(fake_client, monkeypatch):
         app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(HashtagsScreen())
-            await _wait_loaded(app, pilot)
+            await wait_for_list(pilot, app)
             await pilot.press("e")
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: isinstance(app.screen, EditHashtagScreen))
             await pilot.press("ctrl+s")
             await wait_for(pilot, lambda: fake_client.calls)
 
@@ -199,9 +191,9 @@ def test_enter_is_a_noop(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)
-            await _wait_loaded(app, pilot)
+            await wait_for_list(pilot, app)
             await pilot.press("enter")
-            await pilot.pause(0.05)
+            await pilot.pause()  # let the (inert) keypress settle, then assert a non-event
             assert app.screen is screen  # nothing pushed
             assert not fake_client.calls  # nothing written
 

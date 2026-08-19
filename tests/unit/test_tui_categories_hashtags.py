@@ -8,8 +8,7 @@ from expense.tui.app import ExpenseApp
 from expense.tui.screens.categories import CategoriesScreen, category_rows
 from expense.tui.screens.create_forms import EditCategoryScreen, EditHashtagScreen
 from expense.tui.screens.hashtags import HashtagsScreen, hashtag_rows
-from expense.tui.widgets.cursor_list import CursorList
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_list
 
 CATS = [
     {"id": "c1", "name": "Comida", "color": "#d9744a", "is_system": False},
@@ -43,16 +42,9 @@ def _run_list_screen(monkeypatch, screen_cls, fetch_mod, fetch_name, items, edit
         app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(screen_cls())
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await wait_for_list(pilot, app)
             await pilot.press("e")  # edit the cursor row — no detail hop
-            await pilot.pause(0.05)
-            assert isinstance(app.screen, edit_cls)
+            await wait_for(pilot, lambda: isinstance(app.screen, edit_cls))
 
     asyncio.run(scenario())
 

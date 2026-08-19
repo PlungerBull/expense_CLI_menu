@@ -5,8 +5,7 @@ import asyncio
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.screens.transactions import TransactionsScreen, transaction_rows
-from expense.tui.widgets.cursor_list import CursorList
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_list
 
 ITEMS = [
     {
@@ -72,16 +71,9 @@ def test_transactions_screen_lists_and_opens_detail(monkeypatch):
         app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(TransactionsScreen())
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await wait_for_list(pilot, app)
             await pilot.press("enter")  # opens the edit screen, pre-filled
-            await pilot.pause(0.05)
-            assert isinstance(app.screen, QuickAddLogScreen)
+            await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
             assert app.screen._mode == "edit" and app.screen._values["amount"] == 651900
 
     asyncio.run(scenario())

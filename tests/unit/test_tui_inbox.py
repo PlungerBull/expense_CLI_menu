@@ -6,7 +6,7 @@ from expense.tui.app import ExpenseApp
 from expense.tui.screens.inbox import InboxScreen, inbox_rows
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.widgets.cursor_list import CursorList
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_list
 
 ITEMS = [
     {
@@ -87,13 +87,7 @@ def test_pressing_f_cycles_filter_and_reloads(monkeypatch):
         app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(InboxScreen())
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await wait_for_list(pilot, app)
             assert len(app.screen.query_one(CursorList)._rows) == 3
             await pilot.press("f")  # all → ready
             await wait_for(
@@ -127,16 +121,9 @@ def test_inbox_screen_lists_and_opens_detail(monkeypatch):
         async with app.run_test() as pilot:
             await app.push_screen(InboxScreen())
             # worker fetched + populate mounted the list
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await wait_for_list(pilot, app)
             await pilot.press("enter")  # opens the edit screen (inbox draft)
-            await pilot.pause(0.05)
-            assert isinstance(app.screen, QuickAddLogScreen)
+            await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
             assert app.screen._mode == "edit" and app.screen._resource == "inbox"
             # Drafts carry hashtag_ids and the tags survive promotion, so the
             # draft form offers the same picker as a transaction (backlog 6.1).

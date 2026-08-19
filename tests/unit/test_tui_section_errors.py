@@ -12,8 +12,7 @@ from textual.widgets import Static
 from expense.errors import EngineError
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen
-from expense.tui.widgets.cursor_list import CursorList
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_list
 
 ACCOUNTS = [{"id": "a1", "name": "BCP", "is_person": False, "is_archived": False, "color": None}]
 
@@ -86,13 +85,7 @@ def test_run_write_failure_notifies_and_skips_after_write(fake_client, monkeypat
         app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(AccountsScreen())
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await wait_for_list(pilot, app)
             await pilot.press("a")  # immediate archive → run_write → POST raises
             await wait_for(pilot, lambda: seen)
             message, kw = seen[0]

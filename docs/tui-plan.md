@@ -360,6 +360,14 @@ archives/unarchives **immediately — no confirm modal**
 - Skeleton/empty/error states everywhere.
 - **Textual pilot tests** for navigation + key flows ◐ (binding-level pilot tests for
   keymap/confirm/status flows landed with §4); existing CLI suite stays green.
+  *(**Wait convention, guarded since 2026-08-18**: a pilot test waits on a
+  condition — `wait_for(pilot, predicate)` / `wait_for_list` / `wait_for_loaded`
+  in [tests/unit/helpers.py](../tests/unit/helpers.py) — never on the clock. A
+  bare `pilot.pause()` is the pump-drain for asserting a *non-event* (an inert
+  key, a confirm that must not fire), where no predicate can be written. Timed
+  `pilot.pause(<n>)` is rejected by
+  [tests/unit/test_suite_hygiene.py](../tests/unit/test_suite_hygiene.py), which
+  carries one documented exemption for the cancelled-worker window.)*
 - Update `docs/roadmap.md`, `CLAUDE.md`; user-facing TUI notes.
 - **Exit criteria:** shippable; feature-complete vs the flat command surface.
 

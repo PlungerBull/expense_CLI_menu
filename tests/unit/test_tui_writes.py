@@ -14,7 +14,7 @@ from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.modals import ConfirmModal
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_list
 
 INBOX = [{"id": "i1", "title": "Almuerzo", "status": 1, "amount_cents": -1000}]
 ACCOUNTS = [{"id": "a1", "name": "BCP", "is_person": False, "is_archived": False, "color": None}]
@@ -23,14 +23,8 @@ ACCOUNTS = [{"id": "a1", "name": "BCP", "is_person": False, "is_archived": False
 async def _drive(app, screen, key, fake_client):
     async with app.run_test() as pilot:
         await app.push_screen(screen)
-        from expense.tui.widgets.cursor_list import CursorList
 
-        await wait_for(
-            pilot,
-            lambda: (
-                app.screen.query(CursorList) and not app.screen.query("#content LoadingIndicator")
-            ),
-        )
+        await wait_for_list(pilot, app)
         await pilot.press(key)  # action → ConfirmModal
         await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
         await pilot.press("y")  # confirm → run_write
@@ -84,15 +78,8 @@ def test_refresh_mid_write_does_not_cancel_the_write(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = InboxScreen()
             await app.push_screen(screen)
-            from expense.tui.widgets.cursor_list import CursorList
 
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await wait_for_list(pilot, app)
             await pilot.press("p")  # promote → ConfirmModal
             await wait_for(pilot, lambda: isinstance(app.screen, ConfirmModal))
             await pilot.press("y")  # confirm → gated run_write
@@ -150,15 +137,8 @@ def test_rapid_writes_serialize_in_order(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = InboxScreen()
             await app.push_screen(screen)
-            from expense.tui.widgets.cursor_list import CursorList
 
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await wait_for_list(pilot, app)
             screen.run_write("POST", "/inbox/i1/promote", on_success=lambda: None)
             screen.run_write("POST", "/inbox/i1/snooze", on_success=lambda: None)
             await wait_for(pilot, lambda: len(fake_client.posts) == 2)
@@ -182,15 +162,8 @@ def test_concurrent_content_swaps_mount_one_card(fake_client, monkeypatch):
         async with app.run_test() as pilot:
             screen = AccountsScreen()
             await app.push_screen(screen)
-            from expense.tui.widgets.cursor_list import CursorList
 
-            await wait_for(
-                pilot,
-                lambda: (
-                    app.screen.query(CursorList)
-                    and not app.screen.query("#content LoadingIndicator")
-                ),
-            )
+            await wait_for_list(pilot, app)
             await asyncio.gather(screen._show(ACCOUNTS), screen._show(ACCOUNTS))
             assert len(screen.query("#card")) == 1
 

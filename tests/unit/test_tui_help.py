@@ -31,7 +31,7 @@ from expense.tui.screens.help import (
 )
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.widgets.cursor_list import CursorList
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_loaded
 
 
 def _stub_engine(monkeypatch, items=()):
@@ -165,7 +165,7 @@ def test_accounts_card_matches_the_approved_layout(monkeypatch):
         app = ExpenseApp()
         async with app.run_test(size=(100, 32)) as pilot:
             await app.push_screen(AccountsScreen())
-            await wait_for(pilot, lambda: bool(app.screen.query("#card, .error")))
+            await wait_for_loaded(pilot, app)
             await pilot.pause()
             title, groups = screen_inventory(app.screen)
 
@@ -204,13 +204,13 @@ def test_help_never_advertises_a_key_the_screen_cannot_service(monkeypatch):
         app = ExpenseApp()
         async with app.run_test(size=(100, 32)) as pilot:
             await app.push_screen(AccountsScreen())
-            await wait_for(pilot, lambda: bool(app.screen.query("#card, .error")))
+            await wait_for_loaded(pilot, app)
             await pilot.pause()
             _, manage = screen_inventory(app.screen)
             app.pop_screen()
 
             await app.push_screen(InboxScreen())
-            await wait_for(pilot, lambda: bool(app.screen.query("#card, .error")))
+            await wait_for_loaded(pilot, app)
             await pilot.pause()
             _, inbox = screen_inventory(app.screen)
 
@@ -243,7 +243,7 @@ def test_question_mark_opens_and_closes_the_card(monkeypatch):
         app = ExpenseApp()
         async with app.run_test(size=(100, 32)) as pilot:
             await app.push_screen(AccountsScreen())
-            await wait_for(pilot, lambda: bool(app.screen.query("#card, .error")))
+            await wait_for_loaded(pilot, app)
             await pilot.press("question_mark")
             await wait_for(pilot, lambda: isinstance(app.screen, HelpModal))
             await pilot.press("question_mark")
@@ -308,7 +308,7 @@ def test_footer_no_longer_offers_the_palette(monkeypatch):
         app = ExpenseApp()
         async with app.run_test(size=(100, 32)) as pilot:
             await app.push_screen(AccountsScreen())
-            await wait_for(pilot, lambda: bool(app.screen.query("#card, .error")))
+            await wait_for_loaded(pilot, app)
             await pilot.pause()
             from textual.widgets import Footer
 

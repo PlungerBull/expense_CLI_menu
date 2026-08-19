@@ -174,3 +174,24 @@ async def wait_for_loaded(pilot, app) -> None:
         lambda: bool(app.screen.query("#card")) or bool(app.screen.query(".error")),
         message="SectionScreen never finished loading (no #card or .error mounted)",
     )
+
+
+def list_ready(app) -> bool:
+    """The active SectionScreen's CursorList is mounted and its loader is gone.
+
+    Exposed as a plain predicate, not only as the waiter below, so call sites
+    that need an *extra* condition (a row count, a filtered legend) can write
+    `list_ready(app) and ...` instead of re-open-coding the pair.
+    """
+    from expense.tui.widgets.cursor_list import CursorList  # local: see module docstring
+
+    return bool(app.screen.query(CursorList)) and not app.screen.query("#content LoadingIndicator")
+
+
+async def wait_for_list(pilot, app) -> None:
+    """Until the active SectionScreen's list is mounted and done loading."""
+    await wait_for(
+        pilot,
+        lambda: list_ready(app),
+        message="list never finished loading (no CursorList, or LoadingIndicator still up)",
+    )

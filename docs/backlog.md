@@ -64,6 +64,10 @@ accepted there, which 422'd and lost the whole write (removed; sketch:
 [mockups/expense-world-phase5-inbox-cleared.html](mockups/expense-world-phase5-inbox-cleared.html)).
 All five deleted per the rule above, see git history.)
 
+**Baseline (2026-08-18, after the Phase 8 `pilot.pause` sweep):** 922 unit tests
+green (920 + the two hygiene guards), contract suite 12/12 against the disposable
+engine on `:8001`.
+
 **Baseline (2026-08-16, after Phase 6.2):** 903 unit tests green, and the
 contract suite is 12/12 against the disposable engine on `:8001`. (868 after
 Phase 5; 6.1 added 14; 6.2 added 21 unit + 2 contract.) The note below still
@@ -162,19 +166,12 @@ its five items turned out to be mis-scoped, which is worth recording once.
 ## Phase 8 — pre-existing polish (unblocked; batch opportunistically)
 
 Survivors of the 2026-07-06 review §5 + tui-plan Phase 3 opens. None depend on
-Phases 1–7. **Worked in two passes** — 2026-08-16 (deleted-rows shipped, three
-items struck as already done) and **2026-08-17 (the discoverability pair)**; the
-rest stay open.
+Phases 1–7. **Worked in three passes** — 2026-08-16 (deleted-rows shipped, three
+items struck as already done), 2026-08-17 (the discoverability pair) and
+**2026-08-18 (the `pilot.pause` sweep)**; the rest stay open.
 Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-sketch.html),
 [mockups/expense-world-phase8-discoverability.html](mockups/expense-world-phase8-discoverability.html).
 
-- [ ] Tests: **26** remaining `pilot.pause(0.05)` sites across the TUI suite
-  (9 files) → `wait_for` ([tests/unit/helpers.py](../tests/unit/helpers.py))
-  or bare `pilot.pause()` — mechanical, time-boxable sweep. **6 of the 26 are
-  load-bearing**: they assert a *non-event* (an inert keypress, a confirm that
-  must not fire), so no `wait_for` predicate can replace them — those become a
-  bare pump-drain, not a condition wait. *(Count corrected from "~37"
-  2026-08-16; the old figure was never accurate.)*
 - [ ] TUI light theme + `NO_COLOR` palette (same `ansi_default` surface;
   tui-plan §4). **Approach decided 2026-08-16 — auto-detect** the terminal
   background (`OSC 11` + `COLORFGBG` fallback, dark default); see
@@ -193,6 +190,36 @@ Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase
   [roadmap.md](roadmap.md) "Post-Step-9 ergonomics" — pointer only.
   **Unblocked 2026-08-16**: Phase 5's gate was their precondition and it
   passed.
+
+### Closed 2026-08-18 (delete on next touch)
+
+**The `pilot.pause` sweep — shipped, and armored.** Every timed pause in the TUI
+suite is now either a condition wait (`wait_for`) or a bare pump-drain; the item
+is closed by [tests/unit/test_suite_hygiene.py](../tests/unit/test_suite_hygiene.py),
+which fails on the 32nd one. This was the *second* pass over the same problem —
+commit `9d8d2c3` converted the first 25 — which is the whole argument for making
+it executable rather than a convention.
+What changed beyond the item's own description, which was wrong three ways:
+**(1) 31 sites, not 26** — it counted only `pause(0.05)` and missed `0.1` ×3,
+`0.02` ×1, `0.25` ×1; final split 21 → `wait_for`, 9 → bare pause, 1 kept.
+**(2) One timed pause has to survive**: `test_tui_reconcile_detail.py`'s
+`pause(0.25)  # window for the cancelled worker to (not) paint` — its fake fetch
+does a real `time.sleep(0.15)` and the test exists to outlast it, so a pump-drain
+would not wait long enough. It is the guard's single allowlist entry, keyed on the
+whole source line so editing it re-opens the question, plus a second test that
+fails if the exemption outlives the line it exempts. **(3) The "6 load-bearing"
+figure was right** — confirmed site-by-site, and it stayed 6 of the 0.05 sites.
+Also folded in (user decision): the `CursorList`-mounted-and-loaded predicate had
+**13 copies across 8 files** in three different wrappings (and two scopings,
+`app.screen` vs `screen`) → `list_ready` / `wait_for_list` in
+[helpers.py](../tests/unit/helpers.py), which also killed the
+file-local `_wait_loaded`/`_wait_browse` wrappers; and `wait_for_loaded` — **dead
+code with zero call sites** while `test_tui_help.py` open-coded its equivalent
+five times — was resurrected rather than deleted. Honest result on speed: the
+suite got ~3% faster (22.4s → 21.6s), not the ~1.3s the sweep looked worth on
+paper, because `wait_for` polls on a 20ms tick and most waits resolve on the
+second or third one. The win is that a slow CI box can no longer fail a green
+build.
 
 ### Closed 2026-08-17 (delete on next touch)
 

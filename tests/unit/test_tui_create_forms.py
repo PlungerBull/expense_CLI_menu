@@ -25,7 +25,7 @@ def _run(fake_client, screen, steps):
         app = ExpenseApp()
         async with app.run_test() as pilot:
             await app.push_screen(screen)
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: bool(screen.query("#bar")))
             for text in steps:
                 _enter(screen, text)
             await wait_for(pilot, lambda: fake_client.posts)
@@ -83,9 +83,9 @@ def test_new_account_required_name_blocks_submit(fake_client):
         async with app.run_test() as pilot:
             screen = NewAccountScreen()
             await app.push_screen(screen)
-            await pilot.pause(0.05)
+            await wait_for(pilot, lambda: bool(screen.query("#bar")))
             screen.action_submit()  # nothing entered
-            await pilot.pause(0.1)
+            await pilot.pause()  # let the blocked submit settle, then assert a non-event
             assert not fake_client.calls
 
     asyncio.run(scenario())

@@ -47,6 +47,6 @@ def test_every_modal_box_renders_with_size():
                 assert box.size.width > 10, f"{name} #modal collapsed: {box.size}"
                 assert box.size.height > 2, f"{name} #modal collapsed: {box.size}"
                 app.pop_screen()
-                await pilot.pause(0.02)
+                await wait_for(pilot, lambda: not app.screen.query("#modal"))
 
     asyncio.run(scenario())

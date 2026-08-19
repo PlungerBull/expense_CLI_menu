@@ -10,7 +10,7 @@ from expense.tui.screens.reconciliations import (
     ReconciliationsScreen,
 )
 from expense.tui.widgets.cursor_list import CursorList
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_list
 
 ITEMS = [
     {
@@ -147,13 +147,6 @@ def _patch_browse(monkeypatch):
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
 
-async def _wait_browse(app, pilot):
-    await wait_for(
-        pilot,
-        lambda: app.screen.query(CursorList) and not app.screen.query("#content LoadingIndicator"),
-    )
-
-
 def test_reconciliations_browse_account_first(monkeypatch):
     _patch_browse(monkeypatch)
 
@@ -162,7 +155,7 @@ def test_reconciliations_browse_account_first(monkeypatch):
         async with app.run_test() as pilot:
             screen = ReconciliationsScreen()
             await app.push_screen(screen)
-            await _wait_browse(app, pilot)
+            await wait_for_list(pilot, app)
             # account focus: first account (acc1) selected → its batch (r1) shown below
             assert screen._mode == "accts"
             assert set(screen._by_id) == {"r1"}
@@ -188,7 +181,7 @@ def test_highlight_from_batches_pane_does_not_switch_account(monkeypatch):
         async with app.run_test() as pilot:
             screen = ReconciliationsScreen()
             await app.push_screen(screen)
-            await _wait_browse(app, pilot)
+            await wait_for_list(pilot, app)
             assert screen._mode == "accts" and screen._acct_idx == 0
             # from the *batches* list → ignored
             screen.on_cursor_list_highlighted(CursorList.Highlighted(screen._batch_list, "r1", 1))
@@ -227,7 +220,7 @@ def test_reconciliations_list_pages_past_engine_cap(monkeypatch):
         async with app.run_test() as pilot:
             screen = ReconciliationsScreen()
             await app.push_screen(screen)
-            await _wait_browse(app, pilot)
+            await wait_for_list(pilot, app)
             assert len(screen._recons) == total  # both pages collected
             assert len(screen._batches) == total  # every batch for the account
 

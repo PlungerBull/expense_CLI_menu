@@ -20,7 +20,7 @@ from expense.tui.app import ExpenseApp
 from expense.tui.screens._base import PagedListMixin
 from expense.tui.widgets.checklist import CheckList
 from expense.tui.widgets.cursor_list import CursorList, page_indicator
-from tests.unit.helpers import wait_for
+from tests.unit.helpers import wait_for, wait_for_list
 
 
 def _text(renderable) -> str:
@@ -366,10 +366,7 @@ def _drive_transactions(size: tuple[int, int], calls: list, checks) -> None:
         async with app.run_test(size=size) as pilot:
             screen = TransactionsScreen()
             await app.push_screen(screen)
-            await wait_for(
-                pilot,
-                lambda: screen.query(CursorList) and not screen.query("#content LoadingIndicator"),
-            )
+            await wait_for_list(pilot, app)
             await checks(pilot, screen)
 
     asyncio.run(scenario())
@@ -463,10 +460,7 @@ def test_inbox_filter_change_resets_page(monkeypatch):
         async with app.run_test(size=(120, 35)) as pilot:
             screen = InboxScreen()
             await app.push_screen(screen)
-            await wait_for(
-                pilot,
-                lambda: screen.query(CursorList) and not screen.query("#content LoadingIndicator"),
-            )
+            await wait_for_list(pilot, app)
             await pilot.press("pagedown")
             await wait_for(pilot, lambda: any(c["offset"] == 20 for c in _filter_calls()))
             await pilot.press("f")  # all → ready; offset must reset
