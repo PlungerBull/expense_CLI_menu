@@ -137,8 +137,8 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `rates list [--date YYYY-MM-DD] [--limit N] [--offset N]` → `GET /v1/exchange-rates/history`
   (stored daily rates, newest first, one row per pair per day; exact-day filter, no fallback).
 
-### `expense health` / `expense ping`
-- `ping` → `GET /health`. Connectivity + auth sanity check.
+### `expense ping`
+- `ping` → `GET /health`. Connectivity + auth sanity check. Prints `ok (0.1s)`. *(There is no `expense health` command — the heading here claimed one until 2026-08-20.)*
 
 ### `expense import`
 - `import <file.xlsx> [--apply] [--chunk-size N] [--json]` — bulk `.xlsx → engine` importer. Parses the spreadsheet, resolves names to ids, plans, then writes via the transactions batch endpoint. **Dry-run preview is the default**; `--apply` writes. Requires the `openpyxl` extra (`pip install -e ".[import]"`). Package: [expense/import_/](../expense/import_/).
