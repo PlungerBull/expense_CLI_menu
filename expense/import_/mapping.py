@@ -2,28 +2,34 @@
 
 Single source of truth for the sheet layout. Columns are matched by HEADER
 NAME (case/space-insensitive), not position, so the importer survives column
-reordering — which has already happened in this file's history. To support a
-differently-shaped sheet later, add its labels here; the pipeline is otherwise
-layout-agnostic.
+reordering — which has already happened in this file's history. Each field
+accepts a tuple of labels, so a sheet re-exported with a renamed column keeps
+importing; to support a differently-shaped sheet, add its label here and the
+pipeline needs no other change.
 """
 
 import uuid
 
 from expense.currencies import SUPPORTED_CURRENCIES
 
-#: Worksheet that holds the transaction rows.
+#: Worksheet that holds the transaction rows. Matched case-insensitively —
+#: see ``reader.read_workbook``.
 SHEET_NAME = "Data"
 
-#: Canonical field -> the normalized header label it maps to.
+#: Canonical field -> the normalized header labels it accepts, best first.
+#: The first entry is the canonical spelling and is what the missing-column
+#: error names. No two fields may share a label: `title` takes `description`
+#: while the `description` field is fed by `notas`, and both can coexist on
+#: one sheet.
 FIELD_HEADERS = {
-    "title": "descripcion",
-    "category": "category",
-    "hashtag": "hashtag",
-    "date": "fecha",
-    "amount": "monto",
-    "account": "cuenta",
-    "currency": "moneda",
-    "description": "notas",
+    "title": ("descripcion", "description", "titulo"),
+    "category": ("category", "categoria"),
+    "hashtag": ("hashtag",),
+    "date": ("fecha",),
+    "amount": ("monto",),
+    "account": ("cuenta",),
+    "currency": ("moneda",),
+    "description": ("notas",),
 }
 
 #: Every field except ``description`` must be present in the header row.

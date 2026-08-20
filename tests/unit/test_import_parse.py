@@ -2,6 +2,7 @@
 
 import pytest
 
+from expense.import_ import mapping
 from expense.import_ import plan as plan_mod
 from expense.import_.apply import chunked
 from expense.import_.parse import (
@@ -10,6 +11,7 @@ from expense.import_.parse import (
     ParsedRow,
     amount_to_cents,
     build_column_index,
+    is_opening_category,
     is_opening_title,
     parse_sheet,
     serial_to_iso,
@@ -78,8 +80,35 @@ def test_amount_to_cents(value, expected):
 
 
 def test_build_column_index_missing_required():
-    with pytest.raises(ImportFormatError):
-        build_column_index(["Descripcion", "Monto"])  # missing most columns
+    with pytest.raises(ImportFormatError, match="descripcion"):
+        build_column_index(["Monto"])  # missing most columns, named by canonical label
+
+
+@pytest.mark.parametrize("title_label", ["Descripcion", "Description", "TITULO", "descripcion"])
+@pytest.mark.parametrize("category_label", ["CATEGORY", "Categoria"])
+def test_build_column_index_accepts_header_aliases(title_label, category_label):
+    """Re-exports rename columns; each field accepts several spellings."""
+    headers = [title_label, category_label, "HASHTAG", "Fecha", "Monto", "Cuenta", "Moneda"]
+    index = build_column_index(headers)
+    assert index["title"] == 0
+    assert index["category"] == 1
+
+
+def test_title_and_description_columns_coexist():
+    """`Description` feeds the title; `Notas` feeds the description field."""
+    headers = ["Description", "CATEGORY", "HASHTAG", "Fecha", "Monto", "Cuenta", "Moneda", "Notas"]
+    index = build_column_index(headers)
+    assert index["title"] == 0
+    assert index["description"] == 7
+
+
+def test_header_aliases_are_unambiguous():
+    """No label may feed two fields — that would make column mapping order-dependent."""
+    seen: dict[str, str] = {}
+    for field, labels in mapping.FIELD_HEADERS.items():
+        for label in labels:
+            assert label not in seen, f"{label!r} claimed by both {seen.get(label)!r} and {field!r}"
+            seen[label] = field
 
 
 # --- row parsing -----------------------------------------------------------
@@ -178,6 +207,7 @@ def test_fully_empty_row_ignored_not_reported():
 
 
 def test_mixed_currency_account_splits():
+    """One sheet name under two currencies -> two accounts, each renamed."""
     rows = [
         _row(2, Cuenta="BCP Oro", Moneda="PEN"),
         _row(3, Cuenta="BCP Oro", Moneda="USD", Monto=-100, **{"T.C.": 3.68}),
@@ -185,7 +215,28 @@ def test_mixed_currency_account_splits():
     parsed, openings, skipped = parse_sheet(_sheet(rows))
     plan = plan_mod.build_plan(parsed, openings, skipped)
     specs = {(a.name, a.currency) for a in plan.accounts}
-    assert specs == {("BCP Oro", "PEN"), ("BCP Oro", "USD")}
+    assert specs == {("BCP Oro PEN", "PEN"), ("BCP Oro USD", "USD")}
+    # Rows still resolve by what the sheet says, so ids never move.
+    assert {a.source_name for a in plan.accounts} == {"BCP Oro"}
+
+
+def test_single_currency_account_name_untouched():
+    rows = [_row(2, Cuenta="BCP PEN", Moneda="PEN")]
+    parsed, openings, skipped = parse_sheet(_sheet(rows))
+    plan = plan_mod.build_plan(parsed, openings, skipped)
+    assert [(a.name, a.source_name) for a in plan.accounts] == [("BCP PEN", "BCP PEN")]
+
+
+def test_split_name_already_ending_in_currency_is_not_doubled():
+    """ "Alcancia USD" under USD stays put; only its PEN sibling gains a suffix."""
+    rows = [
+        _row(2, Cuenta="Alcancia USD", Moneda="USD"),
+        _row(3, Cuenta="Alcancia USD", Moneda="PEN"),
+    ]
+    parsed, openings, skipped = parse_sheet(_sheet(rows))
+    plan = plan_mod.build_plan(parsed, openings, skipped)
+    specs = {(a.name, a.currency) for a in plan.accounts}
+    assert specs == {("Alcancia USD", "USD"), ("Alcancia USD PEN", "PEN")}
 
 
 def test_category_and_hashtag_dedup_case_insensitive():
@@ -253,6 +304,70 @@ def test_opening_row_detected_without_category_or_hashtag():
     assert row.account == "BCP PEN"
     assert row.amount_cents == 350000
     assert row.date_iso == "2022-12-01"
+
+
+@pytest.mark.parametrize(
+    "category,expected",
+    [
+        ("SALDO INICIAL", True),
+        ("saldo inicial", True),
+        ("  Saldo   Inicial  ", True),
+        ("SALDO INICIAL 2022", False),
+        ("WANTS", False),
+        (None, False),
+    ],
+)
+def test_is_opening_category(category, expected):
+    assert is_opening_category(category) is expected
+
+
+def test_opening_row_detected_from_category_column():
+    """The real sheet marks openings in CATEGORY, not in the title (2026-08-20)."""
+    raw = _row(
+        2,
+        Descripcion="REGULARIZACION SALDOS",
+        CATEGORY="SALDO INICIAL",
+        HASHTAG="SALDO INICIAL",
+        Monto=-27608,
+    )
+    parsed, openings, skipped = parse_sheet(_sheet([raw]))
+    assert parsed == []
+    assert skipped == []
+    (row,) = openings
+    assert isinstance(row, OpeningRow)
+    assert row.title == "REGULARIZACION SALDOS"
+    assert row.amount_cents == -2760800
+
+
+def test_opening_marker_category_never_becomes_a_resource():
+    """An opening row's category/hashtag are discarded, so no junk rows appear."""
+    rows = [
+        _row(
+            2,
+            Descripcion="REGULARIZACION SALDOS",
+            CATEGORY="SALDO INICIAL",
+            HASHTAG="SALDO INICIAL",
+        ),
+        _row(3),
+    ]
+    parsed, openings, skipped = parse_sheet(_sheet(rows))
+    plan = plan_mod.build_plan(parsed, openings, skipped)
+    assert plan.categories == ["WANTS"]
+    assert plan.hashtags == ["Salidas"]
+
+
+def test_opening_row_from_category_still_validates_shared_fields():
+    _, openings, skipped = parse_sheet(
+        _sheet([_row(2, CATEGORY="SALDO INICIAL", HASHTAG="None", Cuenta="")])
+    )
+    assert openings == []
+    assert [s.reason for s in skipped] == ["missing-account"]
+
+    _, openings, skipped = parse_sheet(
+        _sheet([_row(2, CATEGORY="SALDO INICIAL", HASHTAG="None", Monto=0)])
+    )
+    assert openings == []
+    assert [s.reason for s in skipped] == ["zero-amount"]
 
 
 def test_opening_row_still_validates_shared_fields():

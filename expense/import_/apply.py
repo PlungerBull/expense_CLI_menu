@@ -81,6 +81,7 @@ def _resolve_each(
     key_of,
     payload_of,
     describe,
+    index_of=None,
 ) -> tuple[dict, int, int, list[str]]:
     """Resolve each wanted spec against `existing` (reuse) or POST it (create).
 
@@ -89,19 +90,27 @@ def _resolve_each(
     is mutated so a duplicate spec reuses the row created for the first one;
     `payload_of(spec, i)` gets the enumerate index (categories' palette).
 
+    `key_of` identifies the spec *engine-side* — it must match how `existing`
+    was keyed, or a row that already exists would be created again. `index_of`
+    identifies it *sheet-side* — it is how the returned map is keyed, i.e. what
+    callers look a row's resource up by. They coincide for categories and
+    hashtags (the sheet cell is the engine name) and diverge for accounts,
+    whose engine name may carry a currency suffix the sheet never had.
+
     A per-spec `EngineError` (422/409/5xx-after-retries) is collected via
     `describe(spec)` and the loop continues — one bad resource no longer aborts
     the whole import (backlog 6.4d follow-up). An `EngineConnectionError`
     propagates: the engine is unreachable, so nothing further can succeed and a
     re-run converges once it's back.
     """
+    index_of = index_of or key_of
     ids: dict = {}
     created = reused = 0
     failures: list[str] = []
     for i, spec in enumerate(wanted):
         key = key_of(spec)
         if key in existing:
-            ids[key] = existing[key]
+            ids[index_of(spec)] = existing[key]
             reused += 1
         else:
             nid = str(uuid4())
@@ -111,7 +120,7 @@ def _resolve_each(
                 failures.append(f"{resource[:-1]} {describe(spec)}: {format_error(err)}")
                 continue
             existing[key] = nid
-            ids[key] = nid
+            ids[index_of(spec)] = nid
             created += 1
     return ids, created, reused, failures
 
@@ -131,6 +140,7 @@ def resolve_or_create(client: ExpenseClient, plan: ImportPlan) -> ResolveResult:
         plan.accounts,
         existing=amap,
         key_of=lambda s: (s.name.strip().casefold(), s.currency),
+        index_of=lambda s: (s.source_name.strip().casefold(), s.currency),
         payload_of=lambda s, _i: {"name": s.name, "currency_code": s.currency},
         describe=lambda s: f"{s.name!r} ({s.currency})",
     )

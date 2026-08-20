@@ -73,6 +73,17 @@ def test_missing_file(tmp_path):
         read_workbook(str(tmp_path / "nope.xlsx"))
 
 
+@pytest.mark.parametrize("sheet", ["DATA", "data", "Data ", " dAtA"])
+def test_sheet_name_matched_case_and_space_insensitively(tmp_path, sheet):
+    """A tab exported as DATA/data/`Data ` is the same tab (real file, 2026-08-20)."""
+    path = _write_xlsx(tmp_path, [_ROW], sheet=sheet)
+    data = read_workbook(path)
+    assert len(data.rows) == 1
+    parsed, _openings, skipped = parse_sheet(data)
+    assert skipped == []
+    assert parsed[0].title == "Groomers"
+
+
 def test_missing_sheet_lists_present_sheets(tmp_path):
     path = _write_xlsx(tmp_path, [_ROW], sheet="Otra")
     with pytest.raises(ImportFileError, match="Sheet 'Data' not found.*Otra"):

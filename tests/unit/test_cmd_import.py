@@ -116,6 +116,86 @@ def test_apply_reuses_existing_and_creates_rest(configured):
 
 
 @respx.mock
+def test_apply_split_currency_account_creates_both_legs(configured):
+    """The engine sees suffixed names; rows still resolve by the raw sheet name.
+
+    This is the guard on the two keyspaces in `_resolve_each`: accounts are
+    MATCHED engine-side by their derived name but INDEXED sheet-side by the
+    CUENTA cell. Collapsing them would send every "BCP Oro" row to one leg (or
+    to none at all).
+    """
+    rows = [
+        _prow(2, account="BCP Oro", currency="PEN", amount_cents=-4400),
+        _prow(3, account="BCP Oro", currency="USD", amount_cents=-10000),
+    ]
+    plan = _plan(rows)
+    _mock_existing(accounts=[], categories=[], hashtags=[])
+    acc_route = respx.post(f"{BASE}/v1/accounts").mock(return_value=httpx.Response(201, json={}))
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
+        return_value=httpx.Response(201, json={"created": []})
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        result = apply_mod.apply_plan(client, plan, res, chunk_size=200)
+
+    assert res.accounts_created == 2
+    posted = [json.loads(c.request.content) for c in acc_route.calls]
+    assert [(p["name"], p["currency_code"]) for p in posted] == [
+        ("BCP Oro PEN", "PEN"),
+        ("BCP Oro USD", "USD"),
+    ]
+    # Account ids are client-minted, so the posted bodies are the source of truth.
+    pen_id, usd_id = posted[0]["id"], posted[1]["id"]
+    assert pen_id != usd_id
+
+    items = json.loads(batch_route.calls.last.request.content)["transactions"]
+    by_id = {i["id"]: i["account_id"] for i in items}
+    assert by_id[plan_mod.tx_id_for(rows[0])] == pen_id
+    assert by_id[plan_mod.tx_id_for(rows[1])] == usd_id
+    assert result.tx_created == 2
+
+
+@respx.mock
+def test_apply_split_currency_reuses_existing_suffixed_accounts(configured):
+    """A second run finds the renamed legs already there and creates nothing."""
+    rows = [
+        _prow(2, account="BCP Oro", currency="PEN"),
+        _prow(3, account="BCP Oro", currency="USD"),
+    ]
+    plan = _plan(rows)
+    _mock_existing(
+        accounts=[
+            {"id": "acc-oro-pen", "name": "BCP Oro PEN", "currency_code": "PEN"},
+            {"id": "acc-oro-usd", "name": "BCP Oro USD", "currency_code": "USD"},
+        ],
+        categories=[],
+        hashtags=[],
+    )
+    acc_route = respx.post(f"{BASE}/v1/accounts").mock(
+        return_value=httpx.Response(201, json={"id": "unexpected"})
+    )
+    respx.post(f"{BASE}/v1/categories").mock(return_value=httpx.Response(201, json={"id": "c"}))
+    respx.post(f"{BASE}/v1/hashtags").mock(return_value=httpx.Response(201, json={"id": "h"}))
+    batch_route = respx.post(f"{BASE}/v1/transactions/batch").mock(
+        return_value=httpx.Response(201, json={"created": []})
+    )
+
+    cfg = config_module.ensure_loaded()
+    with ExpenseClient(cfg) as client:
+        res = apply_mod.resolve_or_create(client, plan)
+        apply_mod.apply_plan(client, plan, res, chunk_size=200)
+
+    assert (res.accounts_reused, res.accounts_created) == (2, 0)
+    assert not acc_route.called
+    items = json.loads(batch_route.calls.last.request.content)["transactions"]
+    assert {i["account_id"] for i in items} == {"acc-oro-pen", "acc-oro-usd"}
+
+
+@respx.mock
 def test_apply_seeds_opening_balances(configured):
     """Opening rows POST to /accounts/{id}/opening-balance, not the batch."""
     rows = [_prow(2)]
@@ -594,7 +674,7 @@ def test_dry_run_json_emits_plan(configured, monkeypatch):
     payload = json.loads(result.output)  # pure JSON, no trailer mixed in
     assert payload["valid_rows"] == 1
     assert payload["skipped"] == []
-    assert payload["accounts"] == [{"name": "BCP PEN", "currency": "PEN"}]
+    assert payload["accounts"] == [{"name": "BCP PEN", "currency": "PEN", "source_name": "BCP PEN"}]
     assert set(payload["categories"]) == {"WANTS"}
     assert set(payload["hashtags"]) == {"Salidas"}
     assert "Dry run" not in result.output

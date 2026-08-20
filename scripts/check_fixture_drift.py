@@ -90,6 +90,10 @@ KNOWN_LOCAL = frozenset(
         "aaaa",
         "bbbb",
         "amt",
+        # `expense import --json` plan keys: the plan is client-composed (it
+        # aggregates many engine calls), so its shape is ours, not the engine's.
+        # `source_name` is the raw sheet CUENTA behind a derived account name.
+        "source_name",
         # CLI-side config file fields — never sent to the engine
         "engine_url",
         "client_id",

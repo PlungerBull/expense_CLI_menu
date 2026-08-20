@@ -16,8 +16,18 @@ from expense.import_.parse import OpeningRow, ParsedRow, SkippedRow
 
 @dataclass(frozen=True)
 class AccountSpec:
+    """One account to ensure.
+
+    ``name`` is what the engine is told; ``source_name`` is the raw sheet cell.
+    They differ only when a sheet name spans several currencies — the engine
+    gives every account exactly one currency, so such a name becomes several
+    accounts and each needs its own display name (see ``_split_account_name``).
+    Rows always resolve by ``source_name``, never by the derived one.
+    """
+
     name: str
     currency: str
+    source_name: str
 
 
 @dataclass
@@ -47,6 +57,24 @@ def stable_row_key(row: ParsedRow | OpeningRow) -> str:
 
 def tx_id_for(row: ParsedRow | OpeningRow) -> str:
     return str(uuid.uuid5(mapping.IMPORT_NAMESPACE, stable_row_key(row)))
+
+
+def _split_account_name(name: str, currency: str, currencies: set[str]) -> str:
+    """Display name for one currency-leg of a sheet account.
+
+    A name used under a single currency is passed through verbatim. A name that
+    spans several gets each leg suffixed with its currency — "BCP Oro" holding
+    both PEN and USD rows becomes "BCP Oro PEN" and "BCP Oro USD", so neither
+    leg is ambiguous in a picker. Suffixing *both* rather than only the foreign
+    one keeps the pair symmetric and matches how such accounts are usually
+    named by hand. A name that already ends in its own currency is left alone
+    rather than doubled.
+    """
+    if len(currencies) < 2:
+        return name
+    if name.casefold().endswith(f" {currency.casefold()}"):
+        return name
+    return f"{name} {currency}"
 
 
 def _distinct_ci(names: Iterable[str]) -> list[str]:
@@ -96,7 +124,7 @@ def build_plan(
         opening_ids[row.line] = tx_id_for(row)
         kept_openings.append(row)
 
-    accounts: list[AccountSpec] = []
+    pairs: list[tuple[str, str]] = []
     acct_seen: set[tuple[str, str]] = set()
     # Openings can reference accounts that appear in no ordinary row — an
     # account whose only sheet entry is its SALDO INICIAL still gets created.
@@ -104,7 +132,19 @@ def build_plan(
         key = (row.account.strip().casefold(), row.currency)
         if key not in acct_seen:
             acct_seen.add(key)
-            accounts.append(AccountSpec(name=row.account.strip(), currency=row.currency))
+            pairs.append((row.account.strip(), row.currency))
+
+    spanning: dict[str, set[str]] = {}
+    for name, currency in pairs:
+        spanning.setdefault(name.casefold(), set()).add(currency)
+    accounts = [
+        AccountSpec(
+            name=_split_account_name(name, currency, spanning[name.casefold()]),
+            currency=currency,
+            source_name=name,
+        )
+        for name, currency in pairs
+    ]
 
     return ImportPlan(
         rows=rows,

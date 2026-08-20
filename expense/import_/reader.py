@@ -48,16 +48,21 @@ def read_workbook(path: str, *, sheet_name: str = mapping.SHEET_NAME) -> SheetDa
         raise ImportFileError(f"Could not open {path}: {exc}") from exc
 
     try:
-        if sheet_name not in wb.sheetnames:
+        # Tab names are matched case- and whitespace-insensitively: a sheet
+        # exported as `DATA`, `data` or `Data ` is the same sheet, and failing
+        # on the casing is a papercut with no upside.
+        wanted = sheet_name.strip().casefold()
+        actual = next((s for s in wb.sheetnames if s.strip().casefold() == wanted), None)
+        if actual is None:
             raise ImportFileError(
                 f"Sheet {sheet_name!r} not found. Sheets present: {', '.join(wb.sheetnames)}"
             )
-        ws = wb[sheet_name]
+        ws = wb[actual]
         rows_iter = ws.iter_rows(values_only=True)
         try:
             header = list(next(rows_iter))
         except StopIteration:
-            raise ImportFileError(f"Sheet {sheet_name!r} is empty.") from None
+            raise ImportFileError(f"Sheet {actual!r} is empty.") from None
         # Deliberately materialized (not streamed). `read_only=True` already keeps
         # openpyxl's cell cache lazy; the remaining win from yielding RawRows would
         # require `wb` to stay open through parse — i.e. read_workbook becoming a

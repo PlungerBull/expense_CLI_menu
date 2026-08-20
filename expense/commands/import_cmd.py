@@ -6,7 +6,7 @@ and writes transactions through the atomic batch endpoint.
 """
 
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 
 import typer
 
@@ -33,7 +33,10 @@ def _render_plan(plan: plan_mod.ImportPlan, *, json_output: bool) -> None:
                         {"line": s.line, "reason": s.reason, "detail": s.detail}
                         for s in plan.skipped
                     ],
-                    "accounts": [{"name": a.name, "currency": a.currency} for a in plan.accounts],
+                    "accounts": [
+                        {"name": a.name, "currency": a.currency, "source_name": a.source_name}
+                        for a in plan.accounts
+                    ],
                     "categories": plan.categories,
                     "hashtags": plan.hashtags,
                     "opening_balances": [
@@ -59,14 +62,13 @@ def _render_plan(plan: plan_mod.ImportPlan, *, json_output: bool) -> None:
         detail = ", ".join(f"{reason}: {n}" for reason, n in sorted(counts.items()))
         typer.echo(f"Skipped {len(plan.skipped)} row(s) — {detail}")
 
-    by_name: dict[str, list[str]] = defaultdict(list)
-    for spec in plan.accounts:
-        by_name[spec.name].append(spec.currency)
     typer.echo(f"\nAccounts to ensure ({len(plan.accounts)}):")
-    for name in sorted(by_name):
-        currencies = sorted(by_name[name])
-        flag = "  (split by currency)" if len(currencies) > 1 else ""
-        typer.echo(f"  {name} [{', '.join(currencies)}]{flag}")
+    for spec in sorted(plan.accounts, key=lambda s: (s.name.casefold(), s.currency)):
+        # A name that spans currencies is split into one account per currency
+        # and renamed; show where each leg came from so the extra rows in this
+        # list are self-explaining rather than a surprise.
+        origin = f'  (from "{spec.source_name}")' if spec.name != spec.source_name else ""
+        typer.echo(f"  {spec.name} [{spec.currency}]{origin}")
 
     typer.echo(f"\nCategories to ensure ({len(plan.categories)}):")
     typer.echo(f"  {', '.join(sorted(plan.categories))}")
@@ -150,11 +152,17 @@ def run_import(
     name and writes transactions in atomic batches. Without --apply it only
     prints what it would do and writes nothing.
 
-    Rows titled "SALDO INICIAL" (case/space-insensitive) are opening balances:
-    they seed the account via the engine's opening-balance endpoint (@Opening
-    system category, excluded from flow reports) instead of importing as
-    ordinary transactions. Their category/hashtag cells may be blank; one per
+    Rows marked "SALDO INICIAL" (case/space-insensitive) in EITHER the title or
+    the category column are opening balances: they seed the account via the
+    engine's opening-balance endpoint (@Opening system category, excluded from
+    flow reports) instead of importing as ordinary transactions. Their
+    category/hashtag cells may be blank and are discarded either way; one per
     account — extras are skipped as duplicate-opening in the preview.
+
+    An account name used under more than one currency becomes one account per
+    currency, each renamed with its currency suffix ("BCP Oro" holding PEN and
+    USD rows becomes "BCP Oro PEN" and "BCP Oro USD"). The dry-run names the
+    origin of every renamed leg.
 
     Re-running --apply is safe for unchanged and appended sheets: transaction
     ids derive from each row's content plus its line number, so already-imported

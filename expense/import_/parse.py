@@ -57,6 +57,14 @@ class SkippedRow:
 #: ``_normalize_title`` (casefold + collapsed whitespace).
 OPENING_TITLES = frozenset({"saldo inicial"})
 
+#: Categories that mark a row as an opening balance. Sheets disagree on which
+#: column carries the marker — some title the row "Saldo Inicial", others give
+#: it a descriptive title and file it under a SALDO INICIAL category. Either
+#: marker routes the row to the opening-balance endpoint; the category itself
+#: is then discarded (the engine assigns @Opening), so the marker never becomes
+#: a real user category.
+OPENING_CATEGORIES = frozenset({"saldo inicial"})
+
 
 def _normalize_title(title: str) -> str:
     return " ".join(title.split()).casefold()
@@ -64,6 +72,10 @@ def _normalize_title(title: str) -> str:
 
 def is_opening_title(title: str) -> bool:
     return _normalize_title(title) in OPENING_TITLES
+
+
+def is_opening_category(category: str | None) -> bool:
+    return category is not None and _normalize_title(category) in OPENING_CATEGORIES
 
 
 class ImportFormatError(Exception):
@@ -74,12 +86,14 @@ def build_column_index(headers: list[object]) -> dict[str, int]:
     """Map each canonical field to its column index by matching header labels."""
     norm = [mapping.normalize_header(h) for h in headers]
     index: dict[str, int] = {}
-    for field, label in mapping.FIELD_HEADERS.items():
-        if label in norm:
-            index[field] = norm.index(label)
+    for field, labels in mapping.FIELD_HEADERS.items():
+        for label in labels:
+            if label in norm:
+                index[field] = norm.index(label)
+                break
     missing = mapping.REQUIRED_FIELDS - index.keys()
     if missing:
-        wanted = ", ".join(sorted(mapping.FIELD_HEADERS[m] for m in missing))
+        wanted = ", ".join(sorted(mapping.FIELD_HEADERS[m][0] for m in missing))
         found = ", ".join(str(h) for h in headers if h is not None)
         raise ImportFormatError(
             f"Spreadsheet is missing required column(s): {wanted}. Found headers: {found}"
@@ -157,7 +171,7 @@ def parse_row(raw: RawRow, index: dict[str, int]) -> ParsedRow | OpeningRow | Sk
 
     if title is None:
         return SkippedRow(raw.line, "missing-title")
-    opening = is_opening_title(title)
+    opening = is_opening_title(title) or is_opening_category(category)
     if account is None:
         return SkippedRow(raw.line, "missing-account")
     # Opening rows skip the category/hashtag requirement — the engine assigns
