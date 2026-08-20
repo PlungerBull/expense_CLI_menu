@@ -64,9 +64,9 @@ accepted there, which 422'd and lost the whole write (removed; sketch:
 [mockups/expense-world-phase5-inbox-cleared.html](mockups/expense-world-phase5-inbox-cleared.html)).
 All five deleted per the rule above, see git history.)
 
-**Baseline (2026-08-18, after the Phase 8 `pilot.pause` sweep):** 922 unit tests
-green (920 + the two hygiene guards), contract suite 12/12 against the disposable
-engine on `:8001`.
+**Baseline (2026-08-19, after the ANSI palette):** 926 unit tests green,
+contract suite 12/12 against the disposable engine on `:8001`. (922 after the
+`pilot.pause` sweep; the palette work added four theme tests and reshaped two.)
 
 **Baseline (2026-08-16, after Phase 6.2):** 903 unit tests green, and the
 contract suite is 12/12 against the disposable engine on `:8001`. (868 after
@@ -166,30 +166,51 @@ its five items turned out to be mis-scoped, which is worth recording once.
 ## Phase 8 — pre-existing polish (unblocked; batch opportunistically)
 
 Survivors of the 2026-07-06 review §5 + tui-plan Phase 3 opens. None depend on
-Phases 1–7. **Worked in three passes** — 2026-08-16 (deleted-rows shipped, three
-items struck as already done), 2026-08-17 (the discoverability pair) and
-**2026-08-18 (the `pilot.pause` sweep)**; the rest stay open.
+Phases 1–7. **Worked in four passes** — 2026-08-16 (deleted-rows shipped, three
+items struck as already done), 2026-08-17 (the discoverability pair),
+2026-08-18 (the `pilot.pause` sweep) and **2026-08-19 (the ANSI palette,
+which closed the light-theme item by deleting its premise)**; the rest stay
+open.
 Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-sketch.html),
 [mockups/expense-world-phase8-discoverability.html](mockups/expense-world-phase8-discoverability.html).
 
-- [ ] TUI light theme + `NO_COLOR` palette (same `ansi_default` surface;
-  tui-plan §4). **Approach decided 2026-08-16 — auto-detect** the terminal
-  background (`OSC 11` + `COLORFGBG` fallback, dark default); see
-  [decisions.md](decisions.md) "The light theme will detect the terminal".
-  Textual ships **no** such detection (checked in 8.2.7), so the query is
-  hand-written in `run_world` before Textual takes the tty, with a timeout so
-  a silent terminal cannot hang the app. `NO_COLOR` stays a third mode
-  (`Theme(ansi=True)`), not the light theme.
-- [ ] Open decisions from tui-plan §9: designer's final theme tokens (#3 —
-  note it names a `theme.tcss` that was never created; tokens are `Theme`
-  fields in [theme.py](../expense/tui/theme.py)); minimum terminal size
-  fallback (#5 — partially handled already: `PAGE_ROWS_FLOOR = 5` degrades
-  rather than refuses).
+- [ ] Open decision from tui-plan §9: minimum terminal size fallback (#5 —
+  partially handled already: `PAGE_ROWS_FLOOR = 5` degrades rather than
+  refuses). *(§9 #3, "designer's final theme tokens", was **answered
+  2026-08-19**: there are no authored tokens to finalise — the terminal
+  supplies every colour. It also named a `theme.tcss` that never existed.)*
 - [ ] Post-Step-9 ergonomics (quick-add parser, shell completions, the
   "move between accounts" convenience, …) stay planned in
   [roadmap.md](roadmap.md) "Post-Step-9 ergonomics" — pointer only.
   **Unblocked 2026-08-16**: Phase 5's gate was their precondition and it
   passed.
+
+### Closed 2026-08-19 (delete on next touch)
+
+**The light theme — closed by not building one.** The item was "TUI light theme
++ `NO_COLOR` palette", and the approach on the books was to **detect** the
+terminal background over `OSC 11` and switch between two palettes we author.
+The user's question — *why detect at all, why not just use the terminal's own
+colours?* — deleted the premise: every colour is now an ANSI **slot**, the
+terminal fills it in, and there is no light theme, no dark theme, no query, no
+`select()` timeout and no second palette. Correct on light, dark, Solarized and
+Gruvbox alike. Picks C/D/F/H/K from
+[mockups/expense-world-ansi-palette.html](mockups/expense-world-ansi-palette.html);
+reversal written up in [decisions.md](decisions.md) "The terminal supplies the
+palette", which also supersedes the 2026-07-11 entry that had rejected exactly
+this.
+**`NO_COLOR` went with it (pick K)** — the terminal owns colour now, and the
+flat CLI already honours the variable on its own (`_resource.py:50-55`).
+What the plan did not anticipate, all three found by rendering rather than by
+testing: `$surface`/`$panel` **generate to `transparent`** under an ANSI theme,
+so the header rule, the quiet list border and the modal card were invisible or
+see-through (→ `$secondary`, and a literal `ansi_default` for the card); alpha
+is **dropped** on `ansi_default`, so the modal scrim became an opaque fill that
+**wiped** the screen behind it while every unit test still passed (→ literal
+`black 60%`, now guarded by `test_modal_scrim_dims_rather_than_wipes`); and an
+`ansi=True` theme must ship Textual's whole `variables` block or the app dies at
+startup on `$ansi-background`. The trade accepted knowingly: the tuned
+sage-and-rose palette is gone, and sign colours are louder on a stock profile.
 
 ### Closed 2026-08-18 (delete on next touch)
 

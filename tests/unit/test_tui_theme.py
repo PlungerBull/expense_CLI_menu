@@ -1,12 +1,13 @@
-"""Backlog 4.2 — semantic palette resolution + the no-literal-colors guard.
+"""Semantic palette resolution + the no-literal-colors guard.
 
 The TUI's Rich content can't use $theme-variables, so widgets inject resolved
-hexes via `resolve_palette` / `amount_cell`. These tests pin (1) the Textual
-contract that the plain "success"/"error"/"warning" variables resolve to the
-Theme's exact raw hex (an implementation detail of ColorSystem — a Textual
-upgrade that changes it should fail here, loudly), (2) the amount_cell rule
-matrix, (3) that no literal green/red/yellow style strings creep back in, and
-(4) that a runtime theme switch rebuilds section screens.
+styles via `resolve_palette` / `amount_cell`. Since 2026-08-19 those styles come
+from the *terminal*: the theme holds ANSI slots (`ansi_green`), and Rich wants
+that spelled `green`. These tests pin (1) that translation in both directions —
+ANSI slot stripped, hex left alone — plus the pending role carrying no colour at
+all, (2) the amount_cell rule matrix, (3) that no literal green/red/yellow style
+strings creep back in, and (4) that a runtime theme switch rebuilds section
+screens.
 """
 
 import asyncio
@@ -16,35 +17,85 @@ from pathlib import Path
 import expense.tui as tui_pkg
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.accounts import AccountsScreen
-from expense.tui.theme import EXPENSE_DARK, FALLBACK, Palette, resolve_palette
+from expense.tui.theme import (
+    EXPENSE_ANSI,
+    FALLBACK,
+    PENDING_STYLE,
+    Palette,
+    _rich,
+    resolve_palette,
+)
 from expense.tui.widgets.cells import amount_cell, difference_cell
 from tests.unit.helpers import wait_for
 
 PALETTE = Palette("#0f0", "#f00", "#ff0")
 
 
-def test_fallback_matches_theme_constants():
-    assert FALLBACK == Palette(EXPENSE_DARK.success, EXPENSE_DARK.error, EXPENSE_DARK.warning)
+def test_theme_is_ansi_slots_not_hexes():
+    """The whole proposition: no colour in the theme is a fixed value.
 
-
-def test_resolve_palette_returns_raw_theme_hexes():
-    """Contract: resolve_palette == the authored Theme hexes, exactly.
-
-    Reads app.current_theme, NOT theme_variables — the variable generation
-    HSL-roundtrips colors and drifts channels by one bit (e.g. warning
-    #d6b878 → #D5B878), which would break color parity with the approved
-    mockups. Also pins that a runtime switch is picked up.
+    A hex here would pin the app to one terminal again — the 2026-08-19
+    reversal exists precisely to stop that.
     """
+    assert EXPENSE_ANSI.ansi is True
+    for field in (
+        "success",
+        "error",
+        "warning",
+        "accent",
+        "primary",
+        "foreground",
+        "background",
+        "surface",
+        "panel",
+    ):
+        value = getattr(EXPENSE_ANSI, field)
+        assert value.startswith("ansi_"), f"{field} is {value!r}, not a terminal slot"
+    assert EXPENSE_ANSI.secondary == "ansi_bright_black"  # pick F — structural rules
+
+
+def test_rich_translation_strips_ansi_prefix_but_not_hexes():
+    """Rich rejects Textual's `ansi_green` and resolves `green` to slot 2."""
+    from rich.color import Color
+
+    assert _rich("ansi_green") == "green"
+    assert _rich("ansi_bright_black") == "bright_black"
+    assert _rich("#7fbf8f") == "#7fbf8f"  # a non-ANSI theme still resolves
+    # ...and the output is a terminal palette slot, not a fixed colour
+    assert Color.parse(_rich("ansi_green")).number == 2
+
+
+def test_fallback_matches_theme_constants():
+    assert FALLBACK == Palette("green", "red", PENDING_STYLE)
+
+
+def test_resolve_palette_translates_and_follows_theme_switch():
+    """resolve_palette reads app.current_theme and hands Rich something it can
+    parse. Also pins that a runtime switch is picked up, and that a built-in
+    (non-ANSI) theme still resolves — the translation must not corrupt a hex."""
+    from rich.style import Style
 
     async def scenario():
         app = ExpenseApp()
         async with app.run_test():
             assert resolve_palette(app) == FALLBACK
+            Style.parse(FALLBACK.success)  # raises if Rich can't read it
+            Style.parse(FALLBACK.warning)
             app.theme = "textual-dark"  # builtin themes are pre-registered
             switched = resolve_palette(app)
-            assert switched != FALLBACK and switched.success.startswith("#")
+            assert switched.success.startswith("#") and switched != FALLBACK
 
     asyncio.run(scenario())
+
+
+def test_pending_carries_weight_not_colour():
+    """Pick C: slot-3 yellow fails on a light ground, so the pending role uses
+    bold. Guard against someone quietly reintroducing a colour here."""
+    from rich.style import Style
+
+    style = Style.parse(PENDING_STYLE)
+    assert style.bold is True
+    assert style.color is None
 
 
 def test_amount_cell_rule_matrix():
@@ -131,9 +182,33 @@ def test_tui_runs_in_ansi_mode():
 def test_base_fills_are_terminal_transparent():
     """The base fills (Screen, #menu) must stay `ansi_default`, never an opaque
     hex. A hardcoded `background: $background` would paint over the terminal and
-    bring back the frame (on the menu edge, if only #menu regressed). The modal
-    dim scrim `background: $background 60%` is alpha-blended, not an opaque fill,
-    so it deliberately doesn't match the forbidden exact string."""
+    bring back the frame (on the menu edge, if only #menu regressed). #modal
+    carries `ansi_default` deliberately — an opaque card in the terminal's own
+    colour, which is what makes it hide the rows behind it (pick H)."""
     tcss = (Path(tui_pkg.__file__).parent / "app.tcss").read_text()
     assert tcss.count("background: ansi_default;") >= 2, "Screen + #menu base fills"
     assert "background: $background;" not in tcss, "opaque base fill re-seams the app"
+
+
+def test_modal_scrim_dims_rather_than_wipes():
+    """The scrim must keep an alpha and must NOT be an ANSI colour.
+
+    Alpha is dropped on `ansi_default`, so `background: $background 60%` — which
+    is what this rule said until 2026-08-19, and what Textual's own ModalScreen
+    ships — silently resolves to an OPAQUE fill and blanks the screen behind the
+    modal. Every other test still passed with that bug; only a render caught it.
+    Asserted on the composited output, not on the CSS text, because the CSS
+    reads correct either way.
+    """
+    from expense.tui.screens.modals import ConfirmModal
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(74, 16)) as pilot:
+            await app.push_screen(ConfirmModal("Delete account", "Delete BCP?"))
+            await wait_for(pilot, lambda: bool(app.screen.query("#modal")))
+            scrim = app.screen.styles.background
+            assert scrim.a < 1.0, f"scrim is opaque ({scrim!r}) — it wipes, not dims"
+            assert scrim.ansi is None, f"an ANSI scrim ({scrim!r}) loses its alpha"
+
+    asyncio.run(scenario())

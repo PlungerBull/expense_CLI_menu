@@ -29,7 +29,7 @@ from textual.keys import format_key, key_to_character
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
 
-from expense.tui.theme import EXPENSE_DARK
+from expense.tui.theme import EXPENSE_ANSI, _rich
 
 #: Only BINDINGS declared by classes under this package reach the card. Textual's
 #: own widget keys are not ours to document — see the module docstring.
@@ -236,10 +236,11 @@ def screen_inventory(screen) -> tuple[str, list[HelpGroup]]:
 
 def _accent(app) -> str:
     """The running theme's accent, for a Rich style. Same reasoning as
-    `resolve_palette`: read the authored Theme field, not the HSL-roundtripped
-    `theme_variables` shade. Falls back to our own theme's, never to a literal."""
+    `resolve_palette`, and the same translation: read the authored Theme field
+    (not the generated shade) and turn Textual's `ansi_blue` into the `blue`
+    Rich understands. Falls back to our own theme's, never to a literal."""
     theme = getattr(app, "current_theme", None)
-    return getattr(theme, "accent", None) or EXPENSE_DARK.accent
+    return _rich(getattr(theme, "accent", None) or EXPENSE_ANSI.accent)
 
 
 def _render_group(group: HelpGroup, width: int, accent: str, pad_to: int) -> RichGroup:

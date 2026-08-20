@@ -46,6 +46,7 @@ Rules for this file:
 | One word for hashtags — the engine's, everywhere | 2026-08-16 | full entry below |
 | The light theme will detect the terminal, not ask the user | 2026-08-16 | full entry below |
 | The command palette is removed, not populated — `?` is the one discoverability surface | 2026-08-17 | full entry below |
+| The terminal supplies the palette — every colour is an ANSI slot, nothing is detected | 2026-08-19 | full entry below |
 
 ## Sign is always literal — no default-to-expense magic (2026-04-25)
 
@@ -145,7 +146,7 @@ Rules for this file:
 
 **Decision.** Run the TUI in **ANSI mode** — `ExpenseApp` passes `ansi_color=True` ([app.py](../expense/tui/app.py)). Textual then emits the terminal's default background (SGR 49) instead of a fixed hex, so the app fill and the window padding become one continuous surface that **follows whatever dark terminal it runs in**. Scope is deliberate: **adaptive background, pinned foreground.** The theme stays non-ANSI, so every design token keeps its authored hex (net/spent red, owed green, grey selection bar, `$surface` separators, footer); only the base fill and inherited text color go through the terminal, and [app.tcss](../expense/tui/app.tcss) pins the foreground back to `$foreground` under `Screen:ansi`. The base fills (`Screen`, `#menu`) carry `ansi_default` — the id-level `#menu` rule out-specifies Textual's `Screen:ansi`, so a hardcoded fill there would just relocate the seam to the menu edge (guarded by `test_base_fills_are_terminal_transparent`). `ModalScreen:ansi` is overridden to keep the dim scrim Textual otherwise drops. This is correct on any **dark** terminal and identical to before on a near-black one; it does **not** make the app readable on a **light** terminal — the fixed muted/semantic hexes assume a dark ground. That, plus a true light theme, remains the open [tui-plan.md](tui-plan.md) light/`NO_COLOR` backlog item.
 
-**Rejected.** *Match a fixed hex* (`background="#000000"`) — exact and one line, but pinned to a single Terminal profile; on any other terminal the frame comes back. *Do nothing / fix the terminal profile* — punts a code-owned problem onto every machine's config. *Full native-ANSI theme* (`theme.ansi=True`, semantic colors → `ansi_*`) — truly terminal-agnostic including light terminals, but throws away the tuned sign-color palette and restyles foreground/scrollbars/footer app-wide; that belongs to the dedicated light/`NO_COLOR` theme work, not a seam fix.
+**Rejected.** *Match a fixed hex* (`background="#000000"`) — exact and one line, but pinned to a single Terminal profile; on any other terminal the frame comes back. *Do nothing / fix the terminal profile* — punts a code-owned problem onto every machine's config. *Full native-ANSI theme* (`theme.ansi=True`, semantic colors → `ansi_*`) — truly terminal-agnostic including light terminals, but throws away the tuned sign-color palette and restyles foreground/scrollbars/footer app-wide; that belongs to the dedicated light/`NO_COLOR` theme work, not a seam fix. **This rejection was reversed 2026-08-19** — the native-ANSI theme is now what ships, and giving up the tuned palette turned out to be the price worth paying. The reasoning above was right about the *cost* and wrong that the cost was too high; see "The terminal supplies the palette". Everything else in this entry still governs: the ground work below is the foundation the reversal builds on, not something it undid.
 
 ## Archive is a prompt-free toggle; Manage record detail deleted (2026-07-11)
 
@@ -283,7 +284,16 @@ This **reverses the label half of backlog 6.1's sketch pick E**, which chose `Ta
 
 **Rejected.** *Aligning on `Tags` and correcting the engine's vocabulary in the client* — shorter and friendlier, and it is what the spec already claimed, but it puts the client's word in front of the engine's on every screen while the wire format keeps saying `hashtag_ids`; the next client would have to make the same choice again with nothing to point at. *Leaving both and correcting the spec to admit the difference* — cheapest, changes nothing you see, and permanently ships two names for one thing.
 
-## The light theme will detect the terminal, not ask the user (2026-08-16, backlog Phase 8 — decision recorded, work not started)
+## The light theme will detect the terminal, not ask the user (2026-08-16, backlog Phase 8)
+
+> ⛔ **Reversed 2026-08-19 — never implemented.** See "The terminal supplies the
+> palette" below: the app now takes its colours from the terminal's own ANSI
+> slots, so there is nothing to detect. The `OSC 11` query, the `COLORFGBG`
+> fallback, the `select()` timeout and the second hand-tuned palette are all
+> deleted from the plan. Retained as the record of what was considered and why
+> the cheaper answer was missed for three days: every option below argues about
+> *how to choose between two palettes we author*, and none asks whether we
+> should author them at all.
 
 **Context.** The TUI runs in ANSI mode, so the base surface is already the terminal's own (2026-07-11, "TUI paints the terminal's own background"). What is still missing is the other half: one dark-tuned *foreground* palette, hard-coded at mount, unreadable on a light terminal. The open backlog item pairs a light theme with a `NO_COLOR` path. The implementation stays open; only the approach is settled here, so whoever picks it up is not re-deciding it.
 
@@ -306,3 +316,57 @@ The card's content is **derived, not hand-listed** — it walks the screen's and
 **Rejected.** *Binding `?` to Textual's built-in `action_show_help_panel`* — about three lines and it ships today; rejected because it lists seven rows of internals we never bound, prints `show=False` aliases as rows with an empty description, groups nothing, states none of the cross-screen conventions, docks right and squeezes the content to 33 columns, and is styled by Textual rather than through `resolve_palette`. *Populating the palette with a `Provider`* — navigation-only, or navigation plus the active screen's actions; more work than removal and it keeps both the theme picker and the footer strip. *A palette listing every screen's actions* — drawn in the mockup (§3, variant K) specifically to show why it cannot work: an action from a screen you are not on needs navigation **and** a selected record first, and some entries have no binding anywhere, so the list either lies or needs a per-action availability rule. *A one-column card (B)* — same content, roughly double the height, no room for the conventions block. *A full Help screen (D)* — the only shape that can carry the whole app's keymap at once, but it replaces the view instead of hovering over it, so you cannot read it against the list you were looking at.
 
 **Knock-on.** The entry above, "The light theme will detect the terminal", lists as a rejected alternative *"shipping the light palette with no selector, switchable only via `ctrl+p`"*. That escape hatch no longer exists — which strengthens rather than weakens the auto-detect decision it was rejected in favour of.
+
+## The terminal supplies the palette — every colour is an ANSI slot (2026-08-19, backlog Phase 8)
+
+**Context.** 2026-07-11 made the *ground* the terminal's own and stated, in this
+file and twice in its mockup, that it did not make the app readable on a **light**
+terminal — the foreground hexes assume a dark ground. 2026-08-16 answered that
+with detection: query the terminal's background over `OSC 11`, compute luminance,
+pick between two palettes we author. While scoping that build the user asked the
+obvious question nobody had: *why detect at all — why not just use the terminal's
+own colours?*
+
+**Decision.** **Nothing is detected.** Every colour in
+[theme.py](../expense/tui/theme.py) is an ANSI **slot** — `ansi_green`,
+`ansi_red`, `ansi_blue`, `ansi_bright_black`, `ansi_default` — on a single
+`Theme(ansi=True)`. `green` is not a colour, it is slot 2, and the terminal
+decides what goes in it: a dark profile fills it bright enough to survive black, a
+light profile darkens it to survive white. The person who configured the terminal
+already made this decision and every other TUI on their machine already honours
+it. Result: correct on dark, light, Solarized, Gruvbox, high-contrast — a wider
+target than the light/dark binary detection could ever reach — for a `removeprefix`
+instead of a hand-written terminal query. Picks from
+[mockups/expense-world-ansi-palette.html](mockups/expense-world-ansi-palette.html):
+**C** pending is `bold` with no colour (slot-3 yellow is the one slot that
+reliably fails on white, and the app already speaks bold/dim/reverse in ~40
+places); **D** accent `ansi_blue`; **F** structural rules `ansi_bright_black` via
+`$secondary`; **H** modal card opaque, dim scrim kept; **K** `NO_COLOR` dropped as
+a separate mode — the terminal owns colour now, and the flat CLI honours the
+variable on its own.
+
+**The cost, which is real.** The app no longer looks the same on every machine,
+and on a stock profile the sign colours are louder than the sage-and-rose that
+were approved in 4.2. That trade was put up first in the mockup, before any
+option, and accepted deliberately.
+
+**Three things only a render caught.** `$surface`/`$panel` *generate* to
+`transparent` under an ANSI theme, so the header rule, the quiet list border and
+the modal card were all invisible or see-through — hence `$secondary` for rules
+and a literal `ansi_default` for the card. Alpha is **dropped** on `ansi_default`,
+so the modal scrim silently became an opaque fill that *wiped* the screen behind
+it — a bug every unit test passed; the scrim is now a literal `black 60%` and
+`test_modal_scrim_dims_rather_than_wipes` asserts on composited output. And an
+`ansi=True` theme must ship Textual's full `variables` block (its own `Screen` CSS
+references `$ansi-background`); ours resolves cursors as **reverse video** rather
+than adopting either built-in's light- or dark-specific colours — refusing the
+same binary in the one place Textual still assumes it.
+
+**Rejected.** *Detection* — see the superseded entry above; it authors and
+maintains two palettes to approximate what the terminal already knows exactly.
+*A stored setting* — rejected there too, and even more clearly now. *Keeping the
+tuned palette on dark and adding ANSI only for light* — two code paths, the
+brittle detection back again, and the light path still unowned by any design.
+*Registering Textual's own `ansi-dark`/`ansi-light`* — they disagree on `warning`
+and `accent` precisely because they encode the light/dark split this decision
+refuses; adopting them would reintroduce the choice through the back door.

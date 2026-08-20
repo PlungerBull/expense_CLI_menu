@@ -136,7 +136,7 @@ def _stat_cluster(stats: dict | None, palette: Palette | None) -> Text:
     if isinstance(unrated, int) and not isinstance(unrated, bool) and unrated > 0:
         return Text(
             f"{unrated} {UNRATED_SUFFIX.upper()}",
-            style=f"bold {palette.warning}" if palette else "bold",
+            style=palette.warning if palette else "bold",
         )
     pos = palette.success if palette else ""
     neg = palette.error if palette else ""

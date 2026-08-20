@@ -2,16 +2,21 @@
    theme swap recolors everything — no hardcoded hex here. */
 
 /* The app runs in ANSI mode (ExpenseApp passes ansi_color=True), so the base
-   fill is the terminal's OWN background — the app has no seam against the
-   terminal's window padding, and follows whatever dark terminal it runs in.
-   Textual's own Screen:ansi also flips text to the terminal's default fg; pin it
-   back to our theme foreground. The pin must be :ansi-specific to out-specify
-   that rule. See docs/decisions.md for the decision + dark-terminal-only scope. */
+   fill is the terminal's OWN background — no seam against the terminal's window
+   padding, on any terminal. Since 2026-08-19 the *foreground* is the terminal's
+   too: the old `Screen:ansi { color: $foreground }` pin is gone, so text takes
+   the terminal's default fg and the app reads on light grounds as well as dark.
+   See docs/decisions.md "The terminal supplies the palette".
+
+   NOTE the literal `ansi_default` here and on #modal below: `$surface`/`$panel`
+   *generate* to `transparent` under an ANSI theme, so a token would make these
+   see-through rather than terminal-coloured — the opposite of what a base fill
+   and a modal card need. Structural rules (header rule, list-panel border) use
+   `$secondary` for the same reason: they were drawn with `$surface` and would
+   now be invisible. The modal scrim is the one deliberate literal — see the
+   long note above ModalScreen:ansi. */
 Screen {
     background: ansi_default;
-}
-Screen:ansi {
-    color: $foreground;
 }
 
 /* ---- home ---- */
@@ -19,12 +24,12 @@ Screen:ansi {
     padding: 0 2;  /* single physical row — the wordmark+stats content is one line (see _build_header) */
     color: $foreground;
     text-style: bold;
-    border-bottom: solid $surface;  /* thin rule dividing header from menu */
+    border-bottom: solid $secondary;  /* thin rule dividing header from menu */
 }
 /* No box: the menu sits directly on the terminal-transparent background (one
-   surface with the screen, not a raised panel). This id rule out-specifies
-   Textual's Screen:ansi, so it must carry `ansi_default` itself — a hardcoded
-   fill here would relocate the seam to the menu edge. `border: none` overrides
+   surface with the screen, not a raised panel). It carries `ansi_default`
+   itself rather than a token, for the reason given at the top of this file —
+   a hardcoded fill here would relocate the seam to the menu edge. `border: none` overrides
    OptionList's default `tall` border; group headers, the inter-group
    separators, and the selection bar carry the structure the box used to. */
 #menu {
@@ -39,7 +44,7 @@ Screen:ansi {
 #crumb {
     padding: 1 2;
     color: $text-muted;
-    border-bottom: solid $surface;
+    border-bottom: solid $secondary;
 }
 #content {
     height: 1fr;
@@ -97,11 +102,24 @@ Screen:ansi {
 RecordModal, SnapshotModal, ConfirmModal, PromptModal, HelpModal {
     align: center middle;
 }
-/* In ANSI mode Textual's ModalScreen:ansi drops the dim backdrop
-   (background: transparent); restore our scrim so a modal still reads as
-   sitting *on top* of the screen behind it (the #modal card stays $panel). */
+/* The dim scrim (pick H, 2026-08-19). `black`, NOT `$background`, and that is
+   the whole subtlety — learned by rendering it, not by reading it:
+
+   `$background` is `ansi_default` under our theme, and alpha is DROPPED on an
+   ANSI colour (`Color.parse("ansi_default").with_alpha(.6)` loses the ansi
+   marker). So `background: $background 60%` resolves to an *opaque* fill and
+   **wipes** the screen behind rather than dimming it — you lose sight of the
+   very row you are confirming a delete on. Textual's own
+   `ModalScreen:ansi { background: transparent }` can't save us either: our
+   `Screen { background: ansi_default }` above out-specifies it.
+
+   A literal `black 60%` composites properly over the terminal's ground, which
+   is pick H exactly as its mockup legend stated it: the scrim is the one thing
+   in the app not derived from the terminal, and on a light terminal it washes
+   toward black rather than toward the ground. That cost was on the page when
+   the pick was made. The card itself is opaque — see #modal below. */
 ModalScreen:ansi {
-    background: $background 60%;
+    background: black 60%;
 }
 /* width is DEFINITE, not `auto`: inside `align: center middle` on Textual 8.x,
    `width: auto` measures to 0, collapsing the box to an empty border (Enter's
@@ -113,8 +131,8 @@ ModalScreen:ansi {
     max-width: 90%;
     height: auto;
     max-height: 80%;
-    border: round $surface;
-    background: $panel;
+    border: round $accent;
+    background: ansi_default;
     padding: 1 2;
 }
 /* confirm/prompt carry short messages — a narrower box reads better */
@@ -148,7 +166,7 @@ ConfirmModal #modal, PromptModal #modal {
    the old title/legend line), muted subtitle carrying the page status
    (pagination pick B: `rows 21-40 of 133 · page 2 of 7`). Theme tokens only. */
 CursorList, CheckList {
-    border: round $surface-lighten-2;
+    border: round $secondary;
     border-title-color: $accent;
     border-title-style: bold;
     border-subtitle-color: $text-muted;

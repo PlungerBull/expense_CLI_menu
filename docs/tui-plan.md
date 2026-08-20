@@ -167,13 +167,18 @@ detects the terminal's background (via the `OSC 11` query / `COLORFGBG`) to pick
 palette that reads on it. Ink apps (like Claude Code) get the transparent surface by
 default; Textual paints opaque cells, so we opt in via `ansi_color=True`.
 
-**Current state:** one *dark-tuned* foreground palette → correct on any *dark*
-terminal, identical to before on a near-black one, but not legible on a *light*
-terminal (the muted/semantic hexes assume a dark ground). The seam work is the
-foundation, not the finish: a real **light + auto** theme = add a light-tuned
-`Theme` object (widgets already read tokens via `resolve_palette`, so no widget
-changes) + terminal-background detection, all on the same `ansi_default` surface —
-tracked as the light/`NO_COLOR` item in Phase 3 below.
+**Current state (2026-08-19): finished, and not the way this section planned.**
+The foreground is now the terminal's too — every colour in
+[theme.py](../expense/tui/theme.py) is an ANSI **slot** (`ansi_green` is slot 2;
+the terminal fills it in), so the app reads on dark, light, Solarized and Gruvbox
+with **no detection at all**. There is no light theme and no dark theme, because
+there is nothing to choose between. `$surface`/`$panel` generate to `transparent`
+under an ANSI theme, so structural rules take `$secondary` (`ansi_bright_black`)
+and the modal card a literal `ansi_default`; the pending role carries `bold`
+rather than a colour, slot-3 yellow being the one slot that fails on white.
+Rationale, cost and the three render-only surprises:
+[decisions.md](decisions.md) "The terminal supplies the palette"; picks in
+[mockups/expense-world-ansi-palette.html](mockups/expense-world-ansi-palette.html).
 
 > **Approach decided 2026-08-16 (backlog Phase 8; work not started).**
 > **Auto-detect**, not a stored setting: query the terminal's background
@@ -313,10 +318,12 @@ archives/unarchives **immediately — no confirm modal**
 - **Exit criteria:** create/edit/act parity with the flat command surface.
 
 ### Phase 3 — Polish & hardening · **~1 week** · ◐ slices shipped (backlog §4 2026-07-05/06, §5 2026-07-06)
-- Designer's theme tokens dropped in; light/dark; `NO_COLOR` paths.
-  *(Semantic colors now theme-resolve via `resolve_palette`/`amount_cell` — §4.2;
-  the background is now terminal-transparent (ANSI mode, 2026-07-11 — see §4);
-  a true light theme + NO_COLOR palette still open.)*
+- Designer's theme tokens dropped in; light/dark; `NO_COLOR` paths. ✅
+  *(Closed 2026-08-19 by removing the premise: colour comes from the terminal's
+  own ANSI slots, so there are no authored tokens to finalise, no light/dark
+  pair to switch between, and `NO_COLOR` is the terminal's business — see §4.
+  Semantic colors still resolve via `resolve_palette`/`amount_cell`, which now
+  translate Textual's `ansi_green` into the `green` Rich understands.)*
 - Keybinding consistency ✅ (§4.1/§4.5 keymap contract: r always refreshes, y alone
   confirms — scoped to delete/revert/promote since archive is confirm-free (2026-07-11),
   enter never mutates — on the Manage lists it's a literal no-op; **standing constraint:**

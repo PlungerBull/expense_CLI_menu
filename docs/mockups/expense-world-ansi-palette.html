@@ -551,5 +551,63 @@ palette. All of it.
 <br/><b>Nothing gets written until you pick.</b>
 </div>
 
+
+<!-- ================================================================= -->
+<div class="step">9 · as shipped — 2026-08-19</div>
+
+<div class="qbox" style="background:#0f1512;border-color:#25352b">
+<b style="color:var(--pos)">PICKED AND BUILT.</b>
+<b style="color:var(--pos)">C</b> pending is <code>bold</code>, no colour ·
+<b style="color:var(--pos)">D</b> accent <code>ansi_blue</code> ·
+<b style="color:var(--pos)">F</b> rules <code>ansi_bright_black</code> ·
+<b style="color:var(--pos)">H</b> opaque card + dim scrim ·
+<b style="color:var(--pos)">K</b> <code>NO_COLOR</code> dropped.
+<ul>
+  <li>926 unit tests green. <code>run_world</code> <b>untouched</b> — no
+      <code>OSC 11</code>, no <code>COLORFGBG</code>, no timeout anywhere in
+      <code>expense/</code>.</li>
+  <li>Probed from the running app: amounts render <code>green on default</code> /
+      <code>reverse red on default</code>, panel borders and the header rule
+      <code>color(8)</code>, panel titles and footer keys <code>color(4)</code>.</li>
+</ul>
+</div>
+
+<div class="note">
+<span class="hd">Three things this page did not anticipate</span>
+All three were found by <b>rendering</b> the app, not by running tests — the
+suite was green through every one of them.
+
+<b>1. <code>$surface</code> and <code>$panel</code> generate to
+<code>transparent</code>, not to <code>ansi_default</code>.</b> §5 predicted this
+for the list border only. It was true of three more: the header rule under the
+wordmark, and the modal card, which would have been see-through. Structural rules
+now take <code>$secondary</code>; the card takes a literal
+<code>ansi_default</code>.
+
+<b>2. The scrim in pane H was silently wiping the screen, not dimming it.</b>
+§6 reasoned that <code>$background</code> stays <code>ansi_default</code> and so
+the scrim could keep using it. It does stay — but <b>alpha is dropped on an ANSI
+colour</b>, so <code>$background 60%</code> resolved to an <b>opaque</b> fill and
+blanked the list behind the modal: you could not see the row you were confirming a
+delete on. Fixed with a literal <code>black 60%</code>, which is pick H exactly as
+its legend described it (the one thing not derived from the terminal, washing
+toward black on a light ground). Now guarded by
+<code>test_modal_scrim_dims_rather_than_wipes</code>, which asserts on composited
+output because the CSS reads correct either way.
+
+<b>3. An <code>ansi=True</code> theme must ship Textual's whole
+<code>variables</code> block</b> or the app dies at startup on
+<code>$ansi-background</code>, which its own <code>Screen</code> CSS references.
+Textual's two ANSI themes fill that block with light- and dark-specific cursor
+colours — the very split this page refuses. Ours resolves cursors as <b>reverse
+video</b> instead, matching what <code>CursorList</code> already does in Rich, and
+correct on any ground by construction.
+
+<span class="hd">One thing added beyond the picks</span>
+Footer key glyphs were rendering <b>magenta</b> — Textual's fallback for
+<code>$footer-key-foreground</code>, a colour this app uses nowhere else. Set to
+<code>ansi_blue</code>, reading pick D's "help key glyphs" as covering them.
+</div>
+
 </body>
 </html>

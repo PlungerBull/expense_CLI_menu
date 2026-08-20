@@ -132,14 +132,20 @@ def test_alert_renders_the_mark_when_stale():
     assert text.plain == RATE_ALERT_MARK
 
 
-def test_alert_is_warning_colored_from_the_palette():
+def test_alert_takes_the_pending_style_from_the_palette():
     """Warning, not error: a carried-forward rate is the engine's designed
     fallback, so the figures are roughly right. Palette-sourced, never a literal
-    color name — the no-literal-color guard in test_tui_theme.py depends on it.
+    style — the no-literal-color guard in test_tui_theme.py depends on it.
+
+    The emphasis now lives in the palette, not here: pick C (2026-08-19) made the
+    pending role `bold` with no colour, so a call site that prepended its own
+    "bold " would render "bold bold". Asserted with the REAL palette, since the
+    synthetic one above is a colour triple from before that change.
     """
-    style = str(rate_alert(True, PALETTE).style)
-    assert PALETTE.warning in style
-    assert "bold" in style
+    from expense.tui.theme import FALLBACK
+
+    assert str(rate_alert(True, PALETTE).style) == PALETTE.warning  # palette-sourced
+    assert str(rate_alert(True, FALLBACK).style) == "bold"  # ...and it is emphasis
 
 
 def test_alert_is_empty_when_fresh_or_unknown():

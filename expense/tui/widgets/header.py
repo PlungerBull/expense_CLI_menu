@@ -40,7 +40,7 @@ def rate_alert(stale: bool | None, palette: Palette | None = None) -> Text:
     """
     if not stale:
         return Text("")
-    return Text(RATE_ALERT_MARK, style=f"bold {palette.warning}" if palette else "bold")
+    return Text(RATE_ALERT_MARK, style=palette.warning if palette else "bold")
 
 
 class Breadcrumb(Static):
