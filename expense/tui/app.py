@@ -13,7 +13,7 @@ from expense.tui.widgets.header import Breadcrumb
 
 
 class ExpenseApp(App):
-    """Root app: registers themes and hosts the screen stack.
+    """Root app: registers the theme and hosts the screen stack.
 
     `verbose` is read off the typer context and handed to engine fetches
     (run in worker threads by each screen) so the TUI honors `--verbose`
@@ -47,12 +47,14 @@ class ExpenseApp(App):
 
     def __init__(self, *, verbose: bool = False) -> None:
         # ansi_color=True makes Textual paint the terminal's OWN default
-        # background (SGR 49) instead of our fixed hex, so the app fill and the
-        # terminal's window padding are one continuous surface — no seam — and it
-        # follows whatever (dark) terminal it runs in. The theme stays non-ANSI,
-        # so every design token keeps its authored hex; only the base fill and
-        # inherited text color go through the terminal. app.tcss pins the
-        # foreground back to $foreground. Rationale + scope: docs/decisions.md.
+        # background (SGR 49) instead of a fixed hex, so the app fill and the
+        # terminal's window padding are one continuous surface — no seam — on
+        # whatever terminal it runs in. Since 2026-08-19 the *foreground* goes
+        # through the terminal too: the theme is native-ANSI, every colour is a
+        # slot the terminal fills in, and nothing is pinned back. That is what
+        # makes the app readable on a light terminal without detecting one.
+        # Rationale + the cost: docs/decisions.md "The terminal supplies the
+        # palette".
         super().__init__(ansi_color=True)
         self._verbose = verbose
 

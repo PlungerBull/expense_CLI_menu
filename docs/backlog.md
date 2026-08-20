@@ -174,6 +174,15 @@ open.
 Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-sketch.html),
 [mockups/expense-world-phase8-discoverability.html](mockups/expense-world-phase8-discoverability.html).
 
+- [ ] Dead theme-switching machinery — `THEMES` is a list of one, and three
+  screens subscribe to `theme_changed_signal` (`_base.py:260`, `home.py:210`,
+  `reconciliations.py:526`) with `_on_theme_change` handlers nothing can fire:
+  the picker went with the command palette (2026-08-17) and the light/dark pair
+  went with the ANSI palette (2026-08-19), so no route to a theme change exists.
+  ~60 lines including two tests that guard the unreachable path. **Explicitly
+  deprioritised 2026-08-19 by the user — themes are non-core.** Registering one
+  `Theme` is *not* part of this: Textual accepts colour configuration no other
+  way. Keep only if a future designer palette is wanted without touching widgets.
 - [ ] Open decision from tui-plan §9: minimum terminal size fallback (#5 —
   partially handled already: `PAGE_ROWS_FLOOR = 5` degrades rather than
   refuses). *(§9 #3, "designer's final theme tokens", was **answered
