@@ -58,7 +58,7 @@ from expense.tui.screens._form import FormScreen
 from expense.tui.screens.help import HelpBindingMixin
 from expense.tui.screens.modals import ConfirmModal
 from expense.tui.screens.quick_log import amount_to_text, parse_amount
-from expense.tui.theme import AMOUNT_RULE, BALANCE_RULE, Palette, resolve_palette
+from expense.tui.theme import AMOUNT_RULE, BALANCE_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell, difference_cell
 from expense.tui.widgets.checklist import CheckList
 from expense.tui.widgets.cursor_list import CursorList
@@ -182,7 +182,7 @@ class ReconciliationsScreen(SectionScreen):
         self._accounts = data["accounts"]
         self._acct_idx = min(self._acct_idx, max(0, len(self._accounts) - 1))
         self._rebuild_batches()
-        palette = resolve_palette(self.app)
+        palette = PALETTE
         acct_rows = [
             (aid, [name, cur, amount_cell(bal, palette, AMOUNT_RULE)])
             for (aid, name, cur, bal) in self._accounts
@@ -236,7 +236,7 @@ class ReconciliationsScreen(SectionScreen):
             return
         self._acct_idx = event.index
         self._rebuild_batches()
-        self._batch_list.set_rows(batch_rows(self._batches, palette=resolve_palette(self.app)))
+        self._batch_list.set_rows(batch_rows(self._batches, palette=PALETTE))
         self._batch_list.border_title = self._batch_caption()
 
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
@@ -508,8 +508,6 @@ class ReconciliationDetailScreen(HelpBindingMixin, EngineWriteMixin, ContentSwap
         self._acct_name: str | None = None  # resolved worker-side in _load_txns
         # last painted rows, cached so a theme change repaints from memory
         # instead of re-fetching (backlog §5)
-        self._last_rows: list | None = None
-        self._last_checked: list | None = None
 
     @property
     def _completed(self) -> bool:
@@ -523,7 +521,6 @@ class ReconciliationDetailScreen(HelpBindingMixin, EngineWriteMixin, ContentSwap
         yield Footer()
 
     def on_mount(self) -> None:
-        self.app.theme_changed_signal.subscribe(self, self._on_theme_change)
         self._render_header()
         # First fetch waits for the first layout pass: _populate sizes the
         # checklist to #rlist's real height (adaptive rows, 2026-07-13).
@@ -546,19 +543,6 @@ class ReconciliationDetailScreen(HelpBindingMixin, EngineWriteMixin, ContentSwap
         if self._list is not None and self._list.is_attached:
             self._list.set_page_size(self._checklist_items())
 
-    def _on_theme_change(self, _theme: object) -> None:
-        # Repaint with the new palette; rebuild the checklist from cached rows
-        # rather than re-fetching (Rich bakes hexes at build time, so a rebuild
-        # is required — but not a network/cache read). Fall back to a load only
-        # if the first fetch hasn't landed yet (backlog §5).
-        self._render_header()
-        if self._last_rows is not None:
-            self.run_worker(
-                self._populate(self._last_rows, self._last_checked or []), exclusive=False
-            )
-        else:
-            self._load_txns()
-
     def _apply_fresh_record(self, fresh: dict) -> None:
         """Main-thread: rebind _record from a refreshed batch, then repaint the
         header. Called via call_from_thread so the worker never mutates screen
@@ -572,7 +556,7 @@ class ReconciliationDetailScreen(HelpBindingMixin, EngineWriteMixin, ContentSwap
 
     def _render_header(self) -> None:
         r = self._record
-        palette = resolve_palette(self.app)
+        palette = PALETTE
         # short-id placeholder until _load_txns resolves the name worker-side —
         # a full-table SQLite read here blocked first paint (backlog 6.5c)
         acct = self._acct_name or resolve_name(self._account_id, {})
@@ -681,7 +665,6 @@ class ReconciliationDetailScreen(HelpBindingMixin, EngineWriteMixin, ContentSwap
         self.app.call_from_thread(self._populate, rows, checked)
 
     async def _populate(self, rows: list, checked: list) -> None:
-        self._last_rows, self._last_checked = rows, checked
         async with self._content_lock():
             container = self.query_one("#rlist", Container)
             await container.remove_children()
@@ -695,7 +678,7 @@ class ReconciliationDetailScreen(HelpBindingMixin, EngineWriteMixin, ContentSwap
                 checked,
                 read_only=self._completed,
                 empty=empty,
-                palette=resolve_palette(self.app),
+                palette=PALETTE,
                 page_size=self._checklist_items(),  # adaptive window (2026-07-13)
             )
             self._list.border_title = "Transactions"

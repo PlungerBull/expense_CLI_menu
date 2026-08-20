@@ -29,7 +29,7 @@ from expense.commands._resource import (
     unconverted_of,
 )
 from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
-from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.theme import AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import aggregate_cell, amount_cell
 
 
@@ -290,7 +290,7 @@ class OutstandingScreen(SectionScreen):
 
     def build(self, data: dict) -> list[Widget]:
         body = data["body"]
-        palette = resolve_palette(self.app)
+        palette = PALETTE
         month = format_month(body.get("month"))
         title = Text(f"Outstanding Amounts  ·  {month}  (current month)")
         widgets: list[Widget] = [

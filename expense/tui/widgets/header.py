@@ -4,7 +4,7 @@ from rich.console import RenderableType
 from rich.text import Text
 from textual.widgets import Static
 
-from expense.tui.theme import Palette
+from expense.tui.theme import PALETTE, Palette
 
 #: The whole indicator. Deliberately one character: it reports that a number
 #: elsewhere may be slightly off, which does not deserve a sentence in a header
@@ -71,7 +71,7 @@ class Breadcrumb(Static):
             text.append(part, style="bold" if i == last else "")
 
         app = _app(self)
-        alert = rate_alert(getattr(app, "rate_stale", None), _palette(app))
+        alert = rate_alert(getattr(app, "rate_stale", None), PALETTE)
         if alert.plain:
             text.append(RATE_ALERT_GAP)
             text.append_text(alert)
@@ -88,21 +88,5 @@ def _app(widget):
     """
     try:
         return widget.app
-    except Exception:
-        return None
-
-
-def _palette(app) -> Palette | None:
-    """The running theme's palette, or None outside an app.
-
-    Local to keep `rate_alert` pure — the same reason every other Rich-rendering
-    helper in this package takes a palette rather than reaching for one.
-    """
-    from expense.tui.theme import resolve_palette
-
-    if app is None:
-        return None
-    try:
-        return resolve_palette(app)
     except Exception:
         return None

@@ -23,7 +23,7 @@ from expense.commands import reports_cmd
 from expense.commands._resource import load_hashtag_name_map
 from expense.commands.dashboard_cmd import hashtag_label
 from expense.tui.screens._base import SectionScreen, screen_fetch_kwargs
-from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.theme import AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import aggregate_cell
 
 WINDOW_MONTHS = 4
@@ -173,7 +173,7 @@ class MonthlyReportScreen(SectionScreen):
         }
 
     def build(self, data: dict) -> list[Widget]:
-        palette = resolve_palette(self.app)
+        palette = PALETTE
         labels: list[str] = data["grid"]["labels"]
         span = f"{labels[0]} → {labels[-1]}" if labels else "(no months)"
         return [

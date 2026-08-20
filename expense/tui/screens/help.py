@@ -29,7 +29,7 @@ from textual.keys import format_key, key_to_character
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
 
-from expense.tui.theme import EXPENSE_ANSI, _rich
+from expense.tui.theme import ACCENT
 
 #: Only BINDINGS declared by classes under this package reach the card. Textual's
 #: own widget keys are not ours to document — see the module docstring.
@@ -234,15 +234,6 @@ def screen_inventory(screen) -> tuple[str, list[HelpGroup]]:
 # ---------------------------------------------------------------------------
 
 
-def _accent(app) -> str:
-    """The running theme's accent, for a Rich style. Same reasoning as
-    `resolve_palette`, and the same translation: read the authored Theme field
-    (not the generated shade) and turn Textual's `ansi_blue` into the `blue`
-    Rich understands. Falls back to our own theme's, never to a literal."""
-    theme = getattr(app, "current_theme", None)
-    return _rich(getattr(theme, "accent", None) or EXPENSE_ANSI.accent)
-
-
 def _render_group(group: HelpGroup, width: int, accent: str, pad_to: int) -> RichGroup:
     """One titled block, padded to `pad_to` rows so the block beneath it starts
     on the same line as its opposite number in the other column."""
@@ -316,7 +307,7 @@ class HelpModal(ModalScreen):
     def compose(self) -> ComposeResult:
         yield Vertical(
             Static(Text(self._title), classes="modal-title"),
-            Static(render_card(self._groups, _accent(self.app))),
+            Static(render_card(self._groups, ACCENT)),
             Static(Text("[?] or [esc] close", style="dim")),
             id="modal",
         )

@@ -8,7 +8,7 @@ from textual.app import App
 
 from expense.context import get_verbose
 from expense.tui.screens.home import HomeScreen
-from expense.tui.theme import DEFAULT_THEME, THEMES
+from expense.tui.theme import EXPENSE_ANSI
 from expense.tui.widgets.header import Breadcrumb
 
 
@@ -62,9 +62,8 @@ class ExpenseApp(App):
         return HomeScreen()
 
     def on_mount(self) -> None:
-        for theme in THEMES:
-            self.register_theme(theme)
-        self.theme = DEFAULT_THEME
+        self.register_theme(EXPENSE_ANSI)
+        self.theme = EXPENSE_ANSI.name
         self.refresh_rate_status()
 
     @work(thread=True, exclusive=True, group="rate-status")

@@ -244,21 +244,21 @@ def test_monthly_report_screen_renders_and_slides_window(monkeypatch):
 def test_grid_cells_are_theme_colored_not_literal():
     """Amount cells go through the palette; empty cells dash; unpriced ones warn."""
     from expense.tui.screens.reports import _grid_cell
-    from expense.tui.theme import FALLBACK
+    from expense.tui.theme import PALETTE
 
-    negative = _grid_cell({"cents": -100, "unconverted": 0}, FALLBACK)
-    assert isinstance(negative, Text) and negative.style == FALLBACK.error
-    positive = _grid_cell({"cents": 100, "unconverted": 0}, FALLBACK)
-    assert isinstance(positive, Text) and positive.style == FALLBACK.success
+    negative = _grid_cell({"cents": -100, "unconverted": 0}, PALETTE)
+    assert isinstance(negative, Text) and negative.style == PALETTE.error
+    positive = _grid_cell({"cents": 100, "unconverted": 0}, PALETTE)
+    assert isinstance(positive, Text) and positive.style == PALETTE.success
 
     # No activity — a dim dash, as before.
-    missing = _grid_cell(None, FALLBACK)
+    missing = _grid_cell(None, PALETTE)
     assert isinstance(missing, Text) and str(missing) == "—"
-    zero = _grid_cell({"cents": 0, "unconverted": 0}, FALLBACK)
+    zero = _grid_cell({"cents": 0, "unconverted": 0}, PALETTE)
     assert isinstance(zero, Text) and str(zero) == "—"
 
     # Unpriceable — its own warning-colored figure, never a dash and never 0.00.
-    unrated = _grid_cell({"cents": None, "unconverted": 3}, FALLBACK)
+    unrated = _grid_cell({"cents": None, "unconverted": 3}, PALETTE)
     assert isinstance(unrated, Text) and str(unrated) == "3 unrated"
-    assert unrated.style == FALLBACK.warning
+    assert unrated.style == PALETTE.warning
     assert str(unrated) != str(missing)

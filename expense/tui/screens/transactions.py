@@ -23,7 +23,7 @@ from expense.commands._resource import (
 )
 from expense.tui.screens._base import PagedListMixin, SectionScreen, screen_fetch_kwargs
 from expense.tui.screens.quick_log import QuickAddLogScreen
-from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.theme import AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.cursor_list import CursorList
 
@@ -88,7 +88,7 @@ class TransactionsScreen(PagedListMixin, SectionScreen):
             data["accounts"],
             data["categories"],
             data["hashtags"],
-            palette=resolve_palette(self.app),
+            palette=PALETTE,
         )
         # Panel title absorbs the old title + legend rows; the border subtitle
         # carries the page status (picks B/A, 2026-07-11).

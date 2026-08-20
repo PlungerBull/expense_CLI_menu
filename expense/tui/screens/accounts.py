@@ -12,7 +12,7 @@ from textual.binding import Binding
 
 from expense.commands import accounts_cmd
 from expense.tui.screens._base import ResourceListScreen
-from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.theme import AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell, swatch
 
 _HEADERS = ["Name", "Type", "Cur", "Color", "Balance", "Status"]
@@ -77,7 +77,7 @@ class AccountsScreen(ResourceListScreen):
         self.notify(message, title="Failed", severity="error")
 
     def rows(self, items: list) -> list:
-        return account_rows(items, palette=resolve_palette(self.app))
+        return account_rows(items, palette=PALETTE)
 
     def edit_screen(self, item: dict):
         from expense.tui.screens.create_forms import EditAccountScreen

@@ -30,7 +30,7 @@ from textual.message import Message
 from textual.widgets import Static
 
 from expense.commands._resource import DEFAULT_PAGE_ROWS
-from expense.tui.theme import AMOUNT_RULE, FALLBACK, Palette
+from expense.tui.theme import AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.cursor_list import page_indicator
 
@@ -79,7 +79,7 @@ class CheckList(Static):
         *,
         read_only: bool = False,
         empty: str = "(no transactions)",
-        palette: Palette = FALLBACK,  # value object: _build must stay app-less
+        palette: Palette = PALETTE,  # value object: _build must stay app-less
         page_size: int = DEFAULT_PAGE_ROWS,
     ) -> None:
         super().__init__()

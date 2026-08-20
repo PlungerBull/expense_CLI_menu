@@ -76,7 +76,7 @@ The `expense/tui/` package (which replaced the now-deleted `expense/menu/`):
 expense/tui/
   app.py            # ExpenseApp(App): screen stack, global bindings, worker helper
   app.tcss          # Textual CSS — layout + NEUTRAL theme tokens
-  theme.py          # Palette + resolve_palette(app) — semantic colors, theme-resolved (§4.2)
+  theme.py          # the ANSI Theme + the PALETTE constant Rich content styles with (§4)
   widgets/
     header.py       # Breadcrumb — slim section header (home banner lives in home.py)
                     #   + rate_alert() — the `!` staleness mark both headers share (§3.1)
@@ -322,8 +322,11 @@ archives/unarchives **immediately — no confirm modal**
   *(Closed 2026-08-19 by removing the premise: colour comes from the terminal's
   own ANSI slots, so there are no authored tokens to finalise, no light/dark
   pair to switch between, and `NO_COLOR` is the terminal's business — see §4.
-  Semantic colors still resolve via `resolve_palette`/`amount_cell`, which now
-  translate Textual's `ansi_green` into the `green` Rich understands.)*
+  Semantic colors reach Rich through the `PALETTE` constant, which translates
+  Textual's `ansi_green` into the `green` Rich understands. `resolve_palette(app)`
+  and the `theme_changed_signal` re-render machinery were **deleted 2026-08-20**:
+  with one theme and no way to switch, the lookup provably returned the same
+  value on every render.)*
 - Keybinding consistency ✅ (§4.1/§4.5 keymap contract: r always refreshes, y alone
   confirms — scoped to delete/revert/promote since archive is confirm-free (2026-07-11),
   enter never mutates — on the Manage lists it's a literal no-op; **standing constraint:**

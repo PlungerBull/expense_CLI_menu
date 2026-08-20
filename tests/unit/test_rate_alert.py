@@ -142,10 +142,10 @@ def test_alert_takes_the_pending_style_from_the_palette():
     "bold " would render "bold bold". Asserted with the REAL palette, since the
     synthetic one above is a colour triple from before that change.
     """
-    from expense.tui.theme import FALLBACK
+    from expense.tui.theme import PALETTE
 
     assert str(rate_alert(True, PALETTE).style) == PALETTE.warning  # palette-sourced
-    assert str(rate_alert(True, FALLBACK).style) == "bold"  # ...and it is emphasis
+    assert str(rate_alert(True, PALETTE).style) == "bold"  # ...and it is emphasis
 
 
 def test_alert_is_empty_when_fresh_or_unknown():

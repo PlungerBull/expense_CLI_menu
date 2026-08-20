@@ -38,7 +38,7 @@ from expense.tui.screens.system import (
     RatesScreen,
 )
 from expense.tui.screens.transactions import TransactionsScreen
-from expense.tui.theme import Palette, resolve_palette
+from expense.tui.theme import PALETTE, Palette
 from expense.tui.widgets.header import RATE_ALERT_GAP, rate_alert
 
 _BANNER = "◈  EXPENSE WORLD"
@@ -206,8 +206,6 @@ class HomeScreen(HelpBindingMixin, Screen):
 
     def on_mount(self) -> None:
         self._load_stats()
-        # colors are baked palette hexes, so re-render when the theme switches
-        self.app.theme_changed_signal.subscribe(self, lambda _theme: self._rerender())
 
     def on_screen_resume(self) -> None:
         # returning home after a write should reflect the new numbers
@@ -230,7 +228,7 @@ class HomeScreen(HelpBindingMixin, Screen):
         self._rerender()
 
     def _rerender(self) -> None:
-        palette = resolve_palette(self.app)
+        palette = PALETTE
         self.query_one("#brand", Static).update(
             _build_header(self._stats, palette, getattr(self.app, "rate_stale", None))
         )

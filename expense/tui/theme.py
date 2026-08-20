@@ -9,25 +9,27 @@ This *replaces* the hand-tuned dark palette and the planned `OSC 11`
 terminal-background query — see docs/decisions.md for the reversal and what
 it cost.
 
-Widgets reference theme variables ($accent, $text-muted, $rule, $error) in
-[app.tcss](app.tcss); a theme swap recolors the whole app with no widget
-changes.
+Widgets reference theme variables ($accent, $secondary, $text-muted, $error) in
+[app.tcss](app.tcss), so the slots below are the only place a colour is chosen.
 
-Rich renderables (Text/Table inside Static widgets) can't resolve `$var`
-markup — for those, `resolve_palette(app)` yields Rich-parseable styles and
-widgets inject them. Two things it has to do:
+Textual has two colour worlds that don't talk: CSS rules resolve `$accent`,
+but screens also build Rich `Text`/`Table` objects inside `Static` widgets, and
+Rich has never heard of `$accent` — it needs a literal like `green`. `PALETTE`
+is the bridge. It holds **no app reference**, which is what lets the pure
+row-builders (`account_rows`, `amount_cell`, …) be unit-tested without an app,
+and lets them take `palette=None` to render unstyled.
 
-  · **Translate the spelling.** Textual writes `ansi_green`; Rich rejects that
-    and wants `green` (which it resolves to STANDARD slot 2 — the terminal's
-    own). `_rich` strips the prefix, and leaves a hex untouched so a
-    non-ANSI theme still works.
-  · **Read the authored Theme field, not `theme_variables`** — the shade
-    generation turns `ansi_default` surfaces into `transparent` and isn't
-    Rich-parseable at all.
+`PALETTE` is a **constant**, not a lookup. It used to be `resolve_palette(app)`,
+reading `app.current_theme` on every render so a theme switch would repaint —
+but there is one theme and no way to change it (the picker went with the command
+palette, 2026-08-17; the light/dark pair went with the ANSI slots, 2026-08-19),
+so that call provably returned the same value every time. Removed 2026-08-20
+along with the theme-change signal it existed for.
 
-Screens re-render on `app.theme_changed_signal`, so injected styles follow a
-runtime theme switch. There is no in-app theme *picker* any more — the command
-palette that carried Textual's was removed 2026-08-17 (see docs/decisions.md).
+It is still *derived* from the Theme rather than written out: `_rich` turns
+Textual's `ansi_green` into the `green` Rich wants, so the slots above stay the
+single source of truth — and no literal colour name appears in this package,
+which `test_no_literal_color_styles_in_tui` requires.
 
 The two rule constants are the backlog-4.2 product decision: amounts and
 account balances are sign-colored everywhere; reconciliation statement
@@ -88,9 +90,6 @@ EXPENSE_ANSI = Theme(
     },
 )
 
-THEMES = [EXPENSE_ANSI]
-DEFAULT_THEME = EXPENSE_ANSI.name
-
 # Pick C (2026-08-19): drafts and pending states carry **weight, not colour**.
 # Slot-3 yellow is the one ANSI colour that reliably fails on a light ground,
 # and this app already speaks bold/dim/reverse fluently (~40 sites), so the
@@ -106,11 +105,7 @@ BALANCE_RULE: Literal["sign", "plain"] = "plain"
 
 
 def _rich(color: str) -> str:
-    """Textual's ANSI spelling → Rich's. `ansi_green` → `green` (slot 2).
-
-    A hex passes through untouched, so a non-ANSI theme (a Textual built-in,
-    or a future designer palette) still resolves correctly.
-    """
+    """Textual's ANSI spelling → Rich's. `ansi_green` → `green` (slot 2)."""
     return color.removeprefix("ansi_")
 
 
@@ -127,20 +122,7 @@ class Palette:
     warning: str
 
 
-FALLBACK = Palette(_rich(EXPENSE_ANSI.success), _rich(EXPENSE_ANSI.error), PENDING_STYLE)
+PALETTE = Palette(_rich(EXPENSE_ANSI.success), _rich(EXPENSE_ANSI.error), PENDING_STYLE)
 
-
-def resolve_palette(app) -> Palette:
-    """The running theme's semantic styles, for injecting into Rich.
-
-    Value object with no app reference — safe to hand to the pure row-builder
-    functions. Call on the UI thread; `current_theme` tracks runtime theme
-    switches (theme_changed_signal subscribers always read the new theme).
-    Theme fields are Optional — a theme that omits one falls back to ours.
-    """
-    theme = app.current_theme
-    return Palette(
-        _rich(theme.success or EXPENSE_ANSI.success),
-        _rich(theme.error or EXPENSE_ANSI.error),
-        PENDING_STYLE,
-    )
+# The help card's key glyphs; same story as PALETTE — one theme, so one value.
+ACCENT = _rich(EXPENSE_ANSI.accent)

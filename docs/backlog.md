@@ -64,9 +64,9 @@ accepted there, which 422'd and lost the whole write (removed; sketch:
 [mockups/expense-world-phase5-inbox-cleared.html](mockups/expense-world-phase5-inbox-cleared.html)).
 All five deleted per the rule above, see git history.)
 
-**Baseline (2026-08-19, after the ANSI palette):** 926 unit tests green,
-contract suite 12/12 against the disposable engine on `:8001`. (922 after the
-`pilot.pause` sweep; the palette work added four theme tests and reshaped two.)
+**Baseline (2026-08-20, after the theme-machinery removal):** 924 unit tests
+green, contract suite 12/12 against the disposable engine on `:8001`. (926 after
+the ANSI palette; two tests guarding an unreachable theme switch were deleted.)
 
 **Baseline (2026-08-16, after Phase 6.2):** 903 unit tests green, and the
 contract suite is 12/12 against the disposable engine on `:8001`. (868 after
@@ -174,15 +174,6 @@ open.
 Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-sketch.html),
 [mockups/expense-world-phase8-discoverability.html](mockups/expense-world-phase8-discoverability.html).
 
-- [ ] Dead theme-switching machinery — `THEMES` is a list of one, and three
-  screens subscribe to `theme_changed_signal` (`_base.py:260`, `home.py:210`,
-  `reconciliations.py:526`) with `_on_theme_change` handlers nothing can fire:
-  the picker went with the command palette (2026-08-17) and the light/dark pair
-  went with the ANSI palette (2026-08-19), so no route to a theme change exists.
-  ~60 lines including two tests that guard the unreachable path. **Explicitly
-  deprioritised 2026-08-19 by the user — themes are non-core.** Registering one
-  `Theme` is *not* part of this: Textual accepts colour configuration no other
-  way. Keep only if a future designer palette is wanted without touching widgets.
 - [ ] Open decision from tui-plan §9: minimum terminal size fallback (#5 —
   partially handled already: `PAGE_ROWS_FLOOR = 5` degrades rather than
   refuses). *(§9 #3, "designer's final theme tokens", was **answered
@@ -193,6 +184,30 @@ Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase
   [roadmap.md](roadmap.md) "Post-Step-9 ergonomics" — pointer only.
   **Unblocked 2026-08-16**: Phase 5's gate was their precondition and it
   passed.
+
+### Closed 2026-08-20 (delete on next touch)
+
+**Dead theme machinery removed.** Parked as non-core on 2026-08-19, then done
+the next day on the user's "remove everything that doesn't earn its keep".
+`resolve_palette(app)` read `app.current_theme` on every render so a theme switch
+could repaint — but the picker went with the command palette (2026-08-17) and the
+light/dark pair went with the ANSI slots (2026-08-19), so it provably returned the
+same value every time. Gone, with the `theme_changed_signal` subscriptions and
+`_on_theme_change` handlers in `_base.py`/`home.py`/`reconciliations.py` and the
+two caches that existed only to feed them (`SectionScreen._data`,
+`ReconciliationDetailScreen._last_rows`/`_last_checked`). `resolve_palette` →
+the `PALETTE` constant (was `FALLBACK`; one name now, not two), `help._accent(app)`
+→ `ACCENT`, `header._palette(app)` → gone, `THEMES`/`DEFAULT_THEME` → one
+`register_theme(EXPENSE_ANSI)`.
+**What survived the cut, and why:** the `Palette` dataclass itself. It is the only
+bridge from theme to Rich — CSS resolves `$accent`, Rich has never heard of it —
+and holding no app reference is what keeps the row-builders pure and testable with
+`palette=None`. Registering one `Theme` also stays: Textual accepts colour
+configuration no other way.
+Verified by re-probing the render, not just the suite: borders `color(8)`, amounts
+`green`/`reverse red`, footer keys `color(4)` — byte-identical to before, which is
+what a pure removal should look like. Two tests guarding the unreachable switch
+path went too (924 unit tests, down from 926).
 
 ### Closed 2026-08-19 (delete on next touch)
 

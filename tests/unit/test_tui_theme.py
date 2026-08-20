@@ -1,7 +1,7 @@
 """Semantic palette resolution + the no-literal-colors guard.
 
 The TUI's Rich content can't use $theme-variables, so widgets inject resolved
-styles via `resolve_palette` / `amount_cell`. Since 2026-08-19 those styles come
+styles via the `PALETTE` constant / `amount_cell`. Since 2026-08-19 those come
 from the *terminal*: the theme holds ANSI slots (`ansi_green`), and Rich wants
 that spelled `green`. These tests pin (1) that translation in both directions —
 ANSI slot stripped, hex left alone — plus the pending role carrying no colour at
@@ -16,19 +16,12 @@ from pathlib import Path
 
 import expense.tui as tui_pkg
 from expense.tui.app import ExpenseApp
-from expense.tui.screens.accounts import AccountsScreen
-from expense.tui.theme import (
-    EXPENSE_ANSI,
-    FALLBACK,
-    PENDING_STYLE,
-    Palette,
-    _rich,
-    resolve_palette,
-)
+from expense.tui.theme import EXPENSE_ANSI, PALETTE, PENDING_STYLE, Palette, _rich
 from expense.tui.widgets.cells import amount_cell, difference_cell
 from tests.unit.helpers import wait_for
 
-PALETTE = Palette("#0f0", "#f00", "#ff0")
+# A deliberately fake palette: the cell rules must be colour-agnostic.
+SYNTHETIC = Palette("#0f0", "#f00", "#ff0")
 
 
 def test_theme_is_ansi_slots_not_hexes():
@@ -65,27 +58,14 @@ def test_rich_translation_strips_ansi_prefix_but_not_hexes():
     assert Color.parse(_rich("ansi_green")).number == 2
 
 
-def test_fallback_matches_theme_constants():
-    assert FALLBACK == Palette("green", "red", PENDING_STYLE)
-
-
-def test_resolve_palette_translates_and_follows_theme_switch():
-    """resolve_palette reads app.current_theme and hands Rich something it can
-    parse. Also pins that a runtime switch is picked up, and that a built-in
-    (non-ANSI) theme still resolves — the translation must not corrupt a hex."""
+def test_palette_is_derived_from_the_theme_and_rich_can_read_it():
+    """PALETTE is a constant, but a *derived* one — the slots stay the single
+    source of truth, and no literal colour name appears in the package."""
     from rich.style import Style
 
-    async def scenario():
-        app = ExpenseApp()
-        async with app.run_test():
-            assert resolve_palette(app) == FALLBACK
-            Style.parse(FALLBACK.success)  # raises if Rich can't read it
-            Style.parse(FALLBACK.warning)
-            app.theme = "textual-dark"  # builtin themes are pre-registered
-            switched = resolve_palette(app)
-            assert switched.success.startswith("#") and switched != FALLBACK
-
-    asyncio.run(scenario())
+    assert PALETTE == Palette("green", "red", PENDING_STYLE)
+    for style in (PALETTE.success, PALETTE.error, PALETTE.warning):
+        Style.parse(style)  # raises if Rich can't read it
 
 
 def test_pending_carries_weight_not_colour():
@@ -100,29 +80,29 @@ def test_pending_carries_weight_not_colour():
 
 def test_amount_cell_rule_matrix():
     # plain rule, missing palette, or non-int cents → the bare string
-    assert amount_cell(100, PALETTE, "plain") == amount_cell(100, None, "sign")
-    assert isinstance(amount_cell(None, PALETTE, "sign"), str)
+    assert amount_cell(100, SYNTHETIC, "plain") == amount_cell(100, None, "sign")
+    assert isinstance(amount_cell(None, SYNTHETIC, "sign"), str)
     # sign: both directions colored
-    assert amount_cell(100, PALETTE, "sign").style == PALETTE.success
-    assert amount_cell(-100, PALETTE, "sign").style == PALETTE.error
-    assert str(amount_cell(-43250, PALETTE, "sign")) == "-432.50"
+    assert amount_cell(100, SYNTHETIC, "sign").style == SYNTHETIC.success
+    assert amount_cell(-100, SYNTHETIC, "sign").style == SYNTHETIC.error
+    assert str(amount_cell(-43250, SYNTHETIC, "sign")) == "-432.50"
     # income-only: positives colored, negatives bare
-    assert amount_cell(100, PALETTE, "income-only").style == PALETTE.success
-    assert isinstance(amount_cell(-100, PALETTE, "income-only"), str)
+    assert amount_cell(100, SYNTHETIC, "income-only").style == SYNTHETIC.success
+    assert isinstance(amount_cell(-100, SYNTHETIC, "income-only"), str)
 
 
 def test_difference_cell_balances_to_a_dim_dash():
     """Phase 3 sketch picks: sign-colored when off (B), dim em dash when it
     balances (H). Zero must never render as a colored 0.00 — a balanced batch
     is the goal state, not a number to check."""
-    balanced = difference_cell(0, PALETTE)
+    balanced = difference_cell(0, SYNTHETIC)
     assert str(balanced) == "—" and balanced.style == "dim"
     # a missing/omitted field reads the same, never a misleading 0.00
-    assert str(difference_cell(None, PALETTE)) == "—"
+    assert str(difference_cell(None, SYNTHETIC)) == "—"
     # off in either direction: sign-colored like every other amount
-    assert difference_cell(-3500, PALETTE).style == PALETTE.error
-    assert difference_cell(3500, PALETTE).style == PALETTE.success
-    assert str(difference_cell(-3500, PALETTE)) == "-35.00"
+    assert difference_cell(-3500, SYNTHETIC).style == SYNTHETIC.error
+    assert difference_cell(3500, SYNTHETIC).style == SYNTHETIC.success
+    assert str(difference_cell(-3500, SYNTHETIC)) == "-35.00"
 
 
 def test_no_literal_color_styles_in_tui():
@@ -140,36 +120,6 @@ def test_no_literal_color_styles_in_tui():
         for match in pattern.finditer(path.read_text())
     ]
     assert not offenders, f"literal color styles bypass the theme: {offenders}"
-
-
-def test_theme_change_rebuilds_section_screens(monkeypatch):
-    """Switching themes at runtime must rebuild the card — Rich
-    bakes resolved hexes at build time — but must NOT re-fetch: it repaints from
-    the data already in memory (backlog §5)."""
-    fetches: list = []
-    builds: list = []
-    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
-    monkeypatch.setattr(
-        "expense.commands.accounts_cmd.fetch_accounts",
-        lambda cfg, **k: (fetches.append(1), {"items": []})[1],
-    )
-
-    async def scenario():
-        app = ExpenseApp()
-        async with app.run_test() as pilot:
-            screen = AccountsScreen()
-            orig_build = screen.build
-            monkeypatch.setattr(
-                screen, "build", lambda data: (builds.append(1), orig_build(data))[1]
-            )
-            await app.push_screen(screen)
-            await wait_for(pilot, lambda: fetches and builds)
-            fetched, built = len(fetches), len(builds)
-            app.theme = "textual-dark"  # builtin themes are pre-registered
-            await wait_for(pilot, lambda: len(builds) > built)  # re-rendered
-            assert len(fetches) == fetched  # ...but did NOT re-fetch
-
-    asyncio.run(scenario())
 
 
 def test_tui_runs_in_ansi_mode():

@@ -244,7 +244,6 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
     CARD_WIDTH: int | None = 64  # cap the content card; None = fill width
     # Last fetched payload, cached so a theme swap re-renders from memory instead
     # of re-fetching. None = nothing loaded yet (an empty list/dict is still cached).
-    _data: object = None
     _started: bool = False  # first load ran (it waits for the first layout pass)
 
     # ---- adaptive list sizing (2026-07-13, mockups/expense-world-adaptive-rows.html)
@@ -257,7 +256,6 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
         yield Footer()
 
     def on_mount(self) -> None:
-        self.app.theme_changed_signal.subscribe(self, self._on_theme_change)
         # First load waits for the first layout pass: adaptive page sizing
         # (measure_list_rows) reads #content's height, which is 0 at mount.
         self.call_after_refresh(self._start_load)
@@ -294,15 +292,6 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
         rows = avail - self.LIST_FRAME_LINES - self.list_extra_lines()
         return max(self.PAGE_ROWS_FLOOR, min(DEFAULT_PAGE_ROWS, rows))
 
-    def _on_theme_change(self, _theme: object) -> None:
-        # Rich content bakes resolved hexes at build time, so a live theme change
-        # must rebuild the card — but from data already in memory, not a fresh
-        # engine/cache fetch (backlog §5). Only load if nothing's cached yet.
-        if self._data is not None:
-            self.run_worker(self._show(self._data), exclusive=False, group="section-render")
-        else:
-            self._start_load()
-
     async def action_reload(self) -> None:
         async with self._content_lock():
             content = self.query_one("#content", VerticalScroll)
@@ -328,7 +317,6 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
         self.app.call_from_thread(self._show, data)
 
     async def _show(self, data: object) -> None:
-        self._data = data  # cache for theme re-render (see _on_theme_change)
         content = self.query_one("#content", VerticalScroll)
         async with self._content_lock():
             await content.remove_children()

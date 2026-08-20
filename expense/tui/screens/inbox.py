@@ -25,7 +25,7 @@ from expense.commands._resource import (
 )
 from expense.tui.screens._base import PagedListMixin, SectionScreen, screen_fetch_kwargs
 from expense.tui.screens.quick_log import QuickAddLogScreen
-from expense.tui.theme import AMOUNT_RULE, Palette, resolve_palette
+from expense.tui.theme import AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell
 from expense.tui.widgets.cursor_list import CursorList
 
@@ -128,7 +128,7 @@ class InboxScreen(PagedListMixin, SectionScreen):
             data["categories"],
             data["hashtags"],
             data["ready_ids"],
-            palette=resolve_palette(self.app),
+            palette=PALETTE,
         )
         return [
             CursorList(

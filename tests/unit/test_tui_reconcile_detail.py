@@ -35,17 +35,17 @@ def test_checklist_toggle_emits_and_tracks():
 
 def test_checklist_colors_come_from_palette():
     """Amounts + checked marks use the injected palette, never literal colors (4.2)."""
-    from expense.tui.theme import FALLBACK
+    from expense.tui.theme import PALETTE
 
     rows = [
         ("t1", "Alquiler", -250000, "2026-04-03", "Vivienda"),
         ("t2", "Refund", 5620, "2026-04-09", ""),
     ]
-    table = CheckList(rows, checked=["t1"])._build()  # app-less, FALLBACK palette
+    table = CheckList(rows, checked=["t1"])._build()  # app-less, PALETTE palette
     marks, amounts = table.columns[0]._cells, table.columns[2]._cells
-    assert marks[0].style == FALLBACK.success and marks[2].style == "dim"  # [x] vs [ ]
-    assert amounts[0].style == FALLBACK.error  # -2,500.00
-    assert amounts[2].style == FALLBACK.success  # +56.20
+    assert marks[0].style == PALETTE.success and marks[2].style == "dim"  # [x] vs [ ]
+    assert amounts[0].style == PALETTE.error  # -2,500.00
+    assert amounts[2].style == PALETTE.success  # +56.20
 
 
 def test_status_span_maps_completed_and_draft():
