@@ -76,8 +76,8 @@ def _batch_sort_key(r: dict):
 
     `fetch()` pulls every account's batches in one unscoped read so that moving
     the account cursor stays instant — and the unscoped list is `created_at
-    DESC`, not statement order (only account-scoped reads sort by date; see
-    client-breaking-changes.md 2026-08-06). So the per-account slice re-applies
+    DESC`, not statement order (only account-scoped reads sort by date — engine
+    contract, unchained since 2026-08-06). So the per-account slice re-applies
     the documented server key: `date_start ASC NULLS LAST, created_at ASC`.
     ISO-8601 strings sort chronologically as text.
     """

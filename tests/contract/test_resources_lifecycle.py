@@ -2,8 +2,8 @@
 
 Accounts: create → update → archive → unarchive → delete → restore.
 Categories and hashtags: create → update → delete → restore — they lost their
-archive routes in the 2026-08-06 schema slimming, and accounts are now the only
-archivable resource (see docs/client-breaking-changes.md).
+archive routes in the 2026-08-06 schema slimming, and accounts (people included)
+are now the only archivable resource.
 
 Hits a real engine. Gating, target resolution and the real-ledger guard live in
 conftest.py; uses ExpenseClient directly so each test owns its idempotency keys.

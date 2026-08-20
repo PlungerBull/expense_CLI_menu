@@ -3,7 +3,7 @@
 A retained-mode Textual app over the same engine/command layer the flat CLI
 uses (zero business logic here). The entry point is kept light: `world_command`
 imports Textual lazily so plain `expense <cmd>` invocations don't pay the cost.
-See [docs/tui-plan.md](../../docs/tui-plan.md).
+See [docs/tui.md](../../docs/tui.md).
 """
 
 import typer

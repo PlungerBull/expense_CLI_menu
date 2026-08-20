@@ -63,7 +63,7 @@ There is exactly **one engine: the local deployment** (`http://127.0.0.1:8000`, 
 
 **The contract suite** (`tests/contract/`) hits a real engine deliberately and is double-gated: `PYTEST_LIVE=1 EXPENSE_PAT=<token> pytest tests/contract`. `EXPENSE_ENGINE_URL` overrides the target and now defaults to `http://127.0.0.1:8000` — until 2026-08-16 it defaulted to the mothballed Render host, so the env var was effectively mandatory while this page claimed otherwise.
 
-**It refuses to run against the real ledger.** Without `EXPENSE_PAT` the only credential available is the developer's own config, so [tests/contract/conftest.py](../tests/contract/conftest.py) aborts the session with a message pointing at the practice database. `EXPENSE_ALLOW_REAL_LEDGER=1` overrides it. This exists because the alternative — a printed warning — only helps someone who is watching, and on 2026-08-16 a mis-scoped gate ran the suite against the real ledger and left four live junk accounts behind (backlog Phase 5, option C of [mockups/expense-world-phase5-sketch.html](mockups/expense-world-phase5-sketch.html)).
+**It refuses to run against the real ledger.** Without `EXPENSE_PAT` the only credential available is the developer's own config, so [tests/contract/conftest.py](../tests/contract/conftest.py) aborts the session with a message pointing at the practice database. `EXPENSE_ALLOW_REAL_LEDGER=1` overrides it. This exists because the alternative — a printed warning — only helps someone who is watching, and on 2026-08-16 a mis-scoped gate ran the suite against the real ledger and left four live junk accounts behind (option C of [mockups/expense-world-phase5-sketch.html](mockups/expense-world-phase5-sketch.html)).
 
 What the suite does: walks real flows (the freshman gate: config → ping → bootstrap → accounts/categories create → log → dashboard), redirects `EXPENSE_CONFIG` to a temp dir so the developer's install is untouched, and cleans up after itself best-effort in reverse dependency order. Cleanup means **soft-deletes** — the run leaves tombstoned rows in the PAT user's account (visible under `--include-deleted`), which is exactly why it belongs on the practice database. Run it at step gates, when engine-shape drift is suspected, or before calling a release done — never in CI (deps and gating are designed so CI stays hermetic).
 
@@ -76,4 +76,5 @@ What the suite does: walks real flows (the freshman gate: config → ping → bo
 - [CLAUDE.md](../CLAUDE.md) — non-negotiable conventions (terse, project-loaded)
 - [cli-spec.md](cli-spec.md) — command surface and flags
 - [decisions.md](decisions.md) — including "Delete the local replica" (2026-08-06)
-- [roadmap.md](roadmap.md) — phasing (Step 7's replica is retired; see its banner)
+- [tui.md](tui.md) — the TUI, which runs on everything above unchanged
+- [todo.md](todo.md) — the open-work workpad

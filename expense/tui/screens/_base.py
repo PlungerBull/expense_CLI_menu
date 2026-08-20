@@ -251,7 +251,7 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
     # rows: below a ~18-line terminal the extra rows are fetched and then clipped
     # off the bottom, and the panel's own bottom border goes first (h=20). Measured
     # boundaries and the decision not to guard them: docs/decisions.md "A terminal
-    # too small is the user's to fix", docs/tui-plan.md §9 #5.
+    # too small is the user's to fix", docs/tui.md §5.
     PAGE_ROWS_FLOOR = 5
 
     def compose(self) -> ComposeResult:

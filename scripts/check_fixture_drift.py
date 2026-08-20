@@ -5,9 +5,8 @@ Why this exists: `pytest tests/unit` is respx-mocked, so it validates the CLI
 against fixtures *we* wrote, not against the engine. After the 2026-08 rework it
 stayed green while pinning several deleted fields — green meant "the CLI agrees
 with itself". This closes that gap mechanically: the engine publishes every field
-it serves in `openapi.json` (guaranteed since the 2026-08-07 shapes fix, see
-docs/client-breaking-changes.md), so a fixture key that appears in no engine
-schema is either drift or a test-local key.
+it serves in `openapi.json` (guaranteed since the 2026-08-07 shapes fix), so a
+fixture key that appears in no engine schema is either drift or a test-local key.
 
 Deliberately NOT a pytest file. tests/unit is hermetic — `tests/unit/conftest.py`
 blocks real sockets on purpose — and that rule is worth more than the convenience

@@ -42,7 +42,7 @@ PACKAGE = "expense.tui"
 #: the action whose row it joins.
 FOLD_INTO = {"move(-1)": "move(1)"}
 
-#: Cross-screen rules from docs/tui-plan.md §4.1. No screen declares them, so no
+#: Cross-screen rules from docs/tui.md §4. No screen declares them, so no
 #: walk can find them — and they are the one thing a generated key list can never
 #: say. Rendered inline (key immediately before the text), not in a key column.
 CONVENTIONS = (
@@ -64,7 +64,7 @@ EXCLUDED_ACTIONS = frozenset({"help"})
 #: Widget bindings that only do something when the *screen* handles the message
 #: they post. `CursorList`'s `enter` posts `Selected`; on the Manage lists no
 #: screen handles it, because the keymap contract makes `enter` a literal no-op
-#: there (docs/tui-plan.md §4.1). Advertising `⏎ Open` on those screens would be
+#: there (docs/tui.md §4). Advertising `⏎ Open` on those screens would be
 #: the card lying — so the row is dropped when the handler is absent.
 NEEDS_SCREEN_HANDLER = {"select": "on_cursor_list_selected"}
 
