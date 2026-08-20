@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — minimum terminal size (2026-08-20)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     tui-plan §9 open decision #5: "Minimum terminal size — fallback/refuse
+     below e.g. 80x24?" The last line in backlog Phase 8.
+
+     The doc currently records this as "partly answered in practice — the app
+     DEGRADES rather than refuses (PAGE_ROWS_FLOOR = 5), and run_world already
+     exits 1 on a non-tty." Measuring it says that is only true down to about
+     80x22. Below that it does not degrade gracefully, it disintegrates — and
+     it never says so.
+
+     PROVENANCE:
+       · REAL (probe) — every terminal pane on this page is the actual
+         compositor output of TransactionsScreen at that exact size, captured
+         by running the app headless with a patched fetch and printing
+         `screen._compositor.render_strips()`. Nothing is redrawn by hand;
+         the ellipses are the app's own.
+       · REAL (scan) — the boundary table in section 2 is a sweep over
+         heights 24..8 and widths 80..30, counting visible data rows and
+         testing for the panel's closing border.
+       · DRAWN — only the proposed fallbacks in sections 3 and 4.
+
+     TWO FAILURES, NOT ONE. They have different causes and either fix could
+     be chosen without the other:
+       height -> rows are silently clipped off the bottom; the panel's own
+                 bottom border is the first casualty (gone from h=20).
+       width  -> rows are all present, but columns collapse to bare "…". The
+                 screen looks healthy and tells you nothing.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --term:#121216; --panel:#1d1d22;
+    --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --dimmer:#3c3f47;
+    --accent:#9db1c2; --neg:#cf8d8d; --pos:#7fbf8f; --warn:#d8b779;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:22px;
+       padding:38px 20px 70px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  h1{width:min(1120px,100%);font-size:17px;font-weight:600;letter-spacing:.02em;margin:0}
+  .sub{width:min(1120px,100%);color:var(--dim);font-size:12.5px;line-height:1.65;margin:-10px 0 0}
+  .sub b{color:var(--muted)}
+  .lbl{width:min(1120px,100%);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .step{width:min(1120px,100%);font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+        border-bottom:1px solid #23232a;padding-bottom:6px;margin-top:14px}
+  .step.ask{color:var(--warn);border-bottom-color:#3a3125}
+  .pair{width:min(1120px,100%);display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .trio{width:min(1120px,100%);display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+  @media (max-width:900px){.pair,.trio{grid-template-columns:1fr}}
+  .term{background:var(--term);border:1px solid #23232a;border-radius:12px;
+        box-shadow:0 22px 56px -34px #000;overflow:hidden;font-size:13px;line-height:1.6}
+  .term.wide{width:min(1120px,100%)}
+  .bar{display:flex;align-items:center;gap:9px;padding:8px 13px;background:#101015}
+  .ttl{color:var(--dim);font-size:12px}.ttl b{color:var(--muted)}
+  .tag{margin-left:auto;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+       padding:2px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .tag.real{color:var(--accent);border-color:#2f3b46}
+  .tag.drawn{color:var(--dim);border-color:#33363d}
+  .tag.opt{color:var(--warn);border-color:#4a3f28}
+  .tag.gap{color:var(--neg);border-color:#4a2f2f}
+  .tag.ok{color:var(--pos);border-color:#25352b}
+  .screen{padding:13px 15px 14px;white-space:pre;overflow-x:auto;font-size:11.5px;line-height:1.55}
+  .mut{color:var(--dim)} .bad{color:var(--neg)} .good{color:var(--pos)} .warn{color:var(--warn)}
+  .acc{color:var(--accent)} .head{color:var(--muted)}
+  .legend{border-top:1px solid #1d1d24;margin-top:10px;padding:8px 15px 13px;color:var(--dim);
+          font-size:11.5px;white-space:normal;line-height:1.6}
+  .legend b{color:var(--muted)}
+  .legend .cost{color:var(--neg)} .legend .win{color:var(--pos)}
+  .note{width:min(1120px,100%);color:var(--dim);font-size:12.5px;line-height:1.65}
+  .note b{color:var(--muted)} .note code{color:var(--accent)}
+  .note .hd{color:var(--accent);letter-spacing:.1em;text-transform:uppercase;font-size:11.5px;
+            display:block;margin:16px 0 4px}
+  .qbox{width:min(1120px,100%);background:#15130f;border:1px solid #33291c;border-radius:12px;
+        padding:14px 16px;color:var(--muted);font-size:12.5px;line-height:1.7}
+  .qbox b{color:var(--warn)}
+  .qbox ul{margin:8px 0 0;padding-left:20px} .qbox li{margin:5px 0}
+  .pick{display:inline-block;min-width:20px;color:var(--warn);font-weight:600}
+  table.scan{width:min(1120px,100%);border-collapse:collapse;font-size:12px;color:var(--muted)}
+  table.scan th,table.scan td{border:1px solid #23232a;padding:5px 10px;text-align:left}
+  table.scan th{background:#101015;color:var(--dim);font-weight:600;letter-spacing:.06em}
+  table.scan td.n{color:var(--text)}
+</style>
+</head>
+<body>
+
+<h1>expense world — minimum terminal size</h1>
+<p class="sub">
+tui-plan §9 open decision <b>#5</b>, and the last line in backlog Phase 8. The docs
+record this as already half-answered — "the app <b>degrades</b> rather than refuses,
+<code>PAGE_ROWS_FLOOR = 5</code>". Measuring it shows that holds down to about
+<b>80×22</b> and no further. Below that it does not degrade, it comes apart, and it
+never tells you. <b>Two picks at the end. Nothing gets written until you pick.</b>
+</p>
+
+<!-- ================================================================= -->
+<div class="step">1 · what actually happens — real captures</div>
+
+<div class="note">
+Every pane below is the app's own compositor output at that exact size, with four
+transactions loaded. The ellipses are the app's, not mine.
+</div>
+
+<div class="pair">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>80×24</b> — the size it was designed at</span><span class="tag ok">real (probe)</span></div>
+<div class="screen">  <span class="acc">◈ EXPENSE WORLD</span>  ▸  Capture &amp; ledger  ▸  Transactions
+
+<span class="mut">────────────────────────────────────────────────────</span>
+
+  <span class="mut">╭─</span> <span class="acc">Ledger — posted transactions · most recent first</span> <span class="mut">─╮</span>
+  <span class="mut">│</span>                                                    <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="head">Title    Description    Amount   Date     Account</span>  <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="mut">──────────────────────────────────────────────</span>    <span class="mut">│</span>
+  <span class="mut">│</span>  Row 1                   -10.00   2026-08-01  a1    <span class="mut">│</span>
+  <span class="mut">│</span>  Row 2                   -20.00   2026-08-01  a1    <span class="mut">│</span>
+  <span class="mut">│</span>  Row 3                   -30.00   2026-08-01  a1    <span class="mut">│</span>
+  <span class="mut">│</span>  Row 4                   -40.00   2026-08-01  a1    <span class="mut">│</span>
+  <span class="mut">│</span>                                                    <span class="mut">│</span>
+  <span class="mut">╰────────────────────────────────────────────────────╯</span>
+
+ <span class="head">↓ Navigate  ⏎ Open  esc Back  r Refresh  ? Keys</span></div>
+<div class="legend"><b class="win">Correct.</b> Panel closes, every column readable, all
+four rows shown, full footer.</div>
+  </div>
+
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>50×20</b> — the width failure</span><span class="tag gap">real (probe)</span></div>
+<div class="screen">  <span class="acc">◈ EXPENSE WORLD</span>  ▸  Capture &amp; ledger  ▸
+  Transactions
+
+<span class="mut">──────────────────────────────────────────────────</span>
+
+  <span class="mut">╭─</span> <span class="acc">Ledger — posted transactions · most rec…</span> <span class="mut">─╮</span>
+  <span class="mut">│</span>                                            <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="bad">…</span>   <span class="head">Descri…   A…   Date     Ac…     Has…</span>  <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="mut">────────────────────────────────────────</span>  <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="bad">…</span>             <span class="bad">-…</span>   2026-…   a1      —     <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="bad">…</span>             <span class="bad">-…</span>   2026-…   a1      —     <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="bad">…</span>             <span class="bad">-…</span>   2026-…   a1      —     <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="bad">…</span>             <span class="bad">-…</span>   2026-…   a1      —     <span class="mut">│</span>
+  <span class="mut">│</span>                                            <span class="mut">│</span>
+  <span class="mut">╰────────────────────────────────────────────╯</span>
+
+ <span class="head">↓ Navigate  ⏎ Open  esc Back  r Refresh  ? Keys</span></div>
+<div class="legend"><b class="cost">Every row is present and every row is useless.</b> The
+title column is a bare <b>…</b> and the amount is <b>-…</b> — the two things a ledger row
+exists to tell you. The panel closes, the footer is intact, nothing looks wrong. At 40
+columns the date goes too. <b>This failure is silent and the app is confident.</b></div>
+  </div>
+</div>
+
+<div class="pair" style="margin-top:16px">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>60×16</b> — the height failure begins</span><span class="tag opt">real (probe)</span></div>
+<div class="screen">  <span class="acc">◈ EXPENSE WORLD</span>  ▸  Capture &amp; ledger  ▸  Transactions
+
+<span class="mut">────────────────────────────────────────────</span>
+
+  <span class="mut">╭─</span> <span class="acc">Ledger — posted transactions · most…</span> <span class="mut">─╮</span>
+  <span class="mut">│</span>                                            <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="head">T…   Descrip…   Am…   Date      Acc…</span>       <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="mut">──────────────────────────────────</span>        <span class="mut">│</span>
+  <span class="mut">│</span>  R…              -1…   2026-0…   a1         <span class="mut">│</span>
+  <span class="mut">│</span>  R…              -2…   2026-0…   a1         <span class="mut">│</span>
+  <span class="mut">│</span>  R…              -3…   2026-0…   a1         <span class="mut">│</span><span class="bad">▅▅</span>
+  <span class="mut">│</span>  R…              -4…   2026-0…   a1         <span class="mut">│</span>
+<span class="bad">   ↑ no bottom border — the panel is cut off</span>
+
+ <span class="head">↓ Navigate  ⏎ Open  pgdn/. Next  pgup/, Prev  esc</span></div>
+<div class="legend">The panel's closing <b>╰───╯</b> is <b class="cost">gone</b> — clipped
+since h=20 — and a dead scrollbar stub appears. Rows below the cut are simply not drawn;
+paging still claims they exist.</div>
+  </div>
+
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>34×9</b> — nothing left</span><span class="tag gap">real (probe)</span></div>
+<div class="screen">  <span class="acc">◈ EXPENSE WORLD</span>  ▸  Capture &amp;
+  ledger  ▸  Transactions
+
+<span class="mut">──────────────────────────────────</span>
+
+  <span class="mut">╭─</span> <span class="acc">Ledger — posted trans…</span> <span class="mut">─╮</span>
+
+ <span class="head">↓ Navigate  ⏎ Open  pgdn/. Next</span>
+</div>
+<div class="legend"><b class="cost">No column header, no rule, no rows, no bottom border</b>
+— a title bar floating over nothing, and a footer offering to page through data you cannot
+see. The app believes it is working.</div>
+  </div>
+</div>
+
+<!-- ================================================================= -->
+<div class="step">2 · where the boundaries actually are</div>
+
+<div class="note">
+A sweep of the same screen, counting visible data rows and testing for the panel's
+closing border. <b>REAL (scan)</b> — heights at width 80, widths at height 24.
+</div>
+
+<table class="scan">
+  <tr><th>height (at w=80)</th><th>rows drawn</th><th>panel closes?</th><th></th></tr>
+  <tr><td class="n">24 · 22</td><td>4 of 4</td><td class="n">yes</td><td class="good">correct</td></tr>
+  <tr><td class="n">20</td><td>4 of 4</td><td class="bad">NO</td><td class="warn">bottom border lost — first thing to break</td></tr>
+  <tr><td class="n">18</td><td>3 of 4</td><td class="bad">NO</td><td class="warn">rows start disappearing</td></tr>
+  <tr><td class="n">16</td><td>3 of 4</td><td class="bad">NO</td><td class="warn"><code>PAGE_ROWS_FLOOR</code> now says 5, but only 3 fit</td></tr>
+  <tr><td class="n">12</td><td>1 of 4</td><td class="bad">NO</td><td class="bad">effectively unusable</td></tr>
+  <tr><td class="n">10 and below</td><td>0</td><td class="bad">NO</td><td class="bad">no data at all</td></tr>
+  <tr><th>width (at h=24)</th><th>rows drawn</th><th>title column</th><th></th></tr>
+  <tr><td class="n">80 · 70 · 60</td><td>4 of 4</td><td class="n">readable</td><td class="good">correct</td></tr>
+  <tr><td class="n">50</td><td>4 of 4</td><td class="bad">just “…”</td><td class="bad">rows present, content gone</td></tr>
+  <tr><td class="n">40 and below</td><td>4 of 4</td><td class="bad">gone, amount too</td><td class="bad">rows of pure ellipsis</td></tr>
+</table>
+
+<div class="note">
+Two things worth naming. <b>The floor does not do what its comment claims.</b>
+<code>PAGE_ROWS_FLOOR = 5</code> guarantees the <i>page</i> holds five rows; it cannot
+make the viewport show them, so below h≈18 it just guarantees rows are fetched and then
+clipped. And <b>width has no floor at all</b> — no constant, no clamp, nothing. The
+column squeeze runs until the data is gone.
+</div>
+
+<!-- ================================================================= -->
+<div class="step ask">3 · pick A / B / C / D — what should it do?</div>
+
+<div class="trio">
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>A · refuse at launch</b></span><span class="tag opt">option</span></div>
+<div class="screen"><span class="mut">$</span> expense world
+<span class="bad">Error: expense world needs at least
+60×20. This terminal is 46×12.</span>
+<span class="mut">$</span> <span class="mut">▏</span>
+
+
+<span class="mut">(exit code 1)</span></div>
+<div class="legend">A size check beside the existing tty guard in <code>run_world</code>.
+<b class="win">Win:</b> one place, ~4 lines, same shape as the tty check you already have.
+<b class="cost">Cost:</b> refuses to start on a terminal you could still read; says nothing
+if you shrink the window <i>after</i> launch, which is the more common way to get here.</div>
+  </div>
+
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>B · in-app notice screen</b></span><span class="tag opt">option</span></div>
+<div class="screen">
+
+
+      <span class="warn">Terminal too small</span>
+
+      <span class="head">46×12</span> — needs <span class="head">60×20</span>
+
+      <span class="mut">Resize and this returns
+      to where you were.</span>
+
+
+</div>
+<div class="legend">Below the threshold the content is replaced by this; resizing back
+restores the screen you were on. <b class="win">Win:</b> covers the resize case, explains
+itself, never loses your place, and the app still starts.
+<b class="cost">Cost:</b> a new screen state to build and test.</div>
+  </div>
+
+  <div class="term">
+    <div class="bar"><span class="ttl"><b>C · warn, keep going</b></span><span class="tag opt">option</span></div>
+<div class="screen">  <span class="acc">◈ EXPENSE WORLD</span>  ▸  Transactions
+<span class="warn"> ⚠ 46×12 — columns hidden, rows clipped</span>
+<span class="mut">──────────────────────────────────────</span>
+  <span class="mut">╭─</span> <span class="acc">Ledger …</span> <span class="mut">─╮</span>
+  <span class="mut">│</span>  <span class="bad">…</span>   <span class="bad">-…</span>   2026-…   <span class="mut">│</span>
+  <span class="mut">│</span>  <span class="bad">…</span>   <span class="bad">-…</span>   2026-…   <span class="mut">│</span>
+
+ <span class="head">↓ Navigate  ⏎ Open</span></div>
+<div class="legend">One persistent line; everything else renders as it does today.
+<b class="win">Win:</b> nothing is taken away — a cramped terminal still shows what fits,
+and the silence is what gets fixed. <b class="cost">Cost:</b> the display is still
+misleading underneath the warning; the banner costs a line on the screen that has fewest
+to spare.</div>
+  </div>
+</div>
+
+<div class="note" style="margin-top:14px">
+<b>D · do nothing</b>, and write the current behaviour down as accepted. Honest option:
+the terminal is the user's to size, every other TUI degrades similarly, and you have
+never once hit this in real use. <b class="cost">Cost:</b> the failure stays silent, and
+the docs keep claiming a graceful degradation that stops at 80×22.
+</div>
+
+<!-- ================================================================= -->
+<div class="step ask">4 · pick E / F — where is the line?</div>
+
+<div class="note">
+Only matters if you pick A, B or C.
+
+<b>E · 60×20</b> — the measured edge of usable. At 60 wide every column still reads; at
+20 high all four rows draw. <b>Below this something is actually lost.</b> Cost: 60×20 is
+already imperfect (the panel's bottom border is gone at h=20), so the threshold blesses a
+slightly broken render.
+
+<b>F · 80×24</b> — the size the app was designed at, and the classic terminal default.
+Everything is correct here, with margin. Cost: it would refuse or warn on terminals that
+genuinely work — a 70×22 window reads fine — so it will fire when nothing is wrong.
+</div>
+
+<div class="qbox">
+<b>Two things stated, not asked</b> — say so if you disagree:
+<ul>
+  <li>Whatever is picked, <b><code>PAGE_ROWS_FLOOR</code>'s comment gets corrected.</b> It
+      claims to prevent clipping "below a &lt;16-line terminal"; it prevents nothing —
+      the rows are fetched and then cut off. That is a wrong comment either way.</li>
+  <li><b>Height and width both get checked.</b> The width failure has no guard of any kind
+      today and is the sneakier of the two, because the screen looks healthy.</li>
+</ul>
+</div>
+
+<div class="note" style="margin-top:4px">
+<b>Pick one from each:</b>
+<span class="pick">A</span>/<span class="pick">B</span>/<span class="pick">C</span>/<span class="pick">D</span> behaviour ·
+<span class="pick">E</span>/<span class="pick">F</span> threshold.
+<br/><b>Nothing gets written until you pick.</b>
+</div>
+
+
+<!-- ================================================================= -->
+<div class="step">5 · as decided — 2026-08-20, and where this page was wrong</div>
+
+<div class="qbox" style="background:#0f1512;border-color:#25352b">
+<b style="color:var(--pos)">PICKED: D + E.</b> No guard, no refusal, no notice screen —
+the app degrades silently and that is accepted. Documentation-only change: tui-plan §9 #5
+resolved, the <code>PAGE_ROWS_FLOOR</code> comment corrected, a decisions.md entry added
+with the three rejected shapes. <b>Zero behaviour change.</b>
+</div>
+
+<div class="note">
+<span class="hd">Two numbers on this page are wrong</span>
+Re-probing before commit — with a different row count, which is what exposed it — showed
+the boundary table in §2 was measured too loosely. Kept visible rather than quietly
+edited, because the entire point of this item was that a claim about degradation went
+four days unchecked.
+
+<b>1. Width truncation starts at ≈75, not 50.</b> §2 says "80 · 70 · 60 correct". They are
+not: at <b>w=75</b> cells already elide, and <b>w=80 is the first width with no ellipsis
+anywhere</b>. w=50 is where the title becomes a <i>bare</i> <code>…</code> — a later stage
+of the same failure, not its start.
+
+<b>2. The height threshold is not a constant.</b> §2 says "panel's bottom border lost at
+h=20". That is true only for a full page. The panel clips when content exceeds the
+viewport, so it <b>moves with the page size</b>: a 4-row page keeps its border down to
+<b>h=18</b>, a full 8-row page has already lost it at <b>h=20</b>. The original sweep used
+8 rows throughout and read a row-count effect as a height constant.
+
+<span class="hd">What the docs now say instead</span>
+<b>80×24</b> — everything correct, no truncation, panel closes. Also the size the screens
+were designed at and the classic terminal default.
+<b>60×20</b> — still workable, already lossy: every row draws, columns ellipsised.
+Neither is enforced. Pick <b>E</b> was made against the claim "at 60 wide every column
+still reads", which was false — but since <b>D</b> enforces nothing, the pick only
+determines which number the docs cite, and both are now cited with what they actually
+mean.
+</div>
+
+</body>
+</html>

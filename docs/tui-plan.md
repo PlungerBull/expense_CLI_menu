@@ -426,21 +426,44 @@ Per-section difficulty: menus & lists *easy*; the tree & the transaction form
 2. **Coexistence** — ✅ **The TUI replaced `expense menu`, now deleted** (roadmap Step 10.X,
    2026-07-02). They shipped in parallel only until the menu was retired. The flat
    commands (`expense log`, …) stay permanently as the canonical contract-validator interface.
+3. **Neutral theme** — ✅ **answered 2026-08-19 by removing the question.** There are no
+   authored tokens to finalize: every colour is an ANSI slot and the terminal supplies it
+   (§4). The line originally named a `theme.tcss` that was never created, and its
+   2026-08-16 amendment ("the light half is settled — auto-detect") was itself reversed
+   three days later. See [decisions.md](decisions.md) "The terminal supplies the palette".
 4. **Reconcile reorder** — ✅ shipped as an `$EDITOR` shell-out for v1, then **superseded
    2026-08-16**: the engine deleted manual ordering, so both the TUI chord and
    `expense/_editor.py` are gone. Batches order by statement start date.
+5. **Minimum terminal size** — ✅ **no guard (2026-08-20).** The app degrades and says
+   nothing, and that is accepted: the terminal is the user's to size. Nothing enforces,
+   warns, or refuses. Two reference sizes, both **measured** (the note that stood here
+   before claimed a graceful degradation the app does not have, and the first draft of
+   this replacement got the numbers wrong in both dimensions — re-measured 2026-08-20):
+
+   - **80×24 — everything correct.** No truncation anywhere, panel closes, full footer.
+     This is the size the screens were designed at, and it is also the classic terminal
+     default.
+   - **60×20 — still workable, already lossy.** Every row draws, but columns are
+     ellipsised (`R…`, `-1…`). Fine for navigating, poor for reading.
+
+   | dimension | measured behaviour |
+   |---|---|
+   | w ≥ 80 | no ellipsis in any cell |
+   | **w ≈ 75** | **truncation begins** — the first cells start eliding |
+   | w ≈ 50 | title column is a bare `…`, amount `-…`; every row still drawn |
+   | w ≤ 40 | date goes too — rows of pure ellipsis |
+   | height | **the panel clips when content exceeds the viewport, so the threshold moves with the page size**: a 4-row page closes down to h=18, a full 8-row page already clips at h=20. Rows are cut off, never reflowed. |
+   | h ≤ 10 | no data rows at all, while the footer still offers to page through them |
+
+   `PAGE_ROWS_FLOOR = 5` is a floor on the *requested page size*, not a clipping guard —
+   it cannot make the viewport show rows that do not fit. Width has **no** floor of any
+   kind. Captures + the four rejected shapes:
+   [mockups/expense-world-min-terminal-size.html](mockups/expense-world-min-terminal-size.html);
+   rationale: [decisions.md](decisions.md) "A terminal too small is the user's to fix".
 
 **Still open:**
 
-3. **Neutral theme** — monochrome + single accent, dark default? Designer to finalize the
-   tokens; plan assumed dark-neutral, and dark-neutral is what shipped.
-   *(Corrected 2026-08-16: this line named a `theme.tcss` that was **never created** —
-   the tokens are `Theme` fields in [theme.py](../expense/tui/theme.py), and §4's token
-   list above does not match what [app.tcss](../expense/tui/app.tcss) actually consumes.
-   The **light** half of this decision is now settled — auto-detect, see §4 — leaving only
-   the designer's final hexes open.)*
-5. **Minimum terminal size** — fallback/refuse below e.g. 80×24?
-   *(Partly answered in practice, 2026-08-16: the app **degrades** rather than refuses —
-   `SectionScreen.PAGE_ROWS_FLOOR = 5` clamps the page below a ~16-line terminal, and
-   `run_world` already exits 1 on a non-tty. What is still open is whether to add an
-   explicit size guard beside that tty check.)*
+*(nothing — §9 is fully resolved as of 2026-08-20.)*
+
+
+

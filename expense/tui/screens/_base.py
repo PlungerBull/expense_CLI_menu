@@ -242,13 +242,17 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
     ]
     crumb: tuple[str, ...] = ()
     CARD_WIDTH: int | None = 64  # cap the content card; None = fill width
-    # Last fetched payload, cached so a theme swap re-renders from memory instead
-    # of re-fetching. None = nothing loaded yet (an empty list/dict is still cached).
     _started: bool = False  # first load ran (it waits for the first layout pass)
 
     # ---- adaptive list sizing (2026-07-13, mockups/expense-world-adaptive-rows.html)
     LIST_FRAME_LINES = 4  # panel border 2 + column header + header rule
-    PAGE_ROWS_FLOOR = 5  # below this the panel clips again (a <16-line terminal)
+    # Lower bound on the page size we ASK for — not a clipping guard, despite what
+    # this comment claimed until 2026-08-20. It cannot make the viewport show five
+    # rows: below a ~18-line terminal the extra rows are fetched and then clipped
+    # off the bottom, and the panel's own bottom border goes first (h=20). Measured
+    # boundaries and the decision not to guard them: docs/decisions.md "A terminal
+    # too small is the user's to fix", docs/tui-plan.md §9 #5.
+    PAGE_ROWS_FLOOR = 5
 
     def compose(self) -> ComposeResult:
         yield Breadcrumb(self.crumb, id="crumb")

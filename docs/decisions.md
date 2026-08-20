@@ -47,6 +47,7 @@ Rules for this file:
 | The light theme will detect the terminal, not ask the user | 2026-08-16 | full entry below |
 | The command palette is removed, not populated — `?` is the one discoverability surface | 2026-08-17 | full entry below |
 | The terminal supplies the palette — every colour is an ANSI slot, nothing is detected | 2026-08-19 | full entry below |
+| A terminal too small is the user's to fix — no size guard; 80×24 correct, 60×20 lossy | 2026-08-20 | full entry below |
 
 ## Sign is always literal — no default-to-expense magic (2026-04-25)
 
@@ -370,3 +371,55 @@ brittle detection back again, and the light path still unowned by any design.
 *Registering Textual's own `ansi-dark`/`ansi-light`* — they disagree on `warning`
 and `accent` precisely because they encode the light/dark split this decision
 refuses; adopting them would reintroduce the choice through the back door.
+
+## A terminal too small is the user's to fix (2026-08-20, tui-plan §9 #5, backlog Phase 8)
+
+**Context.** The last open TUI decision asked whether to refuse or fall back below
+some minimum size. The docs recorded it as half-answered — *"the app degrades
+rather than refuses, `PAGE_ROWS_FLOOR = 5`"* — so closing it started as a
+formality. Measuring it first showed the premise was wrong twice, and that is the
+part worth keeping. Captures and the sweep:
+[mockups/expense-world-min-terminal-size.html](mockups/expense-world-min-terminal-size.html).
+
+**What the app actually does.** It is fully correct at **80×24** and comes apart
+below that, silently, in two unrelated ways. *Horizontally*, every row keeps being
+drawn while the columns collapse: truncation starts around **w=75**, by w=50 the
+title is a bare `…` and the amount `-…`, and by w≤40 the date goes too. This is the
+dangerous one — the panel closes, the footer is intact, nothing looks broken, and
+the app is confident and wrong. *Vertically*, rows are clipped rather than
+reflowed, and **the threshold moves with the page size**: a 4-row page keeps its
+bottom border down to h=18, a full 8-row page has already lost it at h=20. At h≤10
+there are no data rows at all, while the footer still offers to page through them.
+Neither failure is announced.
+
+*(Measured twice. The first write-up of this entry asserted "clean to 80×22" and
+"columns collapse from w=50"; re-probing showed truncation actually starts at ~75
+and the height threshold is not a constant at all. Numbers above are the second,
+verified pass — worth recording because the whole point of the entry is that the
+previous claim went unchecked for four days.)*
+
+**Decision.** **No guard.** No launch-time refusal, no in-app notice screen, no
+warning banner. The terminal is the user's to size, every TUI degrades somehow, and
+this has never been hit in real use — a size guard would be code, tests and a new
+screen state bought against a problem nobody has. **80×24 is documented as the size where
+everything is correct, and 60×20 as still-workable-but-lossy** (columns ellipsised,
+every row present) — but nothing enforces either. What *does* change is the record: tui-plan §9 #5
+and the `PAGE_ROWS_FLOOR` comment both asserted a protection that does not exist,
+and both now state the measured behaviour instead.
+
+**`PAGE_ROWS_FLOOR` is not what its name suggests.** It is a floor on the page size
+we *request*, not on what the viewport can show. Below a ~18-line terminal it
+guarantees rows are fetched and then clipped off the bottom — it prevents nothing.
+Width has no floor of any kind: no constant, no clamp. Both facts are now written
+at the constant itself.
+
+**Rejected.** *Refuse at launch* (a size check beside the tty guard in `run_world`)
+— four lines and the cheapest to build, but it refuses terminals that are still
+readable and says nothing in the commoner case, shrinking the window *after* launch.
+*An in-app notice screen* that replaces the content below the threshold and restores
+on resize — the best of the three, and the one to build if this ever becomes a real
+complaint; rejected now only on cost, since it needs a new screen state and its own
+tests. *A persistent warning line* — cheap and takes nothing away, but it spends a
+row on the screen with fewest to spare and leaves the misleading render underneath
+it. If this is revisited, revisit the notice screen; the threshold to wire it to is
+already measured.

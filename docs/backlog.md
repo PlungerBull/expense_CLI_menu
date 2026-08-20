@@ -174,11 +174,6 @@ open.
 Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase8-sketch.html),
 [mockups/expense-world-phase8-discoverability.html](mockups/expense-world-phase8-discoverability.html).
 
-- [ ] Open decision from tui-plan §9: minimum terminal size fallback (#5 —
-  partially handled already: `PAGE_ROWS_FLOOR = 5` degrades rather than
-  refuses). *(§9 #3, "designer's final theme tokens", was **answered
-  2026-08-19**: there are no authored tokens to finalise — the terminal
-  supplies every colour. It also named a `theme.tcss` that never existed.)*
 - [ ] Post-Step-9 ergonomics (quick-add parser, shell completions, the
   "move between accounts" convenience, …) stay planned in
   [roadmap.md](roadmap.md) "Post-Step-9 ergonomics" — pointer only.
@@ -186,6 +181,26 @@ Sketches: [mockups/expense-world-phase8-sketch.html](mockups/expense-world-phase
   passed.
 
 ### Closed 2026-08-20 (delete on next touch)
+
+**Minimum terminal size — closed with no code.** tui-plan §9 #5, the last
+substantive Phase 8 line. Picks **D + E** from
+[mockups/expense-world-min-terminal-size.html](mockups/expense-world-min-terminal-size.html):
+accept the behaviour, enforce nothing, and document two measured sizes: **80×24**
+(everything correct) and **60×20** (workable but columns already ellipsised).
+**The item's own premise was wrong**, which is why it got a mockup rather than a
+tick: the docs claimed the app "degrades rather than refuses", and measuring showed
+it is correct at 80×24 and then fails silently two different ways — horizontally the
+columns collapse (truncation from w≈75; by w=50 the title is a bare `…`) with every
+row still drawn, which is the sneakier failure because nothing *looks* broken; and
+vertically rows are clipped, with the threshold **moving with the page size** (a
+4-row page holds its border to h=18, a full 8-row page loses it at h=20).
+**Measured twice** — the first write-up asserted "clean to 80×22" and "collapse from
+w=50" and both were wrong, caught by re-probing before commit. Also established: `PAGE_ROWS_FLOOR = 5`
+prevents nothing (it floors the requested page size, not the viewport), and width
+has no floor at all. Both now stated at the constant. Rationale and the three
+rejected shapes — launch refusal, notice screen, warning banner — in
+[decisions.md](decisions.md) "A terminal too small is the user's to fix"; if it is
+ever revisited, the notice screen is the one to build and its threshold is measured.
 
 **Dead theme machinery removed.** Parked as non-core on 2026-08-19, then done
 the next day on the user's "remove everything that doesn't earn its keep".
