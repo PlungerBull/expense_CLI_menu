@@ -26,7 +26,8 @@ expense/tui/
     header.py       # Breadcrumb — slim section header (home banner lives in home.py)
                     #   + rate_alert() — the `!` staleness mark both headers share
     cells.py        # cell renderers: color swatch, sign-colored right-aligned amount_cell
-    cursor_list.py  # CursorList — arrow-key list (home menu, pickers)
+    cursor_list.py  # CURSOR_STYLE (reverse video, app-wide) + CursorList — arrow-key
+                    #   list (pickers) + CursorOptionList — the home menu
     checklist.py    # CheckList — multi-select (hashtag picker)
   screens/
     _base.py        # EngineWriteMixin.run_write + SectionScreen (fetch workers, confirm, keymap)
@@ -162,6 +163,30 @@ Three things only rendering revealed, all load-bearing:
   `black 60%`, now guarded by `test_modal_scrim_dims_rather_than_wipes`.
 - An `ansi=True` theme must ship Textual's whole `variables` block or the app dies at
   startup on `$ansi-background`.
+- **`text-style: reverse` does not survive CSS** when foreground and background are
+  both `ansi_default` — Textual 8.2.7 drops it in `get_visual_style()`. This is what
+  made the home menu's cursor invisible (see below).
+
+**The cursor is reverse video, and it must be applied as a Rich style.** "You are here"
+is drawn the same way everywhere: the terminal's own foreground and background, swapped
+— colour-free, so it is correct on any ground by construction rather than by detection.
+The shared constant is `CURSOR_STYLE` in
+[cursor_list.py](../expense/tui/widgets/cursor_list.py); `CursorList` / `CheckList`
+apply it to their Rich table rows, and `CursorOptionList` applies it to the finished
+strip.
+
+That last one exists because the theme gives the block cursor **no colour of its own**
+(`block-cursor-foreground` and `-background` are both `ansi_default`), so all its
+contrast comes from `reverse` — and the CSS path drops it. The home menu was the only
+list routed through CSS, so it was the only one with an invisible cursor: the
+highlighted row rendered `default on default`, byte-identical to its neighbours, and no
+test noticed for a day. Reported and fixed 2026-08-20; pick A of
+[mockups/expense-world-menu-cursor.html](mockups/expense-world-menu-cursor.html).
+
+**Assert on rendered strips, not on styles.** `get_component_styles` reported
+`text_style: reverse` throughout that bug — the style resolved fine and was discarded
+later. Only `render_line(y)` shows what the user sees, which is what
+`test_tui_menu_cursor.py` checks.
 
 Slot 3 (yellow) is the one slot that fails on white, so the pending role carries
 `bold` rather than a colour. Content cards use the **quiet border** treatment

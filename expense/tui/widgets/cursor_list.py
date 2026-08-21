@@ -29,11 +29,13 @@ from typing import NamedTuple
 
 from rich import box
 from rich.console import RenderableType
+from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 from textual.binding import Binding
 from textual.message import Message
-from textual.widgets import Static
+from textual.strip import Strip
+from textual.widgets import OptionList, Static
 
 from expense.commands._resource import DEFAULT_PAGE_ROWS
 
@@ -47,6 +49,19 @@ def page_indicator(
     page = start // page_size + 1
     pages = -(-total // page_size)  # ceil
     return f"{unit} {start + 1}-{start + shown} of {total} · page {page} of {pages}"
+
+
+#: How "you are here" is drawn, app-wide: reverse video — the terminal's own
+#: foreground and background, swapped. Colour-free, so it is correct on a dark,
+#: light or Solarized ground by construction rather than by detection (the ANSI
+#: palette decision, 2026-08-19).
+#:
+#: It must be applied as a **Rich style**, never as a Textual `text-style` rule.
+#: Textual 8.2.7 drops `reverse` from `get_visual_style()` when foreground and
+#: background are both `ansi_default` — which is exactly our theme — so a CSS
+#: cursor renders identically to an unselected row. That is what made the home
+#: menu cursor invisible until 2026-08-20; see `CursorOptionList` below.
+CURSOR_STYLE = "reverse"
 
 
 class Row(NamedTuple):
@@ -213,7 +228,7 @@ class CursorList(Static):
             t.add_column(header, justify="right" if i in self._align else "left", no_wrap=True)
         start = self._window_start
         for r, row in enumerate(self._rows[start : start + self._page_size], start=start):
-            style = "reverse" if r == self._cursor else row.base_style
+            style = CURSOR_STYLE if r == self._cursor else row.base_style
             t.add_row(*[self._cell(c) for c in row.cells], style=style)
         return t
 
@@ -249,3 +264,39 @@ class CursorList(Static):
     def action_select(self) -> None:
         if self._rows:
             self.post_message(self.Selected(self, self._rows[self._cursor].key, self._cursor))
+
+
+class CursorOptionList(OptionList):
+    """An `OptionList` whose highlighted row is reverse video, like every other list.
+
+    Textual draws `OptionList`'s highlight through CSS
+    (`.option-list--option-highlighted`), and under this app's ANSI theme that
+    path is a dead end: `block-cursor-foreground` and `block-cursor-background`
+    are both `ansi_default`, so all the contrast has to come from
+    `text-style: reverse` — and Textual 8.2.7 drops `reverse` when both colours
+    are `ansi_default`. Measured, the highlighted row rendered
+    `default on default`, byte-identical to its neighbours, so the home menu had
+    no visible cursor at all (reported 2026-08-20). Overriding the rule in
+    `app.tcss` does not help; the style is dropped there too.
+
+    So the cursor is applied to the finished strip instead, which is the same
+    place `CursorList` applies it — a Rich style, not a CSS one. Disabled
+    options (the group headers) are skipped: they are never the cursor.
+
+    `_lines` is Textual-internal, and deliberately so — it is the same mapping
+    `OptionList.render_line` itself uses to turn a y offset into an option
+    index, and there is no public equivalent. `test_tui_menu_cursor.py` asserts
+    the highlighted row renders differently from its neighbours, so a Textual
+    bump that moves this breaks a test rather than silently blinding the menu
+    the way the original regression did.
+    """
+
+    def render_line(self, y: int) -> Strip:
+        strip = super().render_line(y)
+        try:
+            option_index, _offset = self._lines[self.scroll_offset.y + y]
+        except IndexError:
+            return strip
+        if option_index != self.highlighted or self.options[option_index].disabled:
+            return strip
+        return strip.apply_style(Style(reverse=True))

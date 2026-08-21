@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — the home menu has no visible cursor (2026-08-20)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     THE BUG, STATED FIRST.
+
+     Reported by the user 2026-08-20: "when I move through the menu, there is
+     no selection effect so I don't know where I am selecting."
+
+     It is real, and it is measured, not guessed. Rendering the live app
+     headlessly and reading the segment styles back:
+
+         y=0  'CAPTURE & LEDGER'    default on default
+         y=1  'Log a transaction'   default on default   <- HIGHLIGHTED
+         y=2  'Inbox'               default on default
+
+     The highlighted row is byte-identical to every other row. There is no
+     cursor to see.
+
+     WHY. theme.py gives the block cursor NO colour of its own —
+     `block-cursor-foreground` and `block-cursor-background` are both
+     `ansi_default`, and all the contrast is meant to come from
+     `block-cursor-text-style: reverse`. That was a deliberate choice
+     (2026-08-19, ANSI palette): reverse video is correct on any ground by
+     construction, so it needs no light/dark split.
+
+     It works everywhere in the app EXCEPT here. Measured, Textual 8.2.7:
+
+       · CursorList / CheckList  — build the Rich style directly
+         (cursor_list.py:216, `style="reverse"`). Emits SGR 7. WORKS.
+       · Home menu               — Textual's OptionList, styled through CSS.
+         `text-style: reverse` is DROPPED by `get_visual_style()` when fg and
+         bg are both ansi_default. Adding an explicit override to app.tcss
+         does not help — it is dropped there too.
+
+     So the home menu is the only list in the app with an invisible cursor,
+     and it is invisible because it is the only one that goes through CSS.
+
+     WHAT RENDERS. Every candidate below was probed against the real widget
+     under the real theme; only treatments that produced a DISTINCT rendered
+     style are on this page. Verbatim results:
+
+       reverse via CSS          highlighted == other        REJECTED, not shown
+       reverse via content      'reverse default on default'      -> pane A
+       bold + accent fg         'bold color(4) on default'        -> pane C
+       accent background        'bold color(15) on color(4)'      -> pane D
+       dim grey bar             'default on color(8)'             -> pane B
+       bold + underline         'bold underline default'          -> pane E
+
+     PROVENANCE
+       · REAL (palette) — the three terminal profiles are published, unmodified
+         values, reused verbatim from expense-world-ansi-palette.html. Every
+         pane renders the SAME markup three ways off a profile class, which is
+         the mechanism itself, not a picture of it.
+       · REAL (probe)   — the rendered-style strings above and beside each pane
+         come from Textual 8.2.7 driving the actual widget.
+       · DRAWN (to source) — menu labels and group headers are _MENU verbatim
+         (home.py:47-64); wordmark home.py:44; header rule + menu box
+         app.tcss #brand/#menu.
+
+     WHAT IS BEING TRADED
+       A keeps one gesture for the whole app — the menu cursor becomes the
+       same inverted bar the transaction lists already use. B–E introduce a
+       second, lighter gesture for the menu only. That consistency question is
+       the actual decision; every option is legible on all three grounds.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:26px;
+       padding:38px 20px 70px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  h1{width:min(1180px,100%);font-size:17px;font-weight:600;letter-spacing:.02em;margin:0}
+  .sub{width:min(1180px,100%);color:var(--dim);font-size:12.5px;line-height:1.7;margin:-12px 0 0}
+  .sub b{color:var(--muted)} .sub code{color:var(--muted)}
+  .lbl{width:min(1180px,100%);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);
+       display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:6px}
+  .lbl .n{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .row{width:min(1180px,100%);display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .tw{display:flex;flex-direction:column;gap:6px}
+  .cap{font-size:11px;color:var(--dim);letter-spacing:.03em}
+  .app{background:var(--bg0);color:var(--fg0);font-size:12.5px;line-height:1.55;
+       padding:10px 12px;border-radius:5px;white-space:pre;overflow-x:auto;border:1px solid #2a2a30}
+
+  /* real, unmodified terminal profiles — same three as the palette mockup */
+  .t-dark{  /* VS Code Dark+ */
+    --bg0:#1e1e1e; --fg0:#cccccc; --c-blue:#2472c8; --c-brblack:#666666;
+    --c-brwhite:#e5e5e5;
+  }
+  .t-basic{ /* macOS Terminal.app "Basic" — BLACK ON WHITE */
+    --bg0:#ffffff; --fg0:#000000; --c-blue:#0000b2; --c-brblack:#666666;
+    --c-brwhite:#e5e5e5;
+  }
+  .t-solar{ /* Solarized Light */
+    --bg0:#fdf6e3; --fg0:#657b83; --c-blue:#268bd2; --c-brblack:#93a1a1;
+    --c-brwhite:#eee8d5;
+  }
+
+  .acc{color:var(--c-blue)}
+  .grp{opacity:.55;letter-spacing:.12em}
+  .rule{color:var(--c-brblack)}
+  .mut{opacity:.55}
+
+  /* the five candidate cursor treatments */
+  .cA{background:var(--fg0);color:var(--bg0)}                 /* reverse video   */
+  .cB{background:var(--c-brblack);color:var(--bg0)}           /* dim grey bar    */
+  .cC{color:var(--c-blue);font-weight:700}                    /* bold accent fg  */
+  .cD{background:var(--c-blue);color:var(--c-brwhite);font-weight:700} /* accent bar */
+  .cE{font-weight:700;text-decoration:underline}              /* bold underline  */
+
+  .now{background:transparent;color:inherit}                  /* today: nothing  */
+
+  .note{width:min(1180px,100%);border-left:2px solid #2a2a30;padding:2px 0 2px 14px;
+        color:var(--dim);font-size:12.5px;line-height:1.7}
+  .note b{color:var(--muted)}
+  .probe{font-size:11.5px;color:var(--dim)}
+  .probe b{color:var(--muted);font-weight:400}
+  .bad{color:#cf8d8d}
+  hr{width:min(1180px,100%);border:0;border-top:1px solid #24242a;margin:6px 0}
+</style>
+</head>
+<body>
+
+<h1>expense world — the home menu has no visible cursor</h1>
+<p class="sub">
+Reported 2026-08-20. <b>Confirmed at the render layer:</b> the highlighted menu row emits
+<code>default on default</code> — identical to every unselected row. <br>
+The theme gives the block cursor no colour of its own; all its contrast comes from
+<code>text-style: reverse</code>, and Textual&nbsp;8.2.7 <b>drops <code>reverse</code></b> for
+<code>OptionList</code> when foreground and background are both <code>ansi_default</code>.
+An explicit override in <code>app.tcss</code> is dropped too. <br>
+<b>Scope: the home menu only.</b> Every other list (<code>CursorList</code>, <code>CheckList</code>)
+sets the Rich style directly (<code>cursor_list.py:216</code>) and emits SGR&nbsp;7 correctly — those cursors are fine.
+</p>
+
+<div class="lbl">Today <span class="n">— what you are seeing. The cursor is on “Log a transaction”. Nothing marks it.</span></div>
+<div class="row">
+  <div class="tw"><div class="cap">VS Code Dark+</div>
+<div class="app t-dark"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="now"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">macOS Terminal “Basic”</div>
+<div class="app t-basic"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="now"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">Solarized Light</div>
+<div class="app t-solar"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="now"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+</div>
+<p class="probe"><b>probe:</b> <code>y=1 'Log a transaction' → 'default on default'</code> · same as <code>y=2 'Inbox'</code>. <span class="bad">No difference exists to see.</span></p>
+
+<hr>
+
+<div class="lbl">A — reverse video <span class="n">— the same gesture every other list in the app already uses. Applied as Rich content, which survives where CSS does not.</span></div>
+<div class="row">
+  <div class="tw"><div class="cap">VS Code Dark+</div>
+<div class="app t-dark"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cA"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">macOS Terminal “Basic”</div>
+<div class="app t-basic"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cA"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">Solarized Light</div>
+<div class="app t-solar"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cA"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+</div>
+<p class="probe"><b>probe:</b> <code>'reverse default on default'</code> — verified rendering. Strongest marker; identical vocabulary to the transaction lists.</p>
+
+<hr>
+
+<div class="lbl">B — dim grey bar <span class="n">— a filled bar on slot 8, the same grey the panel borders and group headers already use.</span></div>
+<div class="row">
+  <div class="tw"><div class="cap">VS Code Dark+</div>
+<div class="app t-dark"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cB"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">macOS Terminal “Basic”</div>
+<div class="app t-basic"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cB"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">Solarized Light</div>
+<div class="app t-solar"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cB"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+</div>
+<p class="probe"><b>probe:</b> <code>'default on color(8)'</code> — verified. <span class="bad">Cost:</span> slot 8 is “bright black”, which on Solarized Light is a <em>light</em> grey — the bar is faint there, as the third pane shows.</p>
+
+<hr>
+
+<div class="lbl">C — bold accent text <span class="n">— no bar at all. The row turns the app’s blue and goes bold; everything else stays put.</span></div>
+<div class="row">
+  <div class="tw"><div class="cap">VS Code Dark+</div>
+<div class="app t-dark"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cC"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">macOS Terminal “Basic”</div>
+<div class="app t-basic"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cC"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">Solarized Light</div>
+<div class="app t-solar"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cC"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+</div>
+<p class="probe"><b>probe:</b> <code>'bold color(4) on default'</code> — verified. Quietest option. <span class="bad">Cost:</span> no bar means the eye has to find a colour change rather than a shape; blue-on-blue is also what the wordmark and panel titles already use.</p>
+
+<hr>
+
+<div class="lbl">D — accent bar <span class="n">— a filled bar in the app’s blue with bright text. The most conventional “selected row” in a TUI.</span></div>
+<div class="row">
+  <div class="tw"><div class="cap">VS Code Dark+</div>
+<div class="app t-dark"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cD"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">macOS Terminal “Basic”</div>
+<div class="app t-basic"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cD"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">Solarized Light</div>
+<div class="app t-solar"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cD"> Log a transaction            </span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+</div>
+<p class="probe"><b>probe:</b> <code>'bold color(15) on color(4)'</code> — verified. <span class="bad">Cost:</span> this is the one option that names two real colours instead of borrowing the terminal’s, so it is the least “the terminal supplies the palette” of the five — it assumes bright-white reads on slot-4 blue, which holds on all three profiles above but is an assumption, not a construction.</p>
+
+<hr>
+
+<div class="lbl">E — bold + underline <span class="n">— weight and a rule under the row. No colour at all.</span></div>
+<div class="row">
+  <div class="tw"><div class="cap">VS Code Dark+</div>
+<div class="app t-dark"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cE"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">macOS Terminal “Basic”</div>
+<div class="app t-basic"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cE"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+  <div class="tw"><div class="cap">Solarized Light</div>
+<div class="app t-solar"><span class="acc">◈</span>  EXPENSE WORLD
+<span class="rule">──────────────────────────────</span>
+<span class="grp">CAPTURE &amp; LEDGER</span>
+<span class="cE"> Log a transaction</span>
+ Inbox
+ Transactions
+ Reconciliations
+<span class="rule">──────────────────────────────</span>
+<span class="grp">REPORTS</span>
+ Outstanding Amounts
+ Monthly report</div></div>
+</div>
+<p class="probe"><b>probe:</b> <code>'bold underline default on default'</code> — verified. Colour-free, so it is correct on any ground by construction — the same argument reverse video was chosen on. <span class="bad">Cost:</span> weakest of the five at a glance, and <code>PENDING_STYLE</code> already owns bold as “draft/pending”, so bold would carry two meanings.</p>
+
+<hr>
+
+<p class="note">
+<b>The decision is consistency, not legibility.</b> All five are legible on all three grounds. <b>A</b> makes the menu
+cursor the same inverted bar the transaction and account lists already draw, so the app keeps one gesture for
+“you are here”. <b>B–E</b> give the menu its own lighter gesture, which reads as a deliberate distinction between
+“navigating a menu” and “sitting on a row of data” — defensible, but it is a second thing to learn.
+<br><br>
+<b>Not on this page:</b> reverse-via-CSS, because it is the bug. It was probed and produced a style identical to an
+unselected row, which is exactly what you are seeing today.
+<br><br>
+<b>What ships either way:</b> a guard test asserting the highlighted row renders differently from its neighbours, so
+this cannot silently regress on the next Textual bump — which is how it broke in the first place.
+</p>
+
+</body>
+</html>

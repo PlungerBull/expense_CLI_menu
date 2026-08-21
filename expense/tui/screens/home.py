@@ -39,6 +39,7 @@ from expense.tui.screens.system import (
 )
 from expense.tui.screens.transactions import TransactionsScreen
 from expense.tui.theme import PALETTE, Palette
+from expense.tui.widgets.cursor_list import CursorOptionList
 from expense.tui.widgets.header import RATE_ALERT_GAP, rate_alert
 
 _BANNER = "◈  EXPENSE WORLD"
@@ -201,7 +202,7 @@ class HomeScreen(HelpBindingMixin, Screen):
                 options.append(Option(label.upper(), disabled=True))
             else:
                 options.append(Option(label, id=opt_id))
-        yield OptionList(*options, id="menu")
+        yield CursorOptionList(*options, id="menu")
         yield Footer()
 
     def on_mount(self) -> None:
