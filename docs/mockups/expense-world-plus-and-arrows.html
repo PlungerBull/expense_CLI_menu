@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — the + shortcut, the quiet footer, and the form arrows (2026-08-20)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     FOUR ASKS, 2026-08-20, verbatim:
+
+       1. "The first menu... I'm seeing a NET on the top bar and a spent.
+           what does each one do? how do they arrive at their respective
+           amounts?"                                          -> §0, answered
+       2. "No log a transaction here, instead, I want a shortcut thats gonna
+           be when I hit the + button on the number pad, that sends you to
+           the add a transaction. This shortcut must exist also on the inbox
+           and transaction menus for now."                    -> §1, §2
+       3. "Never ever mention that the arrow keys are navigation on the lower
+           bar, its obvious and it just occupies space unnecessarily." -> §3
+       4. "When I enter a transaction for edition, normal arrows up and down
+           should switch between fields."                     -> §4
+
+     PROVENANCE
+       · REAL (rendered) — every terminal pane on this page whose caption says
+         RENDERED is the live app driven headlessly at 110x34, Textual 8.2.7,
+         character for character. Home, Transactions, the edit form and the
+         edit form on the ACCOUNT field were all captured that way today.
+       · DRAWN (to source) — the "after" panes are those same captures with
+         the single line under discussion changed, nothing else.
+       · REAL (engine) — §0's arithmetic is quoted from the engine spec
+         (../expense_world_engine/docs/engine-spec.md, GET /dashboard) and from
+         _extract_stats / _stat_cluster in expense/tui/screens/home.py.
+
+     WHAT IS ACTUALLY BEING DECIDED
+       §1  does the menu just lose a row, or does something take its place
+       §2  on Inbox, does + write a posted transaction or an inbox draft
+       §3  confirm the footer trim (no variants — it is a deletion)
+       §4  the real trade: plain arrows can move BETWEEN fields or WITHIN the
+           suggestion list, not both. Three ways to spend them.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --line:#2a2a30;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:22px;
+       padding:38px 20px 80px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  h1{width:min(1180px,100%);font-size:17px;font-weight:600;letter-spacing:.02em;margin:0}
+  h2{width:min(1180px,100%);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+     color:var(--muted);margin:26px 0 -6px;padding-top:18px;border-top:1px solid var(--line)}
+  .sub{width:min(1180px,100%);color:var(--dim);font-size:12.5px;line-height:1.75;margin:0}
+  .sub b{color:var(--muted)} .sub code{color:#9aa3b2}
+  .lbl{width:min(1180px,100%);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+       display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:4px}
+  .lbl .n{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .row{width:min(1180px,100%);display:grid;gap:14px}
+  .row.two{grid-template-columns:repeat(2,1fr)}
+  .row.three{grid-template-columns:repeat(3,1fr)}
+  .tw{display:flex;flex-direction:column;gap:6px}
+  .cap{font-size:11px;color:var(--dim);letter-spacing:.03em;line-height:1.5}
+  .cap b{color:var(--muted)}
+  .app{background:#1e1e1e;color:#cccccc;font-size:11.5px;line-height:1.5;
+       padding:10px 12px;border-radius:5px;white-space:pre;overflow-x:auto;border:1px solid var(--line)}
+  .rev{background:#cccccc;color:#1e1e1e}
+  .del{color:#c75450;text-decoration:line-through}
+  .add{color:#6a9955}
+  .k{color:#4fc1ff}
+  .mut{color:#666666}
+  .warn{color:#d7ba7d}
+  table.f{width:min(1180px,100%);border-collapse:collapse;font-size:12.5px}
+  table.f th,table.f td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  table.f th{color:var(--muted);font-weight:600;letter-spacing:.04em}
+  table.f td{color:var(--text)} table.f td.n{color:var(--dim)}
+  .pick{width:min(1180px,100%);border:1px solid var(--line);border-radius:6px;padding:14px 16px;
+        font-size:12.5px;line-height:1.8;color:var(--muted)}
+  .pick b{color:var(--text)}
+</style>
+</head>
+<body>
+
+<h1>expense world — the <span class="k">+</span> shortcut, the quiet footer, and the form arrows</h1>
+<div class="pick" style="margin-bottom:4px">
+  <b>OUTCOME, 2026-08-20 — shipped:</b> §1 <b>A</b> (menu row deleted) · §2a plain <code>+</code> ·
+  §2b <b>C</b> (<code>+</code> always posts a transaction, on Home, Transactions and Inbox) ·
+  §3 the footer trim.<br>
+  <b>Not shipped:</b> §2b's <code>n New draft</code> and all of §4 — deferred by the user
+  ("nothing else for now"). Both are carried in <code>docs/todo.md</code> items 6 and 7; §4's
+  options J and K below are still the live choice for whoever picks it up.
+</div>
+<p class="sub">2026-08-20 · four asks in one pass. Every <b>RENDERED</b> pane below is the live app captured
+headlessly at 110×34; every <b>after</b> pane is that same capture with one line changed. Nothing here is built yet —
+pick a letter per section.</p>
+
+<!-- ================================================================= -->
+<h2>§0 · What NET and SPENT actually are</h2>
+<p class="sub">Not a decision — the answer to ask 1, written down so it stops being a mystery.</p>
+
+<div class="row"><div class="tw">
+<div class="app"><span class="mut">RENDERED — the live home header, today, your real ledger</span>
+
+  ◈  EXPENSE WORLD                                        net +5,265.88  ·  spent 440,281.55
+──────────────────────────────────────────────────────────────────────────────────────────</div>
+<div class="cap">home.py <code>_stat_cluster</code>, fed by one <code>GET /dashboard</code> read on mount and on every return to home.</div>
+</div></div>
+
+<table class="f">
+  <tr><th style="width:11%">Figure</th><th style="width:24%">Engine field</th><th>How the engine arrives at it</th></tr>
+  <tr>
+    <td><b>net</b></td>
+    <td class="n">totals.net_home_cents</td>
+    <td>Money <b>in minus money out</b> for the <b>current calendar month</b>, in your home currency —
+        <code>inflow_home_cents − outflow_home_cents</code>. Signed, so <code>+5,265.88</code> means this month you
+        took in 5,265.88 more than you spent. Positive is green, negative red.</td>
+  </tr>
+  <tr>
+    <td><b>spent</b></td>
+    <td class="n">totals.outflow_home_cents</td>
+    <td><b>Everything that went out</b> this calendar month, home currency, as a positive number (it is always drawn
+        in the negative colour because outflow is outflow). It is the outflow half of net — not a second, independent
+        number.</td>
+  </tr>
+  <tr>
+    <td><b>owed</b><br><span class="n">(hidden today)</span></td>
+    <td class="n">Σ people[].current_balance<br>_home_cents</td>
+    <td>Net of every person's home-converted balance. The segment is <b>dropped entirely when it is exactly 0</b>,
+        which is why you are not seeing it. Positive → <code>owed to you</code>; negative → <code>you owe</code>.</td>
+  </tr>
+</table>
+
+<p class="sub">Four rules that shape those numbers, all engine-side:
+<b>(a)</b> "current month" is the calendar month in your <code>display_timezone</code>, not a rolling 30 days.
+<b>(b)</b> Opening balances are <b>excluded</b> — the <code>@Opening</code> seed rows are where tracking starts, not money
+that moved, so they never inflate a month.
+<b>(c)</b> Every figure is <b>home-currency, engine-converted</b>; the CLI never does currency math.
+<b>(d)</b> If any transaction behind these totals has no exchange rate for its date, the whole cluster is replaced by
+<code class="warn">3 UNRATED</code> rather than showing a figure that is quietly short.</p>
+
+<!-- ================================================================= -->
+<h2>§1 · Home loses "Log a transaction" &nbsp;<span style="color:#6a9955">— decided: A</span></h2>
+<p class="sub">Picked 2026-08-20: <b>A, just gone.</b> Four entries become three, the cursor lands on Inbox, and
+nothing takes the row's place. <span class="k">+</span> is discoverable through the footer and the
+<span class="k">?</span> card. No hint line on the group header.</p>
+
+<div class="row"><div class="tw">
+<div class="app">  ◈  EXPENSE WORLD                                        net +5,265.88  ·  spent 440,281.55
+──────────────────────────────────────────────────────────────────────────────────────────
+
+  <span class="mut">CAPTURE &amp; LEDGER</span>
+  <span class="rev">Inbox                                                                                   </span>
+  Transactions
+  Reconciliations
+  <span class="mut">──────────────────────────────────────────────────────────────────────────────────────</span>
+  <span class="mut">REPORTS</span>
+  Outstanding Amounts
+  Monthly report
+  <span class="mut">──────────────────────────────────────────────────────────────────────────────────────</span>
+  <span class="mut">MANAGE</span>
+  Accounts
+  Categories
+  Hashtags
+
+ <span class="add">+ Add</span>  <span class="k">q</span> Quit  <span class="k">?</span> Keys</div>
+</div></div>
+
+<!-- ================================================================= -->
+<h2>§2a · Can the key be shift + &#43;? &nbsp;<span class="warn">— no, and here is why</span></h2>
+<p class="sub">You asked whether <code>shift + +</code> avoids collisions. It cannot be bound, because a terminal
+has no way to send it. Two independent confirmations:</p>
+
+<table class="f">
+  <tr><th style="width:26%">Fact</th><th>Evidence</th></tr>
+  <tr>
+    <td><b>A terminal sends characters, not key+modifier</b></td>
+    <td>For printable keys the shift is already baked into the character — on a US layout the main-row
+        <code>+</code> <i>is</i> shift + <code>=</code>. There is no second shift left to report.
+        Textual says so in its own source: <code>keys.py:323</code> —
+        <i>"If there is a separator, then it means a modifier (other than shift) is applied.
+        Keys with modifiers don't come from printable keys."</i></td>
+  </tr>
+  <tr>
+    <td><b>Numpad <code>+</code> and main-row <code>+</code> are the same byte</b></td>
+    <td>In normal keypad mode both send <code>+</code>. So one binding already covers the numpad key you
+        asked for <i>and</i> the one over the <code>=</code>. Nothing extra to do.</td>
+  </tr>
+  <tr>
+    <td><b>Plain <code>+</code> collides with nothing — measured</b></td>
+    <td>RENDERED probe, Textual 8.2.7: <code>active_bindings</code> on Home and on Transactions contains no
+        <code>plus</code> entry; pressing <code>+</code> on the live app today does nothing at all. A probe app with a
+        <code>plus</code> binding and a focused <code>OptionList</code> fires it cleanly. The list screens have no text
+        input, so there is nothing for a <code>+</code> to be typed into.</td>
+  </tr>
+</table>
+<p class="sub"><b>Conclusion:</b> bind plain <code>+</code>, displayed in the footer as <code>+ Add</code>.
+It is free, it is unambiguous, and your numpad key hits it.</p>
+
+<!-- ================================================================= -->
+<h2>§2b · What <span class="k">+</span> writes, and the Inbox gap</h2>
+<p class="sub">You asked how we write to the inbox right now. <b>From the TUI: we do not. There is no way.</b>
+The Inbox screen has exactly three actions — <code>f</code> filter, <code>p</code> promote, <code>d</code> delete —
+plus <code>⏎</code> to edit a draft that already exists. Creating one is flat-CLI only
+(<code>expense inbox add --title "Lunch" --amount -1500</code>). So this is a real hole in the TUI, and
+<span class="k">+</span> is standing next to it.</p>
+
+<div class="row three">
+  <div class="tw">
+    <div class="cap"><b>C — <span class="k">+</span> always posts a transaction.</b> One key, one meaning, every screen.
+    <br><b>Cost:</b> the Inbox stays uncreatable from the TUI. The gap is left exactly as it is today.</div>
+    <div class="app">  <span class="mut">HOME</span>          <span class="k">+</span> → <span class="add">/transactions</span>
+  <span class="mut">TRANSACTIONS</span>  <span class="k">+</span> → <span class="add">/transactions</span>
+  <span class="mut">INBOX</span>         <span class="k">+</span> → <span class="add">/transactions</span>
+
+  <span class="mut">creating a draft:</span>
+  <span class="warn">still CLI-only</span></div>
+  </div>
+  <div class="tw">
+    <div class="cap"><b>D — <span class="k">+</span> creates in the list you are standing in.</b> In the Inbox it makes a
+    draft; elsewhere a transaction.
+    <br><b>Cost:</b> the same key writes to two different endpoints depending on where you are — the one thing
+    you cannot tell by looking at the key.</div>
+    <div class="app">  <span class="mut">HOME</span>          <span class="k">+</span> → <span class="add">/transactions</span>
+  <span class="mut">TRANSACTIONS</span>  <span class="k">+</span> → <span class="add">/transactions</span>
+  <span class="mut">INBOX</span>         <span class="k">+</span> → <span class="warn">/inbox</span>
+
+  <span class="mut">creating a draft:</span>
+  <span class="add">+ , inside the Inbox</span></div>
+  </div>
+  <div class="tw">
+    <div class="cap"><b>H — <span class="k">+</span> is always a transaction; <span class="k">n</span> is "new row here".</b>
+    <code>n New</code> is <b>already the convention</b> on Accounts, Categories, Hashtags and Reconciliations
+    (<code>_base.py:396</code>) — the Inbox is simply missing it.
+    <br><b>Cost:</b> two keys instead of one — but each means exactly one thing.</div>
+    <div class="app">  <span class="mut">HOME</span>          <span class="k">+</span> → <span class="add">/transactions</span>
+  <span class="mut">TRANSACTIONS</span>  <span class="k">+</span> → <span class="add">/transactions</span>
+  <span class="mut">INBOX</span>         <span class="k">+</span> → <span class="add">/transactions</span>
+                <span class="add">n</span> → <span class="warn">/inbox</span>  <span class="mut">(new draft)</span>
+
+  <span class="mut">creating a draft:</span>
+  <span class="add">n , like every other list</span></div>
+  </div>
+</div>
+<p class="sub"><b>Recommended: H.</b> It keeps <code>+</code> meaning one thing everywhere, and it closes the Inbox
+gap using the key the rest of the app already uses for exactly this. <code>n</code> is unbound on the Inbox today.</p>
+
+<div class="lbl" style="margin-top:16px">the inbox footer under H <span class="n">§3's trim already applied</span></div>
+<div class="row"><div class="tw">
+<div class="app">  ╭─ Inbox — drafts awaiting promotion ─────────────────────────────────────────╮
+  │  ▶  Almuerzo         Con Ana            -32.50   2026-08-19   BCP PEN  ...   │
+  │  ·  Taxi                                -18.00   2026-08-20   —        ...   │
+  ╰─────────────────────────────────────────────────────────────────────────────╯
+
+ <span class="add">+ Add</span>  <span class="add">n New draft</span>  <span class="k">f</span> Filter  <span class="k">p</span> Promote  <span class="k">d</span> Delete  <span class="k">⏎</span> Open  <span class="k">esc</span> Back  <span class="k">r</span> Refresh  <span class="k">?</span> Keys</div>
+<div class="cap"><span class="warn">Worth noticing:</span> that footer is getting long. If it crowds, <code>n New draft</code>
+shortens to <code>n New</code> and the <span class="k">?</span> card carries the full wording — the footer/card split
+the app already uses (<code>Binding.tooltip</code>).</div>
+</div></div>
+
+<!-- ================================================================= -->
+<h2>§3 · The footer stops explaining the arrow keys</h2>
+<p class="sub">No variants — a deletion, shown so you can see exactly what goes and what stays.
+The keys keep working; only the advertisement goes. The <span class="k">?</span> card still lists them, which is
+where a key that needs explaining belongs.</p>
+
+<div class="row"><div class="tw">
+<div class="app"><span class="mut">every list screen — inbox, transactions, accounts, categories, hashtags, reconciliations</span>
+ <span class="del">↓ Navigate</span>  <span class="k">⏎</span> Open  <span class="k">esc</span> Back  <span class="k">r</span> Refresh  <span class="k">?</span> Keys
+ <span class="mut">└─ becomes ─┐</span>
+ <span class="k">⏎</span> Open  <span class="k">esc</span> Back  <span class="k">r</span> Refresh  <span class="k">?</span> Keys
+
+<span class="mut">the two tree screens — outstanding amounts, monthly report</span>
+ <span class="del">↓ Navigate</span>  <span class="k">→</span> Expand  <span class="k">←</span> Collapse  <span class="k">esc</span> Back  <span class="k">r</span> Refresh  <span class="k">?</span> Keys
+ <span class="mut">└─ becomes ─┐</span>
+ <span class="k">→</span> Expand  <span class="k">←</span> Collapse  <span class="k">esc</span> Back  <span class="k">r</span> Refresh  <span class="k">?</span> Keys
+
+<span class="mut">the checklist (reconciliation detail)</span>
+ <span class="del">↓ Navigate</span>  <span class="k">space</span> Toggle  <span class="k">pgdn/.</span> Next  <span class="k">pgup/,</span> Prev  <span class="k">esc</span> Back
+ <span class="mut">└─ becomes ─┐</span>
+ <span class="k">space</span> Toggle  <span class="k">pgdn/.</span> Next  <span class="k">pgup/,</span> Prev  <span class="k">esc</span> Back</div>
+<div class="cap"><b>Note:</b> <code>↓ Navigate</code> and its twin <code>j</code> are one declaration, so both vanish from
+the footer together. <b>Page keys stay</b> — <code>pgdn/.</code> is not obvious and is not an arrow. Expand/collapse
+<b>stays</b> too: <code>→ ←</code> are arrows, but they do something you would never guess.
+<span class="warn">Say if you want those gone as well.</span></div>
+</div></div>
+
+<!-- ================================================================= -->
+<h2>§4 · Arrows inside the edit form &nbsp;<span style="color:#6a9955">— shift works, and it fixes a real bug</span></h2>
+<p class="sub"><b>Yes, <code>shift+↑</code> / <code>shift+↓</code> can be bound</b> — unlike shift+<code>+</code>.
+Arrows are not printable characters, so the terminal sends a genuinely distinct sequence for them
+(<code>CSI 1;2A</code> / <code>CSI 1;2B</code>), which Textual maps to <code>shift+up</code> / <code>shift+down</code>
+(<code>_ansi_sequences.py:234</code>). Probed live with a focused <code>Input</code>: both fired, and neither typed
+anything into the bar.</p>
+
+<p class="sub"><b>And your instinct is pointing at a real defect.</b> The form advertises
+<code>^↑ Prev field</code> / <code>^↓ Next field</code> in its footer — but on macOS,
+<b><code>⌃↑</code> is Mission Control and <code>⌃↓</code> is Application Windows</b>, claimed by the OS before the
+terminal ever sees them. Unless you have turned those off in System Settings, the two field-navigation keys this
+form has always shown you have <b>never worked</b>. That is very likely why moving between fields felt wrong enough
+to write down.</p>
+
+<div class="lbl">before <span class="n">RENDERED — the edit form on the ACCOUNT field, live</span></div>
+<div class="row"><div class="tw">
+<div class="app">  ◈ EXPENSE WORLD  ▸  Capture &amp; ledger  ▸  Transactions  ▸  Edit
+──────────────────────────────────────────────────────────────────────────────────
+  ╭────────────────────────────────────────────────────────────────╮
+  │ ACCOUNT                                                        │
+  ╰────────────────────────────────────────────────────────────────╯
+   pick an existing account · <span class="warn">↑↓ highlight</span> · enter select
+
+     <span class="rev">BCP PEN  PEN                                                  </span>
+     BCP USD  USD
+     BCP Signature USD  USD
+     BCP Signature PEN  PEN
+
+   date      2026-03-05
+   title     Sueldo marzo
+   amount    6,519.00
+   <span class="rev">account   acc1                                                   </span>
+   category  cat1
+   hashtags  #h1
+   note      Planilla
+
+ <span class="k">esc</span> Cancel  <span class="k">^s</span> Save  <span class="warn">^↑ Prev field</span>  <span class="warn">^↓ Next field</span>   <span class="mut">← eaten by macOS</span></div>
+<div class="cap">Two cursors on screen at once — the suggestion highlight and the field highlight — and the only key
+offered for the second one is intercepted by the operating system.</div>
+</div></div>
+
+<div class="row two" style="margin-top:14px">
+  <div class="tw">
+    <div class="cap"><b>J — shift moves fields, plain arrows keep the list.</b> <code>shift+↑↓</code> always move between
+    fields. Plain <code>↑↓</code> keep doing exactly what they do today: walk the suggestion list.
+    <br><b>Cost:</b> on <code>date</code>, <code>title</code>, <code>amount</code> and <code>note</code> — four of the
+    seven fields — plain arrows stay <b>dead keys</b>, which is the thing that bothered you in the first place.</div>
+    <div class="app">  ╭────────────────────────────────────────────────╮
+  │ ACCOUNT                                        │
+  ╰────────────────────────────────────────────────╯
+   pick an account · <span class="warn">↑↓ highlight</span> · enter select
+
+     <span class="rev">BCP PEN  PEN                                  </span>
+     BCP USD  USD
+     BCP Signature USD  USD
+
+   date      2026-03-05
+   title     Sueldo marzo
+   amount    6,519.00
+   <span class="rev">account   acc1                                   </span>
+   category  cat1
+
+ <span class="k">esc</span> Cancel  <span class="k">^s</span> Save  <span class="add">⇧↑ ⇧↓ Field</span>
+
+  <span class="mut">on TITLE (no list open):</span>  ↑↓ <span class="warn">do nothing</span></div>
+  </div>
+  <div class="tw">
+    <div class="cap"><b>K — shift always moves fields; plain arrows do the sensible thing.</b> <code>shift+↑↓</code> move
+    fields, always, on every field — the reliable key. Plain <code>↑↓</code> walk the suggestion list <i>when one is
+    open</i>, and otherwise <b>move fields too</b>, so they are never dead.
+    <br><b>Cost:</b> plain arrows mean two things — but <code>shift+↑↓</code> is always there to mean only one, so it
+    never leaves you stuck.</div>
+    <div class="app">  ╭────────────────────────────────────────────────╮
+  │ ACCOUNT                                        │
+  ╰────────────────────────────────────────────────╯
+   pick an account · <span class="add">↑↓ or ⇧↑↓ · enter select</span>
+
+     <span class="rev">BCP PEN  PEN                                  </span>
+     BCP USD  USD
+     BCP Signature USD  USD
+
+   date      2026-03-05
+   title     Sueldo marzo
+   amount    6,519.00
+   <span class="rev">account   acc1                                   </span>
+   category  cat1
+
+ <span class="k">esc</span> Cancel  <span class="k">^s</span> Save  <span class="add">⇧↑ ⇧↓ Field</span>
+
+  <span class="mut">on TITLE (no list open):</span>  ↑↓ <span class="add">move fields</span></div>
+  </div>
+</div>
+
+<p class="sub" style="margin-top:14px"><b>Recommended: K.</b> It is the closest thing to what you originally asked for
+— plain arrows move between fields — while still leaving the suggestion list a cursor on the three fields that have
+one, and it gives you one key (<code>⇧↑↓</code>) that means "field" with no exceptions anywhere.
+<b>In both options <code>^↑ / ^↓</code> stay bound but stop being advertised</b>, so nothing breaks for anyone whose
+Mission Control shortcuts are off.
+<b>Unchanged either way:</b> <code>⏎</code> saves the field and advances, <code>^s</code> submits, read-only fields
+are skipped.</p>
+
+<!-- ================================================================= -->
+<h2>Still to pick</h2>
+<div class="pick">
+  <b>§1 home</b> — <span class="add">✓ decided: A, just gone</span><br>
+  <b>§2a the key</b> — <span class="add">✓ resolved by fact: plain <code>+</code></span> (shift+<code>+</code> cannot be sent by a terminal; the numpad key already hits it)<br>
+  <b>§2b inbox</b> — <b>C</b> <code>+</code> always a transaction, drafts stay CLI-only &nbsp;·&nbsp; <b>D</b> <code>+</code> makes a draft inside the Inbox &nbsp;·&nbsp; <b>H</b> <span class="add">(recommended)</span> <code>+</code> always a transaction, <code>n</code> makes a draft<br>
+  <b>§3 footer</b> — confirm the trim; say if <code>→ ←</code> expand/collapse and the page keys should go too<br>
+  <b>§4 form</b> — <b>J</b> shift moves fields, plain arrows stay on the list &nbsp;·&nbsp; <b>K</b> <span class="add">(recommended)</span> shift always moves fields, plain arrows move fields too unless a list is open
+</div>
+
+</body>
+</html>

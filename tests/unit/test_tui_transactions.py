@@ -5,6 +5,7 @@ import asyncio
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.screens.transactions import TransactionsScreen, transaction_rows
+from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for, wait_for_list
 
 ITEMS = [
@@ -75,5 +76,63 @@ def test_transactions_screen_lists_and_opens_detail(monkeypatch):
             await pilot.press("enter")  # opens the edit screen, pre-filled
             await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
             assert app.screen._mode == "edit" and app.screen._values["amount"] == 651900
+
+    asyncio.run(scenario())
+
+
+def test_plus_opens_an_empty_log_form(monkeypatch):
+    """`+` on the ledger logs a new transaction (2026-08-20). Create mode, not
+    edit — the row under the cursor is irrelevant to it."""
+    import expense.commands.transactions_cmd as tc
+    import expense.tui.screens.transactions as tx_mod
+
+    monkeypatch.setattr(tc, "fetch_transactions", lambda *a, **k: {"items": ITEMS, "total": 2})
+    monkeypatch.setattr(tx_mod, "load_account_name_map", lambda: ACCOUNTS)
+    monkeypatch.setattr(tx_mod, "load_category_name_map", lambda: CATEGORIES)
+    monkeypatch.setattr(tx_mod, "load_hashtag_name_map", lambda: HASHTAGS)
+    monkeypatch.setattr(QuickAddLogScreen, "_load_entities", lambda self: None)
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            await app.push_screen(TransactionsScreen())
+            await wait_for_list(pilot, app)
+            await pilot.press("+")
+            await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
+            assert app.screen._mode == "create" and app.screen._resource == "transactions"
+
+    asyncio.run(scenario())
+
+
+def test_navigate_is_not_advertised_in_the_footer(monkeypatch):
+    """ "Never ever mention that the arrow keys are navigation on the lower bar"
+    (user, 2026-08-20). The keys still work — only the footer row is gone, and
+    the `?` card still lists them."""
+    import expense.commands.transactions_cmd as tc
+    import expense.tui.screens.transactions as tx_mod
+
+    monkeypatch.setattr(tc, "fetch_transactions", lambda *a, **k: {"items": ITEMS, "total": 2})
+    monkeypatch.setattr(tx_mod, "load_account_name_map", lambda: ACCOUNTS)
+    monkeypatch.setattr(tx_mod, "load_category_name_map", lambda: CATEGORIES)
+    monkeypatch.setattr(tx_mod, "load_hashtag_name_map", lambda: HASHTAGS)
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            await app.push_screen(TransactionsScreen())
+            await wait_for_list(pilot, app)
+            app.screen.query_one(CursorList).focus()
+            await pilot.pause()
+            shown = [b.description for _n, b, _e, _t in app.active_bindings.values() if b.show]
+            assert "Navigate" not in shown
+            assert "Open" in shown and "Add" in shown  # the non-obvious keys stay
+            # the key itself still moves the cursor
+            listing = app.screen.query_one(CursorList)
+            before = listing._cursor
+            await pilot.press("down")
+            await pilot.pause()
+            assert listing._cursor == before + 1
 
     asyncio.run(scenario())

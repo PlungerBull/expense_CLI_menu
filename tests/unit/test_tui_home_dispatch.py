@@ -18,7 +18,6 @@ from expense.tui.screens.quick_log import QuickAddLogScreen
 from tests.unit.helpers import wait_for
 
 _CASES = [
-    ("log", home.QuickAddLogScreen),
     ("inbox", home.InboxScreen),
     ("transactions", home.TransactionsScreen),
     ("reconciliations", home.ReconciliationsScreen),
@@ -76,6 +75,34 @@ def test_screens_map_covers_every_wired_menu_entry():
     undispatched, no stale screen mapping (replaces the old elif's coverage)."""
     wired = {kind for kind, _ in home._MENU if kind is not None}
     assert set(home._SCREENS) == wired
+
+
+def test_log_is_no_longer_a_menu_entry():
+    """`Log a transaction` was removed from the menu on 2026-08-20 in favour of
+    `+`. Guard so it is not re-added by reflex — the row and the key would be two
+    doors to one form, and the menu is the slower one."""
+    labels = [label for kind, label in home._MENU if kind is not None]
+    assert "Log a transaction" not in labels
+    assert "log" not in home._SCREENS
+
+
+def test_plus_opens_the_log_form_from_home(monkeypatch):
+    """`+` replaces the deleted menu row (2026-08-20). Plain `+`, no modifier —
+    the numpad key and the main-row key send the same byte."""
+    _stub_loaders(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, HomeScreen)
+            await pilot.press("+")
+            await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
+            # create mode, not edit: an empty form posting to /transactions
+            assert app.screen._mode == "create"
+            assert app.screen._resource == "transactions"
+
+    asyncio.run(scenario())
 
 
 def test_q_quits_from_home(monkeypatch):

@@ -6,6 +6,11 @@ the engine's exact "ready" predicate (a second `fetch_inbox(ready=True)` query)
 rather than reimplementing it. `f` cycles the filter, `p` promotes and `d`
 deletes (each via a ConfirmModal), and `enter` opens the item in the editable
 QuickAddLogScreen.
+
+`+` logs a **posted transaction**, not a draft (`LogTransactionMixin`) — the
+key means one thing on every screen that has it. Creating an inbox draft from
+the TUI is still not possible; `expense inbox add` is the only way (raised
+2026-08-20, deliberately left open).
 """
 
 from rich.text import Text
@@ -23,7 +28,12 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
-from expense.tui.screens._base import PagedListMixin, SectionScreen, screen_fetch_kwargs
+from expense.tui.screens._base import (
+    LogTransactionMixin,
+    PagedListMixin,
+    SectionScreen,
+    screen_fetch_kwargs,
+)
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.theme import AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell
@@ -77,10 +87,11 @@ def inbox_rows(
     return rows
 
 
-class InboxScreen(PagedListMixin, SectionScreen):
+class InboxScreen(LogTransactionMixin, PagedListMixin, SectionScreen):
     crumb = ("Capture & ledger", "Inbox")
     CARD_WIDTH = 110  # matches Transactions since the Hashtags column landed (backlog 6.1)
     BINDINGS = [
+        *LogTransactionMixin.BINDINGS,
         ("f", "cycle_filter", "Filter"),
         ("p", "promote", "Promote"),
         ("d", "delete", "Delete"),

@@ -20,6 +20,7 @@ from rich.console import Group
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widget import Widget
@@ -232,6 +233,44 @@ class PagedListMixin:
             return  # no page there — the last page stays put
         self._page = target
         self._load()
+
+
+class LogTransactionMixin:
+    """Adds `+` — jump straight to the log-a-transaction form.
+
+    Replaced the home menu's `Log a transaction` row on 2026-08-20: logging is
+    the thing you do most and a menu row made it the slowest path to it. Bound
+    on Home, Transactions and Inbox — the three screens where "and now write one
+    down" is the obvious next thought.
+
+    **Plain `+`, no modifier, deliberately.** `shift++` was considered and is not
+    bindable: for a printable key the shift is already baked into the character
+    the terminal sends (on a US layout the main-row `+` *is* shift+`=`), so there
+    is no modifier left to report — Textual says as much in `keys.py`
+    (`key_to_character`: "Keys with modifiers don't come from printable keys").
+    Plain `+` costs nothing anyway: the numpad key and the main-row key send the
+    same byte, so one binding catches both, and none of the three screens has a
+    text input for a stray `+` to land in.
+
+    `key_display` is set because Textual renders the key name (`plus`) otherwise.
+
+    Like `HelpBindingMixin`, the BINDINGS have to be splatted into each host —
+    Textual does not merge BINDINGS from a plain mixin.
+    """
+
+    BINDINGS = [Binding("plus", "log_transaction", "Add", key_display="+")]
+
+    def action_log_transaction(self) -> None:
+        # imported here, not at module scope: quick_log imports FormScreen from
+        # _form, which imports EngineWriteMixin from this module.
+        from expense.tui.screens.quick_log import QuickAddLogScreen
+
+        self.app.push_screen(QuickAddLogScreen(), self._after_log)
+
+    def _after_log(self, _result=None) -> None:
+        """Hook for hosts that must react once the form closes. Home refreshes
+        its stat cluster on resume already; the list screens override this to
+        reload, so a transaction you just wrote appears without pressing `r`."""
 
 
 class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Screen):

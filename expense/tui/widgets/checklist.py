@@ -59,7 +59,11 @@ RowInput = Row | tuple
 class CheckList(Static):
     can_focus = True
     BINDINGS = [
-        Binding("down,j", "move(1)", "Navigate", tooltip="Down"),
+        # Not shown in the footer: "the arrow keys move the cursor" is not worth a
+        # footer slot (user, 2026-08-20 — "its obvious and it just occupies space
+        # unnecessarily"). The keys are unchanged and the `?` card still lists them,
+        # which is where a key that needs explaining belongs.
+        Binding("down,j", "move(1)", "Navigate", tooltip="Down", show=False),
         Binding("up,k", "move(-1)", "Up", show=False),
         Binding("space", "toggle", "Toggle"),
         Binding("pagedown,full_stop", "page(1)", "Next", key_display="pgdn/.", tooltip="Next page"),

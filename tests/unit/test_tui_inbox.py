@@ -130,3 +130,30 @@ def test_inbox_screen_lists_and_opens_detail(monkeypatch):
             assert "hashtags" in app.screen._sequence()
 
     asyncio.run(scenario())
+
+
+def test_plus_logs_a_transaction_not_a_draft(monkeypatch):
+    """`+` means the same thing on every screen that has it: a posted
+    transaction (option C, 2026-08-20). Standing in the Inbox does not change
+    what it writes — creating a draft from the TUI is still not possible, and
+    `expense inbox add` remains the only way."""
+    import expense.commands.inbox_cmd as ic
+    import expense.tui.screens.inbox as inbox_mod
+
+    monkeypatch.setattr(ic, "fetch_inbox", lambda *a, **k: {"items": ITEMS})
+    monkeypatch.setattr(inbox_mod, "load_account_name_map", lambda: ACCOUNTS)
+    monkeypatch.setattr(inbox_mod, "load_category_name_map", lambda: CATEGORIES)
+    monkeypatch.setattr(QuickAddLogScreen, "_load_entities", lambda self: None)
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            await app.push_screen(InboxScreen())
+            await wait_for_list(pilot, app)
+            await pilot.press("+")
+            await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
+            assert app.screen._mode == "create"
+            assert app.screen._resource == "transactions"
+
+    asyncio.run(scenario())

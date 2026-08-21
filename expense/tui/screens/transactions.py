@@ -3,7 +3,7 @@
 Built on SectionScreen + the shared CursorList. Fetch-paged (PagedListMixin —
 real limit/offset against the engine, sized to the terminal ≤20 rows;
 pgdn/. turns the page); `enter` opens the record in the editable
-QuickAddLogScreen. No `cl`
+QuickAddLogScreen and `+` opens an empty one (`LogTransactionMixin`). No `cl`
 glyph column (dropped per request); interactive filters and search land in a
 later pass.
 """
@@ -21,7 +21,12 @@ from expense.commands._resource import (
     resolve_name,
     truncate,
 )
-from expense.tui.screens._base import PagedListMixin, SectionScreen, screen_fetch_kwargs
+from expense.tui.screens._base import (
+    LogTransactionMixin,
+    PagedListMixin,
+    SectionScreen,
+    screen_fetch_kwargs,
+)
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.theme import AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell
@@ -57,7 +62,8 @@ def transaction_rows(
     return rows
 
 
-class TransactionsScreen(PagedListMixin, SectionScreen):
+class TransactionsScreen(LogTransactionMixin, PagedListMixin, SectionScreen):
+    BINDINGS = [*LogTransactionMixin.BINDINGS]
     crumb = ("Capture & ledger", "Transactions")
     CARD_WIDTH = 110
 
@@ -103,6 +109,9 @@ class TransactionsScreen(PagedListMixin, SectionScreen):
                 page_meta=self.page_meta(),
             ),
         ]
+
+    def _after_log(self, _result=None) -> None:
+        self._load()  # a transaction written with `+` belongs in this list now
 
     def on_cursor_list_selected(self, event: CursorList.Selected) -> None:
         item = self._by_id.get(event.key)

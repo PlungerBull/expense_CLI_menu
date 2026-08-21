@@ -48,6 +48,7 @@ Rules for this file:
 | The command palette is removed, not populated — `?` is the one discoverability surface | 2026-08-17 | full entry below |
 | The terminal supplies the palette — every colour is an ANSI slot, nothing is detected | 2026-08-19 | full entry below |
 | A terminal too small is the user's to fix — no size guard; 80×24 correct, 60×20 lossy | 2026-08-20 | full entry below |
+| Logging is a key, not a menu row — plain `+`, and the footer stops naming the arrow keys | 2026-08-20 | full entry below |
 
 ## Sign is always literal — no default-to-expense magic (2026-04-25)
 
@@ -431,3 +432,55 @@ tests. *A persistent warning line* — cheap and takes nothing away, but it spen
 row on the screen with fewest to spare and leaves the misleading render underneath
 it. If this is revisited, revisit the notice screen; the threshold to wire it to is
 already measured.
+
+---
+
+## Logging is a key, not a menu row — plain `+`, and the footer stops naming the arrow keys (2026-08-20)
+
+**Context.** Two asks landed together, both about the same thing: the surfaces you
+pass through on the way to writing a transaction down. `Log a transaction` was the
+first row of the home menu, which made the most frequent action in the product
+also the one with the most steps — open the app, move the cursor, press enter. And
+every list footer opened with `↓ Navigate`, spending its leftmost slot on the one
+key nobody has ever needed told (*"its obvious and it just occupies space
+unnecessarily"*). Mockup and the measurements behind it:
+[mockups/expense-world-plus-and-arrows.html](mockups/expense-world-plus-and-arrows.html).
+
+**Decision.** The menu row is **deleted** and replaced by **plain `+`**
+(`LogTransactionMixin`, [_base.py](../expense/tui/screens/_base.py)), bound on
+Home, Transactions and Inbox — the three screens where "and now write one down" is
+the obvious next thought. It always opens the same empty form posting to
+`/transactions`: one key, one meaning, on every screen that has it. Separately,
+the `Navigate` binding on `CursorList`, `CheckList`, `CategoriesView` and
+`MonthGridView` becomes `show=False` — the keys are untouched and the `?` card
+still lists them, which is where a key that needs explaining belongs.
+
+**Rejected — `shift`+`+`, because a terminal cannot send it.** The first proposal
+was a modified key, to be safe against collisions. It is not bindable: for a
+printable key the shift is already baked into the character the terminal emits (on
+a US layout the main-row `+` *is* shift+`=`), so no modifier survives to be
+reported. Textual states it in `keys.py` (`key_to_character`: *"Keys with
+modifiers don't come from printable keys"*). Plain `+` needed no defending anyway —
+probed on the live app, `active_bindings` had no `plus` entry on any screen,
+pressing it did nothing, and none of the three hosts has a text input for a stray
+`+` to fall into. It also arrives from the numpad and the main row as the same
+byte, so one binding catches both.
+
+**Rejected — `+` creating an inbox draft when pressed inside the Inbox.** Tempting,
+because **the TUI still cannot create an inbox draft at all** — the Inbox screen
+only filters, promotes, deletes and edits, and `expense inbox add` is the only way
+in. But making one key write to two different endpoints depending on where you
+stand is the one thing you cannot tell by looking at the key. The gap is real and
+deliberately left open ([todo.md](todo.md)); the shape it should take if it is ever
+closed is `n New`, which is already the convention on every other list screen
+(`_base.py` `ResourceListScreen`).
+
+**Not done — the arrow keys inside the edit form.** The same session asked for
+plain `↑↓` to move between fields, then for `shift+↑↓`, then deferred the whole
+item. Two findings are worth keeping for whoever picks it up. `shift+up` /
+`shift+down` **are** bindable — arrows are not printable, so the terminal sends a
+distinct sequence (`CSI 1;2A`), Textual maps it, and a live probe with a focused
+`Input` fired both without typing anything into the bar. And the form's existing
+`^↑ Prev field` / `^↓ Next field` are almost certainly **dead keys on macOS**:
+`⌃↑` is Mission Control and `⌃↓` is Application Windows, claimed by the OS before
+the terminal sees them. The form has been advertising two keys that never worked.

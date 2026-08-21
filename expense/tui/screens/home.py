@@ -9,6 +9,10 @@ cluster paints after first paint, so the menu never waits on the network.
 
 The section list is the top-level entry point into every TUI screen; every
 entry is wired (the last "soon" stub, Monthly report, shipped 2026-07-08).
+
+`Log a transaction` was a menu row until 2026-08-20; it is now `+`
+(`LogTransactionMixin`), because logging is the most frequent thing you do here
+and a menu row made it the slowest path to it.
 """
 
 from rich.table import Table
@@ -21,14 +25,13 @@ from textual.widgets.option_list import Option
 
 from expense.commands import dashboard_cmd
 from expense.commands._resource import UNRATED_SUFFIX, format_cents, unconverted_of
-from expense.tui.screens._base import screen_fetch_kwargs
+from expense.tui.screens._base import LogTransactionMixin, screen_fetch_kwargs
 from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.categories import CategoriesScreen
 from expense.tui.screens.hashtags import HashtagsScreen
 from expense.tui.screens.help import HelpBindingMixin
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
-from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.screens.reconciliations import ReconciliationsScreen
 from expense.tui.screens.reports import MonthlyReportScreen
 from expense.tui.screens.system import (
@@ -47,7 +50,6 @@ _BANNER = "◈  EXPENSE WORLD"
 # (id, label) — id None renders a non-selectable group header.
 _MENU: list[tuple[str | None, str]] = [
     (None, "Capture & ledger"),
-    ("log", "Log a transaction"),
     ("inbox", "Inbox"),
     ("transactions", "Transactions"),
     ("reconciliations", "Reconciliations"),
@@ -69,7 +71,6 @@ _MENU: list[tuple[str | None, str]] = [
 # `test_screens_map_covers_every_wired_menu_entry` guard keeps it in lockstep
 # with the wired _MENU entries, so a new menu row can't be left dead.
 _SCREENS: dict[str, type[Screen]] = {
-    "log": QuickAddLogScreen,
     "inbox": InboxScreen,
     "transactions": TransactionsScreen,
     "reconciliations": ReconciliationsScreen,
@@ -186,10 +187,14 @@ def _build_header(
     return grid
 
 
-class HomeScreen(HelpBindingMixin, Screen):
+class HomeScreen(LogTransactionMixin, HelpBindingMixin, Screen):
     # q lives here, not on the App — a stray q mid-flow (modal, list) must
     # never kill the app (backlog 4.6). ctrl+q stays the everywhere-quit.
-    BINDINGS = [("q", "app.quit", "Quit"), *HelpBindingMixin.BINDINGS]
+    BINDINGS = [
+        *LogTransactionMixin.BINDINGS,
+        ("q", "app.quit", "Quit"),
+        *HelpBindingMixin.BINDINGS,
+    ]
 
     _stats: dict | None = None
 

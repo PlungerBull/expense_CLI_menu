@@ -230,7 +230,10 @@ def test_home_card_names_itself_without_a_crumb():
             await pilot.pause()
             title, groups = screen_inventory(app.screen)
             assert title == "Keys — Home"
-            assert [row.keys for row in _rows(groups, "This screen")] == ["q"]
+            # `+` joined `q` on 2026-08-20, when `Log a transaction` stopped being a
+            # menu row. The card is now the only place the key is written down in
+            # full, so this assertion is what keeps it discoverable.
+            assert [row.keys for row in _rows(groups, "This screen")] == ["+", "q"]
 
     asyncio.run(scenario())
 

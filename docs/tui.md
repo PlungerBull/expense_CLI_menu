@@ -105,13 +105,20 @@ Every home-menu entry is wired — no stubs. `_SCREENS` in
 
 | Group | Entries |
 |---|---|
-| **Capture & ledger** | Log a transaction · Inbox · Transactions · Reconciliations |
+| **Capture & ledger** | Inbox · Transactions · Reconciliations |
 | **Reports** | Outstanding Amounts · Monthly report |
 | **Manage** | Accounts · Categories · Hashtags |
 | **System** | Config · Auth & profile · Activity · Rates |
 
+`Log a transaction` was a menu row until 2026-08-20; it is now **`+`** — see §4.
+
 Home is a wordmark line plus a live `net · spent · owed` stat cluster (one dashboard
 read on mount/resume, failure-silent), with the menu de-boxed onto the app background.
+**net** is `totals.net_home_cents` (this calendar month's inflow − outflow, signed);
+**spent** is `totals.outflow_home_cents` (the same month's outflow, drawn positive);
+**owed** nets every person's home-converted balance and is dropped entirely at zero.
+Opening balances are excluded engine-side — an `@Opening` seed is where tracking
+starts, not money that moved.
 Aggregates are **nullable** — a group holding an unconvertible row reports `3 unrated`
 rather than a partial total ([decisions.md](decisions.md)). Rows with nothing spent are
 hidden, on the dashboard, the monthly report and the Outstanding tree alike.
@@ -207,6 +214,20 @@ them — they are hand-written into the `?` card
 - **`⏎` never changes data.** On the Manage lists it is a literal no-op: no screen
   handles `CursorList.Selected` there, and the help card *drops* the row rather than
   advertise `⏎ Open` falsely.
+
+**`+` logs a transaction** — Home, Transactions and Inbox (`LogTransactionMixin` in
+[_base.py](../expense/tui/screens/_base.py), splatted into each host's BINDINGS like
+`HelpBindingMixin`). It always opens the same empty form posting to `/transactions`,
+including inside the Inbox: one key, one meaning. Plain `+`, no modifier — `shift`+`+`
+is not bindable at all, and the numpad and main-row keys send the same byte, so one
+binding catches both ([decisions.md](decisions.md)).
+
+**The footer never advertises the arrow keys.** `Navigate` is declared `show=False` on
+`CursorList`, `CheckList`, `CategoriesView` and `MonthGridView` (user, 2026-08-20 —
+*"its obvious and it just occupies space unnecessarily"*). The keys work unchanged and
+the `?` card still lists them. `pgdn/.` paging and `→ ←` expand/collapse **stay** in the
+footer: they are not obvious. New bindings inherit this rule — if a key only says
+"the cursor moves", it does not get a footer slot.
 
 **Standing constraint:** any future rename action on Manage screens ships as `e`,
 never `r` — two older mockups showing `r rename` are superseded. Mockup:

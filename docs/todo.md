@@ -12,7 +12,7 @@ Rules, unchanged from the backlog this file replaces
 - **Absolute dates only.** Never "recently".
 
 **Nothing here is urgent and nothing is broken.** The flat CLI and the TUI are both
-feature-complete against the engine; 924 unit tests green, contract suite 12/12
+feature-complete against the engine; 960 unit tests green, contract suite 12/12
 against the disposable engine on `:8001` (2026-08-20).
 
 ---
@@ -57,6 +57,26 @@ their precondition. Land in roughly this order; none blocks another.
 
 5. **`expense import csv`** — CSV variant of the shipped `.xlsx` importer. Only if a
    real migration needs it; the xlsx path already covered the original one.
+
+6. **The TUI cannot create an inbox draft.** Found 2026-08-20 while binding `+`. The
+   Inbox screen only filters, promotes, deletes and edits; `expense inbox add` is the
+   only way to put a draft in. `+` deliberately does **not** fill this hole — it logs a
+   posted transaction on every screen that has it, and one key writing to two endpoints
+   depending on where you stand is the trap ([decisions.md](decisions.md)). The shape
+   if it is closed: **`n New`**, already the convention on every other list screen
+   (`_base.py` `ResourceListScreen`), and unbound on the Inbox today. **[UI]**
+
+7. **Field navigation in the edit form is broken on macOS.** The form advertises
+   `^↑ Prev field` / `^↓ Next field`, but `⌃↑` is Mission Control and `⌃↓` is
+   Application Windows — the OS claims both before the terminal sees them, so the two
+   keys have very likely never worked. Raised by the user 2026-08-20 ("normal arrows up
+   and down should switch between fields"), then deferred with the rest of the form
+   work. `shift+↑` / `shift+↓` **are** bindable and were probed live (arrows are not
+   printable, so the terminal sends a distinct `CSI 1;2A`). The open question is what
+   plain `↑↓` should then do on the three fields that have a suggestion list —
+   options **J** and **K** are drawn in
+   [mockups/expense-world-plus-and-arrows.html](mockups/expense-world-plus-and-arrows.html)
+   §4, neither picked. **[UI]**
 
 ---
 
