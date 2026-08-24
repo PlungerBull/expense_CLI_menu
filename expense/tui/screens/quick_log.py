@@ -11,9 +11,14 @@ EDIT (record + resource): the same bar pre-filled. Sequence: Date › Title ›
 Amount › Account › Category › Hashtags › Note. `ctrl+s` PUTs only the changed
 fields. (`Cleared` was here until 2026-08-17 — the engine deleted the column.)
 
-`enter` saves & advances · `ctrl+↑/↓` jump fields · `↑/↓` move the suggestion
-highlight · `ctrl+s` submits. Sign explicit (− expense / + income); currency
-derived from the account.
+`enter` saves & advances · `↑/↓` move the suggestion highlight · `ctrl+s`
+submits. Sign explicit (− expense / + income); currency derived from the
+account.
+
+Field navigation (`ctrl+↑/↓`) is bound but **unadvertised** — macOS claims both
+chords before the terminal sees them, so the footer stopped offering them
+2026-08-24 and the replacement key is still open (docs/todo.md item 7). See
+`form_bindings` in _form.py.
 """
 
 import copy

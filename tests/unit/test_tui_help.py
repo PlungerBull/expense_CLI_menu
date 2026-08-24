@@ -20,6 +20,7 @@ from textual.binding import Binding
 
 import expense.tui as tui_pkg
 from expense.tui.app import ExpenseApp
+from expense.tui.screens._form import form_bindings
 from expense.tui.screens.accounts import AccountsScreen
 from expense.tui.screens.help import (
     FOLD_INTO,
@@ -319,3 +320,35 @@ def test_footer_no_longer_offers_the_palette(monkeypatch):
             assert not footer.query(".-command-palette")
 
     asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# the bar-form footer
+# ---------------------------------------------------------------------------
+
+
+def test_form_navigation_keys_are_not_advertised():
+    """The form footer offers only `esc Cancel` and `^s Save` (2026-08-24).
+
+    Two separate reasons, one outcome. `↑` / `↓` walk the suggestion list — the
+    plain-arrow navigation the list, tree and checklist widgets already stopped
+    advertising in the 2026-08-20 footer trim, which missed the forms. `^↑` /
+    `^↓` move between fields and **never worked on macOS**: the OS takes `⌃↑`
+    for Mission Control and `⌃↓` for Application Windows before the terminal
+    sees them, so the form was advertising two dead keys.
+
+    All four stay *bound* — they work wherever those system shortcuts are off,
+    and the replacement is still unpicked (docs/todo.md item 7). This guard is
+    what fails if someone re-adds one as a plain tuple, which defaults to shown.
+    """
+    bindings = [
+        binding for item in form_bindings("Save") for binding in Binding.make_bindings([item])
+    ]
+    by_key = {binding.key: binding for binding in bindings}
+
+    assert {key for key, b in by_key.items() if b.show} == {"escape", "ctrl+s"}
+    for key in ("up", "down", "ctrl+up", "ctrl+down"):
+        assert by_key[key].show is False, f"{key} is advertised in the form footer"
+        # the card guard above still applies: hidden or not, a binding we
+        # declare carries text.
+        assert by_key[key].description

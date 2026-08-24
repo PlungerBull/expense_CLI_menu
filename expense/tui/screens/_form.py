@@ -12,6 +12,7 @@ from rich.console import Group, RenderableType
 from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Static
@@ -20,15 +21,33 @@ from expense.tui.screens._base import EngineWriteMixin
 from expense.tui.widgets.header import Breadcrumb
 
 
-def form_bindings(submit_desc: str) -> list[tuple[str, str, str]]:
-    """The shared bar-form keymap; only the ctrl+s description varies."""
+def form_bindings(submit_desc: str) -> list[Binding | tuple[str, str, str]]:
+    """The shared bar-form keymap; only the ctrl+s description varies.
+
+    The four navigation keys are bound but **not advertised** (2026-08-24), so
+    the footer carries only `esc Cancel  ^s Save`:
+
+    · `↑` / `↓` walk the suggestion list — the same plain-arrow navigation the
+      list, tree and checklist widgets already stopped advertising (the 2026-08-20
+      footer trim; `cursor_list.py`, `checklist.py`, `outstanding.py`,
+      `reports.py`). The forms were simply missed by that pass.
+    · `^↑` / `^↓` move between fields — and on macOS they never could, because
+      the OS claims `⌃↑` for Mission Control and `⌃↓` for Application Windows
+      before the terminal sees them. The form was advertising two dead keys.
+      They stay **bound** rather than deleted: they do work for anyone who has
+      turned those system shortcuts off, and the replacement key is still an
+      open choice (docs/todo.md item 7, options J/K in
+      docs/mockups/expense-world-plus-and-arrows.html §4).
+
+    Guarded by `test_form_navigation_keys_are_not_advertised`.
+    """
     return [
         ("escape", "cancel", "Cancel"),
         ("ctrl+s", "submit", submit_desc),
-        ("up", "suggest(-1)", "↑"),
-        ("down", "suggest(1)", "↓"),
-        ("ctrl+up", "field(-1)", "Prev field"),
-        ("ctrl+down", "field(1)", "Next field"),
+        Binding("up", "suggest(-1)", "Highlight up", show=False),
+        Binding("down", "suggest(1)", "Highlight down", show=False),
+        Binding("ctrl+up", "field(-1)", "Prev field", show=False),
+        Binding("ctrl+down", "field(1)", "Next field", show=False),
     ]
 
 

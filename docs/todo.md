@@ -22,18 +22,54 @@ against the disposable engine on `:8001` (2026-08-20).
 Unblocked 2026-08-16 when the contract suite passed against a real engine, which was
 their precondition. Land in roughly this order; none blocks another.
 
-1. **Quick-add natural-language parser.** `expense $20 today #food` → parse amount,
-   sign, date, hashtag and title from free text, dispatch to the flat `log` command.
-   **Sign stays literal** (`$20` = income, `-$20` = expense) — no default-to-expense
-   magic, ever. This is the "low-friction capture" half of the dual-UX strategy; the
-   TUI is the "discoverable management" half ([decisions.md](decisions.md)).
-   **[UI]** — the *feel* is already drawn ahead of the grammar, all speculative with
-   no pick recorded: [mockups/quick-add-bar.html](mockups/quick-add-bar.html) (token
-   highlighting + resolved pills),
-   [mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html)
-   (what appears on the hotkey), and state **d** of
-   [mockups/expense-world-log-quickadd.html](mockups/expense-world-log-quickadd.html)
-   (one line parsed into every field — states a–c are the bar-cycle form that ships).
+1. **Quick-add parser + the one-line batch logger.** One `LOG` bar replaces the
+   bar-cycle create form; `↵` stages a parsed line into a list, `ctrl+s` writes the
+   list, `↑↓` pick a staged row back up to edit. **Nothing is built yet.** This is the
+   "low-friction capture" half of the dual-UX strategy; the TUI is the "discoverable
+   management" half ([decisions.md](decisions.md)).
+
+   **[UI] — design agreed 2026-08-24, not yet approved to build:**
+   [mockups/expense-world-quickadd-batch.html](mockups/expense-world-quickadd-batch.html)
+   (nine states, the grammar, the keymap). Earlier speculative drawings, superseded but
+   kept for the launcher question:
+   [mockups/quick-add-bar.html](mockups/quick-add-bar.html),
+   [mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html),
+   and [mockups/expense-world-log-revamp.html](mockups/expense-world-log-revamp.html)
+   (the A–E layout options this came out of).
+
+   **The grammar, as decided** — owner calls, so they are not re-litigated:
+   - **A sign makes a number an amount**, anywhere in the line; **first sign wins**
+     (`hoy +30 no -30` is +30). No sign, no amount — the digits are title text.
+     Sign is literal, always: `+` income, `-` expense.
+   - **`$` does both jobs**, split by the next character: `$` + digits is money
+     (`-$1800` ≡ `-1800`; the currency always comes from the account, so `$` never
+     says *which*), `$` + letters is an account (`$BCP PEN`). Safe because no account
+     name starts with a digit.
+   - **`@` category · `#` hashtag · `//` note.** `#` is the only repeatable token;
+     for `$`, `@` and the date, first occurrence wins.
+   - **Dates:** `dd/mm/yyyy` and `yyyy/mm/dd` (4-digit-first disambiguates, so they
+     cannot collide), plus word forms in **both languages** — `hoy/ayer/mañana` and
+     `today/yesterday/tomorrow`, unaccented spellings accepted. Omitted = today.
+     Two-digit years are **accepted**, `yy` → `20yy`, because the resolved date is
+     always echoed in words (*Tue 18 Aug 2026*) before the row is staged — a misread
+     is visible rather than silent. (No industry rule fits a personal ledger: POSIX
+     and Python `%y` send 69–99 to the 1900s, Excel splits at 29/30, ISO 8601 and
+     RFC 3339 forbid two-digit years outright.)
+   - **Routing happens at stage time, not at save time.** A row goes to the ledger
+     only if it is complete *and* not dated ahead; everything else is addressed to the
+     **Inbox**, and the list says so before you commit. `POST /inbox` takes sparse
+     drafts (only `id` required) and has no future-date check — that is gated at
+     promote — so a `mañana` row is a legal scheduled draft.
+   - **Where it lives:** a pure module (`expense/quickadd/`), no Textual, no HTTP, so
+     the TUI screen and a flat `expense log "…"` share one grammar
+     ([decisions.md](decisions.md) — "the client owns what is fast to type").
+
+   **No engine work needed.** `POST /transactions/batch` (atomic, client-supplied ids)
+   already backs `expense import`, and `POST /inbox` takes the drafts. **One thing to
+   raise with the engine coder, not a blocker:** the spec says the batch endpoint
+   returns validation errors *with the index of the failing item*; it does not —
+   [import_/apply.py](../expense/import_/apply.py) works around it by re-posting one
+   row per batch. Either the spec describes something never built, or the shape drifted.
 
 2. **Shell completions** — zsh, bash, fish. `expense <TAB>` shows commands,
    `expense auth <TAB>` shows subcommands. Lowest-effort discoverability win for the
@@ -66,12 +102,14 @@ their precondition. Land in roughly this order; none blocks another.
    if it is closed: **`n New`**, already the convention on every other list screen
    (`_base.py` `ResourceListScreen`), and unbound on the Inbox today. **[UI]**
 
-7. **Field navigation in the edit form is broken on macOS.** The form advertises
-   `^↑ Prev field` / `^↓ Next field`, but `⌃↑` is Mission Control and `⌃↓` is
-   Application Windows — the OS claims both before the terminal sees them, so the two
-   keys have very likely never worked. Raised by the user 2026-08-20 ("normal arrows up
-   and down should switch between fields"), then deferred with the rest of the form
-   work. `shift+↑` / `shift+↓` **are** bindable and were probed live (arrows are not
+7. **Field navigation in the edit form is broken on macOS.** `⌃↑` is Mission Control
+   and `⌃↓` is Application Windows — the OS claims both before the terminal sees them,
+   so `^↑ Prev field` / `^↓ Next field` have very likely never worked. Raised by the
+   user 2026-08-20 ("normal arrows up and down should switch between fields"), then
+   deferred with the rest of the form work. **The footer stopped advertising them
+   2026-08-24** (with the plain `↑ ↓` rows, which the 2026-08-20 trim had missed) — the
+   keys stay bound, so what is left here is only choosing the replacement.
+   `shift+↑` / `shift+↓` **are** bindable and were probed live (arrows are not
    printable, so the terminal sends a distinct `CSI 1;2A`). The open question is what
    plain `↑↓` should then do on the three fields that have a suggestion list —
    options **J** and **K** are drawn in

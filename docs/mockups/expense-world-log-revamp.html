@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Log a transaction — revamp options</title>
+<style>
+  :root{
+    --page:#050506; --pad:#000; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68;
+    --dimmer:#3c3f47; --accent:#7fa6d6; --pos:#7fbf8f; --neg:#cf8d8d;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--page)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       padding:40px 20px 90px;font-family:var(--mono);color:var(--text);
+       -webkit-font-smoothing:antialiased}
+  .head{width:min(1000px,100%);margin-bottom:28px}
+  .head h1{font-size:16px;letter-spacing:.14em;text-transform:uppercase;color:var(--text);
+           margin:0 0 10px;font-weight:600}
+  .head p{color:var(--muted);font-size:13px;line-height:1.65;margin:0 0 8px;max-width:78ch}
+  .head p b{color:var(--text);font-weight:600}
+  .pane{width:min(1000px,100%);margin-top:38px}
+  .lbl{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .lbl b{color:var(--text)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .blurb{color:var(--muted);font-size:13px;line-height:1.6;margin:8px 0 12px;max-width:80ch}
+  .cost{color:var(--dim);font-size:12px;line-height:1.55;margin:10px 2px 0;max-width:80ch}
+  .term{border:1px solid #23232a;border-radius:12px;overflow:hidden;
+        box-shadow:0 22px 56px -34px #000;background:var(--pad)}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#000}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:6px;color:var(--dim);font-size:12px}
+  .app{padding:14px 18px 18px}
+  pre.scr{margin:0;font-family:var(--mono);font-size:13.5px;line-height:1.5;
+          color:var(--text);white-space:pre;overflow-x:auto}
+  .d{color:var(--dim)} .dt{color:var(--accent)} .b{font-weight:700;color:#fff}
+  .a{color:var(--accent)} .n{color:var(--neg)} .p{color:var(--pos)}
+  .e{color:var(--neg)}
+  .rev{background:var(--text);color:#0b0b0e}
+  .cur{background:var(--text);color:var(--text);animation:blink 1.05s steps(1) infinite}
+  @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+  .ask{width:min(1000px,100%);margin-top:46px;border-top:1px solid #23232a;padding-top:18px;
+       color:var(--muted);font-size:13px;line-height:1.7}
+  .ask b{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="head">
+  <h1>Log a transaction — revamp options</h1>
+  <p>Drawn 2026-08-20. All five are honest Textual: every colour below is an
+     <b>ANSI slot</b> (default text, dim, blue accent, red/green for sign) plus
+     reverse video — nothing here needs a hex, and each one renders the same on a
+     light terminal.</p>
+  <p>A · B · C are <b>layouts</b> — pick one. D is the quick-add parser (todo item 1)
+     drawn against this screen. E is an <b>add-on</b> that bolts onto whichever
+     layout wins.</p>
+</div>
+<section class="pane">
+<div class="lbl"><b>today</b> <span>· what ships now</span></div>
+<p class="blurb">Seven identical rows, a dash table, no feedback. It works; it says nothing back.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log a transaction</span>
+<span class="d">──────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">AMOUNT       </span> -96.00<span class="cur">█</span>                                                  <span class="d">│</span>
+<span class="d">╰────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  signed decimal · − expense / + income · in the account&#x27;s currency</span>
+
+  <span class="d">date      </span> 2026-08-20
+  <span class="d">title     </span> SHIMAYA RAMEN
+  <span class="b">amount    </span> <span class="d">—  *</span>
+  <span class="d">account   </span> <span class="d">—  *</span>
+  <span class="d">category  </span> <span class="d">—  *</span>
+  <span class="d">hashtags  </span> <span class="d">—  (optional)</span>
+  <span class="d">note      </span> <span class="d">—  (optional)</span></pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>A</b> <span>· the receipt</span></div>
+<p class="blurb">The summary becomes a printed ticket that fills line by line. The amount is a TOTAL, and the account&#x27;s balance-after is the last line.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log a transaction</span>
+<span class="d">──────────────────────────────────────────────────────────────────────────</span>
+
+    <span class="d">┌──────────────────────────────────────────────────┐</span>
+    <span class="d">│</span> <span class="b">BCP Signature PEN</span>                            <span class="d">PEN</span> <span class="d">│</span>
+    <span class="d">│</span> <span class="d">Thu 20 Aug 2026</span>                                  <span class="d">│</span>
+    <span class="d">│</span> <span class="d">················································</span> <span class="d">│</span>
+    <span class="d">│</span> <span class="b">SHIMAYA RAMEN</span>                                    <span class="d">│</span>
+    <span class="d">│</span> KORAKUEN   <span class="a">#CAJA CHICA</span>                           <span class="d">│</span>
+    <span class="d">│</span> <span class="d">················································</span> <span class="d">│</span>
+    <span class="d">│</span> <span class="d">TOTAL</span>                                     <span class="n">-96.00</span> <span class="d">│</span>
+    <span class="d">│</span> <span class="d">················································</span> <span class="d">│</span>
+    <span class="d">│</span> <span class="d">balance after</span>                          <span class="n">-2,159.12</span> <span class="d">│</span>
+    <span class="d">└──────────────────────────────────────────────────┘</span>
+
+<span class="d">╭────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">CATEGORY     </span> kora<span class="cur">█</span>                                                    <span class="d">│</span>
+<span class="d">╰────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  ↑↓ highlight · enter selects</span>
+
+  <span class="rev">KORAKUEN  </span>
+  <span class="d">PERROS</span>
+  <span class="d">TRANSPORTE</span></pre></div></div>
+<p class="cost">Reads: the accounts list you already fetch (balance-after is arithmetic on a number the engine already gave you).</p>
+</section>
+<section class="pane">
+<div class="lbl"><b>B</b> <span>· the amount hero</span></div>
+<p class="blurb">The number you are typing is the screen. Textual&#x27;s Digits widget, sign-coloured, redrawn on every keystroke; everything else compresses to one dim chip line, with a progress stepper in the header.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log a transaction</span>              <span class="a">●</span><span class="a">●</span><span class="a">●</span><span class="d">○○○○</span>   <span class="d">field 3 of 7</span>
+<span class="d">──────────────────────────────────────────────────────────────────────────</span>
+
+      <span class="n">   ╭─╮╭─╴ ╭─╮╭─╮</span>
+      <span class="n">╶─╴╰─┤├─╮ │ ││ │</span>   <span class="d">PEN</span>
+      <span class="n">   ╶─╯╰─╯•╰─╯╰─╯</span>
+
+   <span class="b">SHIMAYA RAMEN</span> <span class="d">·</span> Thu 20 Aug <span class="d">·</span> BCP Signature PEN <span class="d">·</span> <span class="d">category?</span> <span class="d">·</span> <span class="d">#tags?</span>
+
+<span class="d">╭────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">AMOUNT       </span> -96.00<span class="cur">█</span>                                                  <span class="d">│</span>
+<span class="d">╰────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  − expense · + income · PEN, from the account</span></pre></div></div>
+<p class="cost">Reads: nothing new. Uses textual.widgets.Digits (already in the version we pin).</p>
+</section>
+<section class="pane">
+<div class="lbl"><b>C</b> <span>· the cockpit</span></div>
+<p class="blurb">Left the form, right what logging it means: the account before/after, the category&#x27;s month against its own average, the last three transactions that landed in the same place.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log a transaction</span>
+<span class="d">──────────────────────────────────────────────────────────────────────────────────</span>
+
+╭─ <span class="dimt">New transaction</span> ────────────────────╮  ╭─ <span class="dimt">Context</span> ────────────────────────────╮
+<span class="d">│</span> <span class="d">date     </span> 2026-08-20                 <span class="d">│</span>  <span class="d">│</span> <span class="b">BCP Signature PEN</span>                    <span class="d">│</span>
+<span class="d">│</span> <span class="d">title    </span> SHIMAYA RAMEN              <span class="d">│</span>  <span class="d">│</span> <span class="d">  now</span>                    <span class="n">-2,063.12</span>   <span class="d">│</span>
+<span class="d">│</span> <span class="d">amount   </span> <span class="n">-96.00</span>                     <span class="d">│</span>  <span class="d">│</span> <span class="d">  after this</span>             <span class="n">-2,159.12</span>   <span class="d">│</span>
+<span class="d">│</span> <span class="d">account  </span> BCP Signature PEN          <span class="d">│</span>  <span class="d">│</span>                                      <span class="d">│</span>
+<span class="d">│</span> <span class="a">category </span> <span class="rev">KORAKUEN</span>   <span class="a">◂ typing here</span>   <span class="d">│</span>  <span class="d">│</span> <span class="b">KORAKUEN</span> <span class="d">· this month</span>                <span class="d">│</span>
+<span class="d">│</span> <span class="d">hashtags </span> <span class="a">#CAJA CHICA</span>                <span class="d">│</span>  <span class="d">│</span> <span class="d">  spent</span>                  <span class="n">-1,842.30</span>   <span class="d">│</span>
+<span class="d">│</span> <span class="d">note     </span> <span class="d">—</span>                          <span class="d">│</span>  <span class="d">│</span> <span class="d">  4-month avg</span>            <span class="d">-1,610.00</span>   <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────╯</span>  <span class="d">│</span>                                      <span class="d">│</span>
+                                          <span class="d">│</span> <span class="b">Last 3 here</span>                          <span class="d">│</span>
+                                          <span class="d">│</span> <span class="d">  18 Aug</span> PCH AREQUIPA       <span class="n">-39.40</span>   <span class="d">│</span>
+                                          <span class="d">│</span> <span class="d">  18 Aug</span> TOTTUS AQP         <span class="n">-38.60</span>   <span class="d">│</span>
+                                          <span class="d">│</span> <span class="d">  18 Aug</span> DAJOYA SAC          <span class="n">-3.50</span>   <span class="d">│</span>
+                                          <span class="d">╰──────────────────────────────────────╯</span>
+
+<span class="d">╭────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">CATEGORY     </span> kora<span class="cur">█</span>                                                            <span class="d">│</span>
+<span class="d">╰────────────────────────────────────────────────────────────────────────────────╯</span></pre></div></div>
+<p class="cost">Reads: accounts (have it), transactions filtered by account/category, the monthly report you already render. Needs ~92 columns; below that it stacks.</p>
+</section>
+<section class="pane">
+<div class="lbl"><b>D</b> <span>· one line</span></div>
+<p class="blurb">The Todoist model: everything on one line, tokens colouring as they resolve. Bar-cycle stays underneath as the fallback for whatever didn&#x27;t parse.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log a transaction</span>
+<span class="d">──────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG          </span> <span class="b">shimaya ramen</span> <span class="n">-96</span> <span class="a">@signature</span> <span class="a">/korakuen</span> <span class="a">#caja</span> <span class="d">hoy</span><span class="cur">█</span>        <span class="d">│</span>
+<span class="d">╰────────────────────────────────────────────────────────────────────────╯</span>
+
+  <span class="d">▸</span> <span class="b">SHIMAYA RAMEN</span>   <span class="n">-96.00 PEN</span>   BCP Signature PEN   KORAKUEN   <span class="a">#CAJA CHICA</span>   20 Aug
+    <span class="d">title</span>           <span class="d">amount</span>        <span class="d">@account</span>          <span class="d">/category</span>  <span class="d">#tag</span>        <span class="d">date</span>
+
+  <span class="d">↵ log it  ·  ⇥ step into any field  ·  what doesn&#x27;t resolve turns</span> <span class="n">red</span></pre></div></div>
+<p class="cost">This is todo item 1 (the quick-add parser) — the biggest build of the five, and the only one that needs a grammar.</p>
+</section>
+<section class="pane">
+<div class="lbl"><b>D</b> <span>· one line · when a token misses</span></div>
+<p class="blurb">Nothing is silently guessed: an unresolved token goes red and the picker opens on it.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log a transaction</span>
+<span class="d">──────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG          </span> <span class="b">uber al centro</span> <span class="n">-14</span> <span class="e">/transpo</span><span class="cur">█</span>                             <span class="d">│</span>
+<span class="d">╰────────────────────────────────────────────────────────────────────────╯</span>
+
+  <span class="d">▸</span> <span class="b">UBER AL CENTRO</span>   <span class="n">-14.00</span>   <span class="e">/transpo — no category matches</span>
+
+  <span class="d">did you mean</span>  <span class="rev"> TRANSPORTE </span>  <span class="d">·</span>  <span class="d">OTROS</span>   <span class="d">↑↓ pick · ↵ accept</span></pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>E</b> <span>· recents — an add-on, not a layout</span></div>
+<p class="blurb">Bolt onto any of A–D. On open, your last few transactions are numbered; a digit prefills every field but the amount.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log a transaction</span>
+<span class="d">──────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG          </span>                                                          <span class="d">│</span>
+<span class="d">╰────────────────────────────────────────────────────────────────────────╯</span>
+
+  <span class="d">repeat</span>  <span class="a">1</span>  TOTTUS AQP PORONGOCHE         <span class="n">-38.60</span>  <span class="d">Signature PEN · KORAKUEN #CAJA CHICA</span>
+          <span class="a">2</span>  TRAN.CEL.BM.                   <span class="n">-6.60</span>  <span class="d">BCP PEN · TRANSPORTE #TAXI</span>
+          <span class="a">3</span>  SHIMAYA RAMEN                 <span class="n">-96.00</span>  <span class="d">Signature PEN · KORAKUEN #CAJA CHICA</span>
+
+  <span class="d">a number prefills everything but the amount · or just start typing</span></pre></div></div>
+<p class="cost">Reads: transactions list, limit 5. Repeat-logging drops to three keystrokes.</p>
+</section>
+<div class="ask">
+  <b>Pick a letter</b> for the layout (A, B or C — or "A+B", they compose), and say
+  yes/no to <b>E</b> separately. D can wait for its own session, or ride along.
+  Nothing gets built until you pick.
+</div>
+</body>
+</html>

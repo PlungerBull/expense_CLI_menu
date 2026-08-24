@@ -484,3 +484,16 @@ distinct sequence (`CSI 1;2A`), Textual maps it, and a live probe with a focused
 `^↑ Prev field` / `^↓ Next field` are almost certainly **dead keys on macOS**:
 `⌃↑` is Mission Control and `⌃↓` is Application Windows, claimed by the OS before
 the terminal sees them. The form has been advertising two keys that never worked.
+
+**Half of it shipped 2026-08-24: the form footer stopped advertising them** — along
+with the plain `↑ ↓` rows, which the 2026-08-20 footer trim had applied to the list,
+tree and checklist widgets but missed on the forms. The footer now reads
+`esc Cancel  ^s Save` and nothing else. All four keys stay **bound**
+(`Binding(..., show=False)` in `form_bindings`), which is the call worth recording:
+*un-advertise, do not unbind.* They genuinely work for anyone who has turned Mission
+Control's shortcuts off in System Settings, and no replacement has been picked yet —
+so deleting them would remove working behaviour to fix a labelling problem.
+*Rejected: deleting the two bindings outright* (loses that behaviour for no gain, and
+orphans `action_field`, which the replacement key will want). Guard:
+`test_form_navigation_keys_are_not_advertised`. What remains open is only the J/K
+choice above.
