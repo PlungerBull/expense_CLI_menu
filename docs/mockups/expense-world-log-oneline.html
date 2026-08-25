@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense log "…" — one line on the flat CLI</title>
+<style>
+  :root{
+    --page:#050506; --pad:#000; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68;
+    --dimmer:#3c3f47; --accent:#7fa6d6; --pos:#7fbf8f; --neg:#cf8d8d; --warn:#d8b271;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--page)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       padding:40px 20px 90px;font-family:var(--mono);color:var(--text);
+       -webkit-font-smoothing:antialiased}
+  .head{width:min(1080px,100%)}
+  .head h1{font-size:16px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px;font-weight:600}
+  .head p{color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 10px;max-width:84ch}
+  .head b{color:var(--text)} .head i{color:var(--muted)}
+  .head code,.blurb code,.note code{color:var(--text);font-size:12px}
+  .chg{width:min(1080px,100%);border:1px solid #23232a;border-radius:10px;padding:14px 18px;margin-top:14px}
+  .chg h2{margin:0 0 8px;font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;
+          color:var(--accent);font-weight:600}
+  .chg ul{margin:0;padding-left:18px;color:var(--muted);font-size:12.5px;line-height:1.8}
+  .chg b{color:var(--text)}
+  .opt{width:min(1080px,100%);margin-top:52px;border-top:1px solid #23232a;padding-top:26px}
+  .opt > h2{font-size:14px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 6px;
+            color:var(--accent);font-weight:600}
+  .opt > h2 span{color:var(--text);letter-spacing:.02em;text-transform:none;font-size:13.5px}
+  .opt > p.sub{color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 4px;max-width:86ch}
+  .pane{width:100%;margin-top:30px}
+  .lbl{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .lbl b{color:var(--text)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .blurb{color:var(--muted);font-size:13px;line-height:1.65;margin:8px 0 12px;max-width:86ch}
+  .blurb b{color:var(--text)}
+  .term{border:1px solid #23232a;border-radius:12px;overflow:hidden;
+        box-shadow:0 22px 56px -34px #000;background:var(--pad)}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#000}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:6px;color:var(--dim);font-size:12px}
+  .app{padding:14px 18px 18px}
+  pre.scr{margin:0;font-family:var(--mono);font-size:13px;line-height:1.55;
+          color:var(--text);white-space:pre;overflow-x:auto}
+  .d{color:var(--dim)} .m{color:var(--muted)} .b{font-weight:700;color:#fff} .a{color:var(--accent)}
+  .n{color:var(--neg)} .p{color:var(--pos)} .w{color:var(--warn)}
+  .cur{background:var(--text);color:var(--text);animation:blink 1.05s steps(1) infinite}
+  @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+  .note{width:min(1080px,100%);margin-top:52px;border-top:1px solid #23232a;padding-top:22px}
+  .note h2{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);
+           margin:0 0 10px;font-weight:600}
+  .note p{color:var(--muted);font-size:13px;line-height:1.75;margin:0 0 10px;max-width:88ch}
+  .note b{color:var(--text)}
+  table.gr{width:100%;border-collapse:collapse;margin-top:8px}
+  table.gr td{border-top:1px solid #1c1c22;padding:9px 10px;vertical-align:top;font-size:12.5px}
+  td.tk{color:var(--accent);white-space:nowrap;width:210px;font-weight:700}
+  td.de{color:var(--muted);line-height:1.65}
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>expense log "…" — one line on the flat CLI</h1>
+  <p>Quick-add <b>phase 2</b>. The same grammar the TUI bar will use, on the flat command:
+     <code>expense log "tottus porongoche -38.60 $signature @korakuen #caja hoy"</code>.
+     The four flags stay exactly as they are — the line is a second, separate form.</p>
+  <p>Three calls you already made are baked in here: an <b>incomplete line goes to the
+     Inbox</b>, an <b>ambiguous name counts as unresolved</b> (so it goes to the Inbox too,
+     with the candidates shown), and the command <b>always asks before writing</b> —
+     <code>--yes</code> skips the ask.</p>
+  <div class="chg">
+    <h2>What you are picking</h2>
+    <ul>
+      <li><b>One thing only: how the row is spelled out</b> before you answer y/N.
+          <b>A</b> is two lines; <b>B</b> is one field per line, the shape
+          <code>expense &lt;resource&gt; get</code> already prints.</li>
+      <li>Everything else — the wording of the Inbox warning, the candidate list, the
+          dry-run, the JSON — is <b>identical in both</b> and shown once under A.</li>
+      <li>Both are plain CLI output, not the TUI. No boxes, no colour beyond the sign.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================ OPTION A ============================ -->
+<section class="opt">
+  <h2>Option A — <span>two lines: what &amp; how much, then everything else</span></h2>
+  <p class="sub">The row reads like a receipt line. Fast to scan once you know the order;
+     the amount lands in the same place every time.</p>
+
+<div class="pane">
+<div class="lbl"><b>a</b> <span>· a complete line — the ledger ask</span></div>
+<p class="blurb">Every token resolved and the date is not ahead, so this is a ledger row.
+   The date is spelled out in words — that is the whole reason <code>18/8/26</code> is
+   allowed to mean 2026.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"tottus porongoche -38.60 $signature @korakuen #caja hoy"</span>
+
+  <span class="b">tottus porongoche</span>                                        <span class="n">-38.60 PEN</span>
+  <span class="m">BCP Signature PEN · KORAKUEN · #CAJA CHICA · Tue 25 Aug 2026</span>
+
+  Log this to the ledger? [y/N]: <span class="cur">█</span></pre></div></div>
+</div>
+
+<div class="pane">
+<div class="lbl"><b>b</b> <span>· …answered y</span></div>
+<p class="blurb">The engine's record is printed after, unchanged — same
+   <code>Created:</code> line and same dump the flag form has always produced.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"tottus porongoche -38.60 $signature @korakuen #caja hoy"</span>
+
+  <span class="b">tottus porongoche</span>                                        <span class="n">-38.60 PEN</span>
+  <span class="m">BCP Signature PEN · KORAKUEN · #CAJA CHICA · Tue 25 Aug 2026</span>
+
+  Log this to the ledger? [y/N]: y
+
+<span class="p">  Created: 8b3d21f0-4c7e-4a11-9f2d-1e6b0a35c9d7</span>
+    <span class="d">id: 8b3d21f0-4c7e-4a11-9f2d-1e6b0a35c9d7</span>
+    <span class="d">title: tottus porongoche</span>
+    <span class="d">amount_cents: -3860</span>
+    <span class="d">date: 2026-08-25T00:00:00-05:00</span>
+    <span class="d">…</span></pre></div></div>
+</div>
+
+<div class="pane">
+<div class="lbl"><b>c</b> <span>· no account named — the Inbox ask</span></div>
+<p class="blurb"><b>Your call, taken.</b> Nothing is refused; it becomes a draft, and the
+   line above the prompt says why. Note the amount has <b>no currency</b> — currency comes
+   from the account, and there isn't one.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"apparka mall -3.50 @transporte #taxi"</span>
+
+  <span class="b">apparka mall</span>                                                 <span class="n">-3.50</span>
+  <span class="w">no account</span><span class="m"> · TRANSPORTE · #TAXI · Tue 25 Aug 2026</span>
+
+  <span class="w">!</span> <span class="m">Goes to the Inbox — the line names no account.</span>
+
+  File it as a draft? [y/N]: <span class="cur">█</span></pre></div></div>
+</div>
+
+<div class="pane">
+<div class="lbl"><b>d</b> <span>· <code>$sig</code> matches two accounts</span></div>
+<p class="blurb"><b>Your call, taken.</b> An ambiguous name is treated as no name at all —
+   the row is a draft. The candidates are printed anyway, so answering <b>n</b> and
+   retyping with more of the name is one keystroke away.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"tottus -38.60 $sig @korakuen hoy"</span>
+
+  <span class="b">tottus</span>                                                      <span class="n">-38.60</span>
+  <span class="w">$sig — 2 accounts</span><span class="m"> · KORAKUEN · Tue 25 Aug 2026</span>
+
+  <span class="w">!</span> <span class="m">Goes to the Inbox — "$sig" matches 2 accounts:</span>
+        <span class="m">BCP Signature PEN    PEN</span>
+        <span class="m">BCP Signature USD    USD</span>
+    <span class="d">Answer n and type more of the name to send it to the ledger instead.</span>
+
+  File it as a draft? [y/N]: <span class="cur">█</span></pre></div></div>
+</div>
+
+<div class="pane">
+<div class="lbl"><b>e</b> <span>· <code>--dry-run</code>, and answering n</span></div>
+<p class="blurb">Same block either way. <code>--dry-run</code> never asks and never writes;
+   <b>n</b> writes nothing and exits non-zero, so a script can tell.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"tottus porongoche -38.60 $signature @korakuen #caja 18/8/26"</span> <span class="a">--dry-run</span>
+
+  <span class="b">tottus porongoche</span>                                        <span class="n">-38.60 PEN</span>
+  <span class="m">BCP Signature PEN · KORAKUEN · #CAJA CHICA · Tue 18 Aug 2026</span>
+
+  <span class="m">→ the ledger. Nothing written (--dry-run).</span>
+
+
+<span class="d">$</span> expense log <span class="m">"tottus -38.60 $signature @korakuen hoy"</span>
+
+  <span class="b">tottus</span>                                                  <span class="n">-38.60 PEN</span>
+  <span class="m">BCP Signature PEN · KORAKUEN · Tue 25 Aug 2026</span>
+
+  Log this to the ledger? [y/N]: n
+  <span class="m">Nothing written.</span></pre></div></div>
+</div>
+</section>
+
+<!-- ============================ OPTION B ============================ -->
+<section class="opt">
+  <h2>Option B — <span>one field per line, the shape <code>get</code> already prints</span></h2>
+  <p class="sub">Taller, but every field is labelled, so a misread has nowhere to hide —
+     and it is the exact indentation <code>render_record</code> uses for every
+     <code>expense &lt;resource&gt; get</code> in the CLI today.</p>
+
+<div class="pane">
+<div class="lbl"><b>a</b> <span>· a complete line — the ledger ask</span></div>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"tottus porongoche -38.60 $signature @korakuen #caja hoy"</span>
+
+    <span class="d">title:     </span><span class="b">tottus porongoche</span>
+    <span class="d">amount:    </span><span class="n">-38.60 PEN</span>
+    <span class="d">account:   </span>BCP Signature PEN
+    <span class="d">category:  </span>KORAKUEN
+    <span class="d">hashtags:  </span>#CAJA CHICA
+    <span class="d">date:      </span>Tue 25 Aug 2026
+
+  Log this to the ledger? [y/N]: <span class="cur">█</span></pre></div></div>
+</div>
+
+<div class="pane">
+<div class="lbl"><b>c</b> <span>· no account named — the Inbox ask</span></div>
+<p class="blurb">The gap is a labelled row rather than a word in a sentence, which is the
+   real difference between the two options.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"apparka mall -3.50 @transporte #taxi"</span>
+
+    <span class="d">title:     </span><span class="b">apparka mall</span>
+    <span class="d">amount:    </span><span class="n">-3.50</span>
+    <span class="d">account:   </span><span class="w">— none named</span>
+    <span class="d">category:  </span>TRANSPORTE
+    <span class="d">hashtags:  </span>#TAXI
+    <span class="d">date:      </span>Tue 25 Aug 2026
+
+  <span class="w">!</span> <span class="m">Goes to the Inbox — the line names no account.</span>
+
+  File it as a draft? [y/N]: <span class="cur">█</span></pre></div></div>
+</div>
+
+<div class="pane">
+<div class="lbl"><b>d</b> <span>· <code>$sig</code> matches two accounts</span></div>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"tottus -38.60 $sig @korakuen hoy"</span>
+
+    <span class="d">title:     </span><span class="b">tottus</span>
+    <span class="d">amount:    </span><span class="n">-38.60</span>
+    <span class="d">account:   </span><span class="w">— "$sig" matches 2</span>
+    <span class="d">category:  </span>KORAKUEN
+    <span class="d">hashtags:  </span><span class="d">—</span>
+    <span class="d">date:      </span>Tue 25 Aug 2026
+
+  <span class="w">!</span> <span class="m">Goes to the Inbox — "$sig" matches 2 accounts:</span>
+        <span class="m">BCP Signature PEN    PEN</span>
+        <span class="m">BCP Signature USD    USD</span>
+    <span class="d">Answer n and type more of the name to send it to the ledger instead.</span>
+
+  File it as a draft? [y/N]: <span class="cur">█</span></pre></div></div>
+</div>
+</section>
+
+<!-- ============================ SHARED ============================ -->
+<section class="note">
+  <h2>The same in either option</h2>
+
+  <p><b>The machine-readable preview.</b> <code>--dry-run --json</code> prints the parse
+     instead of an engine body — the only way to see what the grammar did without writing.
+     It is the third command in the repo whose <code>--json</code> is composed by the CLI
+     rather than passed through from the engine, so it gets the same inline note
+     <code>expense import</code> carries.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">zsh</span></div><div class="app"><pre class="scr"><span class="d">$</span> expense log <span class="m">"tottus -38.60 $sig @korakuen 18/8/26"</span> <span class="a">--dry-run --json</span>
+<span class="d">{</span>
+  <span class="a">"line"</span><span class="d">:</span> <span class="m">"tottus -38.60 $sig @korakuen 18/8/26"</span><span class="d">,</span>
+  <span class="a">"target"</span><span class="d">:</span> <span class="m">"inbox"</span><span class="d">,</span>
+  <span class="a">"reasons"</span><span class="d">:</span> <span class="d">[</span><span class="m">"\"$sig\" matches 2 accounts"</span><span class="d">],</span>
+  <span class="a">"payload"</span><span class="d">:</span> <span class="d">{</span> <span class="d">… the exact body that would be posted …</span> <span class="d">},</span>
+  <span class="a">"parsed"</span><span class="d">:</span> <span class="d">{</span>
+    <span class="a">"title"</span><span class="d">:</span> <span class="m">"tottus"</span><span class="d">,</span> <span class="a">"amount_cents"</span><span class="d">:</span> -3860<span class="d">,</span> <span class="a">"account_id"</span><span class="d">:</span> null<span class="d">,</span>
+    <span class="a">"date"</span><span class="d">:</span> <span class="m">"2026-08-18"</span><span class="d">,</span> <span class="a">"date_given"</span><span class="d">:</span> true<span class="d">,</span> <span class="a">"missing"</span><span class="d">:</span> <span class="d">[</span><span class="m">"account"</span><span class="d">],</span>
+    <span class="a">"unresolved"</span><span class="d">:</span> <span class="d">[{</span><span class="a">"kind"</span><span class="d">:</span><span class="m">"account"</span><span class="d">,</span> <span class="a">"text"</span><span class="d">:</span><span class="m">"sig"</span><span class="d">,</span> <span class="a">"candidates"</span><span class="d">:</span> <span class="d">[…]}],</span>
+    <span class="a">"spans"</span><span class="d">:</span> <span class="d">[…]</span>
+  <span class="d">}</span>
+<span class="d">}</span></pre></div></div>
+
+  <p style="margin-top:22px"><b>What the command refuses</b> — client-side, before any
+     network call, exit 1:</p>
+  <table class="gr">
+    <tr><td class="tk">a line <i>and</i> a flag</td>
+        <td class="de">One form or the other. <code>expense log "…" --title x</code> is a
+            mistake, not a merge — the line already says everything.</td></tr>
+    <tr><td class="tk">neither</td>
+        <td class="de">Bare <code>expense log</code> prints both forms and what each needs.</td></tr>
+    <tr><td class="tk">a flag form missing one of the four</td>
+        <td class="de">Names which one. (Typer used to do this; now the command does,
+            because the flags are optional so the line can exist.)</td></tr>
+    <tr><td class="tk"><code>--dry-run</code> with flags</td>
+        <td class="de">There is nothing to preview — the flags <i>are</i> the parse.</td></tr>
+    <tr><td class="tk"><code>--json</code> with a line, no <code>--yes</code></td>
+        <td class="de">A prompt would land in the middle of the JSON. Pass
+            <code>--yes</code> to write or <code>--dry-run</code> to look.</td></tr>
+  </table>
+
+  <p style="margin-top:22px"><b>Nothing else moves.</b> <code>expense log --title … --amount
+     …</code> behaves byte-for-byte as it does today: no prompt, no parse, same output.
+     <code>+</code> in the TUI still opens the bar-cycle form — that is phase 4.</p>
+</section>
+
+</body>
+</html>

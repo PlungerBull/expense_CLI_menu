@@ -64,3 +64,36 @@ def _build(year: int, month: int, day: int) -> tuple[str | None, bool]:
         return date(year, month, day).isoformat(), True
     except ValueError:
         return None, True
+
+
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_MONTHS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
+
+
+def format_date_words(iso: str) -> str:
+    """`'2026-08-18'` -> `'Tue 18 Aug 2026'`. Unparseable input passes through.
+
+    The echo the grammar leans on: two-digit years are accepted *because* the
+    resolved date is always spelled out before the row is committed, so a
+    misread is visible rather than silent (docs/decisions.md). English and
+    fixed on purpose — `strftime` would follow the machine locale, and a date
+    that changes shape between machines is the opposite of a check.
+    """
+    try:
+        d = date.fromisoformat(iso)
+    except ValueError:
+        return iso
+    return f"{_WEEKDAYS[d.weekday()]} {d.day} {_MONTHS[d.month - 1]} {d.year}"

@@ -11,7 +11,7 @@ import pytest
 
 from expense.quickadd.money import amount_to_text, parse_amount
 from expense.quickadd.parse import parse
-from expense.quickadd.when import parse_date
+from expense.quickadd.when import format_date_words, parse_date
 
 TODAY = date(2026, 8, 20)
 
@@ -283,3 +283,24 @@ def test_malformed_reference_rows_are_skipped_not_crashed_on():
 def test_an_empty_line_parses_to_nothing():
     result = _p("   ")
     assert (result.title, result.amount_cents, result.spans) == ("", None, ())
+
+
+# --- format_date_words ------------------------------------------------------
+# The echo two-digit years lean on: the resolved date is always spelled out
+# before the row is committed, so a misread is visible (docs/decisions.md).
+
+
+@pytest.mark.parametrize(
+    ("iso", "words"),
+    [
+        ("2026-08-18", "Tue 18 Aug 2026"),
+        ("2026-01-01", "Thu 1 Jan 2026"),
+        ("2026-12-31", "Thu 31 Dec 2026"),
+    ],
+)
+def test_format_date_words(iso, words):
+    assert format_date_words(iso) == words
+
+
+def test_format_date_words_passes_junk_through():
+    assert format_date_words("not a date") == "not a date"

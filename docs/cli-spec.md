@@ -29,8 +29,9 @@ Deliberate, reviewed deviations from the principles above — do not re-flag in 
 
 - **`accounts update --currency-code`** — exists solely to be rejected client-side with honest help text; currency is immutable after creation (the engine would 422 anyway). Fail-fast UX, not business logic. [`expense/commands/accounts_cmd.py`]
 - **`import --json`** — emits a client-composed plan/result summary. The import pipeline is a composite of many engine calls (resolve, create, batch) with no single engine response to pass through — the only non-verbatim `--json` in the layer. [`expense/commands/import_cmd.py`]
+- **`log --dry-run --json`** (2026-08-25) — emits the *parse* of a typed line, not an engine body: where the row would go, why, the payload that would be posted, and a span per token. There is no engine call to pass through, because the whole point is to see what the grammar did **before** one happens. Without `--dry-run`, `log --json` is a verbatim engine body as always. [`expense/commands/log_cmd.py`]
 
-(A third exception — the TUI transfer "To amount" auto-sign — was retired 2026-08-16 with the engine's transfer-feature removal of 2026-08-10; the sign convention now has no UI exceptions. See [decisions.md](decisions.md).)
+(A fourth exception — the TUI transfer "To amount" auto-sign — was retired 2026-08-16 with the engine's transfer-feature removal of 2026-08-10; the sign convention now has no UI exceptions. See [decisions.md](decisions.md).)
 
 ---
 
@@ -94,7 +95,15 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 - `inbox promote <id>` — atomic inbox-to-ledger. On 422, the CLI pretty-prints the missing/blocking fields.
 
 ### `expense log`
-- `log` — direct ledger entry (all required fields supplied as flags).
+
+Two forms, one command, never mixed — passing a line **and** a content flag is refused client-side.
+
+- `log --title <t> --amount <cents> --account-id <id> --category-id <id> [--date] [--description] [--hashtag-ids]` → `POST /v1/transactions`. The original form: explicit, scriptable, no parsing, no prompt. Unchanged.
+- `log "<line>" [--dry-run] [--yes] [--json]` (2026-08-25) — one typed line in the quick-add grammar: `expense log "tottus -38.60 $signature @korakuen #caja hoy"`. The grammar itself lives in [expense/quickadd/](../expense/quickadd/) and is shared verbatim with the TUI bar — `$account`, `@category`, `#tag`, `//note`, a sign is what makes a number an amount, dates in both languages. Reference names match on "contains, anywhere"; see [decisions.md](decisions.md) "Three quick-add grammar rules".
+  - **Where the row goes is decided client-side, then stated.** Complete and not dated ahead → `POST /v1/transactions`. Anything else — a missing field, a name that matched none or several, a date in the future — → `POST /v1/inbox` as a sparse draft. This is the same rule the TUI staged list uses ([expense/quickadd/route.py](../expense/quickadd/route.py)), not a second implementation.
+  - **It always asks first.** The parsed row is echoed — the date spelled out in words, the account and category by name — and waits for y/N. `--yes` skips the ask; off a TTY `--yes` is mandatory, the same rule `require_yes` applies everywhere else. Rationale in [decisions.md](decisions.md) "Two calls for the one-line `expense log`".
+  - **`--dry-run`** shows that same echo and writes nothing — the read-only way to test the grammar by hand. `--dry-run --json` emits the parse (see Sanctioned exceptions).
+  - Refused client-side, exit 1: a line together with any content flag; neither form; the flag form missing one of its four; `--dry-run` without a line; `--json` with a line but no `--yes` (a prompt would land in the middle of the JSON).
 
 ### `expense transactions`
 - `transactions list` — filters: `--account-id`, `--category-id`, `--hashtag-id`, `--reconciliation-id`, `--from`, `--to`, `--search`, `--include-deleted`. *(`--cleared/--no-cleared` removed 2026-08-16: the engine deleted the column (sql/035). It was the one filter that failed silently — the engine stopped honouring `?cleared=` without erroring, so the command returned the full list looking like a filtered answer. Confirmation is a reconciliation question now: filter by `--reconciliation-id`.)*
@@ -186,7 +195,7 @@ Config lives in `~/.expense-config` (chmod 600) with the following fields:
 
 ## To Be Defined
 
-- **Quick-add natural-language parser (Post-Step-9)** — Todoist-style single-line capture (`expense $20 today #food` → parses amount/date/hashtag/title from free text). Sign stays literal: `$20` = income, `-$20` = expense; no default-to-expense magic. Pairs with `expense world` as the "fast capture" half of the dual-UX strategy. Design drawn ahead of the parser, so the *feel* can be settled before the grammar is: [mockups/quick-add-bar.html](mockups/quick-add-bar.html) (the bar's token highlighting + resolved pills), [mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html) (what appears on the hotkey), and state **d** of [mockups/expense-world-log-quickadd.html](mockups/expense-world-log-quickadd.html) (one line parsed into every field — states a–c are the bar-cycle form that already ships). All three are **speculative**: no pick is recorded, and none of it is built.
+- **Quick-add bar in the TUI** — the one-line grammar is **built** and reachable from the flat CLI (`expense log "<line>"`, 2026-08-25); what remains is the TUI's staged-batch screen and the `+` switch, phases 3–4 in [todo.md](todo.md). The worked-out design is [mockups/expense-world-quickadd-batch.html](mockups/expense-world-quickadd-batch.html); the flat command's output block is [mockups/expense-world-log-oneline.html](mockups/expense-world-log-oneline.html) (option A, picked 2026-08-25). Superseded speculative drawings: [mockups/quick-add-bar.html](mockups/quick-add-bar.html), [mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html) (the launcher hotkey is still an open question), [mockups/expense-world-log-quickadd.html](mockups/expense-world-log-quickadd.html).
 - Shell completions (zsh, bash, fish)
 - `expense import csv` — CSV variant of the shipped `.xlsx` importer, only if a real migration needs it (see [todo.md](todo.md))
 

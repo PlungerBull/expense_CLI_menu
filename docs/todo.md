@@ -12,7 +12,7 @@ Rules, unchanged from the backlog this file replaces
 - **Absolute dates only.** Never "recently".
 
 **Nothing here is urgent and nothing is broken.** The flat CLI and the TUI are both
-feature-complete against the engine; 1014 unit tests green (2026-08-25), contract
+feature-complete against the engine; 1052 unit tests green (2026-08-25), contract
 suite 12/12 against the disposable engine on `:8001` (last run 2026-08-20).
 
 ---
@@ -24,8 +24,9 @@ their precondition. Land in roughly this order; none blocks another.
 
 1. **Quick-add parser + the one-line batch logger.** One `LOG` bar replaces the
    bar-cycle create form; `↵` stages a parsed line into a list, `ctrl+s` writes the
-   list, `↑↓` pick a staged row back up to edit. **Nothing is built yet.** This is the
-   "low-friction capture" half of the dual-UX strategy; the TUI is the "discoverable
+   list, `↑↓` pick a staged row back up to edit. **Phases 1–2 have shipped** — the
+   grammar, and `expense log "<line>"` on the flat CLI; the TUI screen is phases 3–4.
+   This is the "low-friction capture" half of the dual-UX strategy; the TUI is the "discoverable
    management" half ([decisions.md](decisions.md)).
 
    **[UI] — picked 2026-08-25.** Option **D** of
@@ -83,7 +84,7 @@ their precondition. Land in roughly this order; none blocks another.
 
    ### Phases — build one at a time, each lands on green CI
 
-   **Phases 2–3 ship nothing the user can reach.** `+` keeps opening today's form until
+   **Phase 3 ships nothing the user can reach.** `+` keeps opening today's form until
    phase 4 flips it, so `main` stays usable throughout.
 
    **Phase 1 shipped 2026-08-25.** The grammar lives in
@@ -98,14 +99,22 @@ their precondition. Land in roughly this order; none blocks another.
    an unmatched `#tag` flagged rather than created — are in
    [decisions.md](decisions.md) "Three quick-add grammar rules".
 
-   **Phase 2 — one line on the flat CLI.** `expense log` already exists with four
-   required flags ([log_cmd.py](../expense/commands/log_cmd.py)); add a **positional
-   line** to the same command rather than a new one, making the flags optional and
-   requiring one form or the other. `expense log "tottus -38.60 $signature @korakuen hoy"`.
-   Add `--dry-run` so `--json` returns the parse without writing — the preview surface
-   the launcher sketch always assumed, and the cheapest way to test a grammar by hand.
-   Reference lists come from the existing `fetch_*` helpers. **Done when:** you can log
-   a real transaction from one string, and `--dry-run --json` shows what it read.
+   **Phase 2 shipped 2026-08-25.** `expense log "<line>"` is the grammar's first
+   caller — a positional argument on the existing command, mutually exclusive with the
+   four flags, plus `--dry-run` (the read-only way to test the grammar by hand) and
+   `--yes`. Three pure pieces landed with it, all of which phases 3–4 reuse rather than
+   reinvent: [route.py](../expense/quickadd/route.py) (ledger vs Inbox, and the phrases
+   that say why — the staged list's `goes to` column), [payload.py](../expense/quickadd/payload.py)
+   (both request bodies; the Inbox one is sparse, never an explicit null) and
+   `format_date_words` in [when.py](../expense/quickadd/when.py). The TUI's reference-list
+   fetch was extracted to `load_quickadd_refs` in
+   [_resource.py](../expense/commands/_resource.py) so both surfaces suggest from one pool
+   — and now page through every category and hashtag, which the TUI picker never did.
+   Output block: option **A** of
+   [mockups/expense-world-log-oneline.html](mockups/expense-world-log-oneline.html).
+   The two behavioural calls — an incomplete or ambiguous line drafts to the Inbox, and
+   the flat command always asks before writing — are in
+   [decisions.md](decisions.md) "Two calls for the one-line `expense log`".
 
    **Phase 3 — the TUI screen, staging only.** New screen: the LOG bar, live token
    colouring off phase 1's spans, the completion picker rewriting the token in place
@@ -117,7 +126,9 @@ their precondition. Land in roughly this order; none blocks another.
    behave.
 
    **Phase 4 — the save, and the switch.** `ctrl+s` writes: one
-   `POST /transactions/batch` for the ledger rows, then a `POST /inbox` per draft.
+   `POST /transactions/batch` for the ledger rows, then a `POST /inbox` per draft. The
+   bodies come from [payload.py](../expense/quickadd/payload.py), already shared with
+   phase 2 — do not build a second pair.
    Reuse the chunk + singleton-fallback pattern from
    [import_/apply.py](../expense/import_/apply.py) (extract it rather than copy it) so a
    422 can name its row. Then point `action_log_transaction`

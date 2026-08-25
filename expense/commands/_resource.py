@@ -5,6 +5,7 @@ import os
 import re
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import typer
@@ -45,6 +46,16 @@ def pad_left(text: str, width: int) -> str:
 def pad_right(text: str, width: int) -> str:
     """Right-align `text` (pad spaces on the left) to `width` visible cols."""
     return " " * max(width - visible_len(text), 0) + text
+
+
+def stdin_is_tty() -> bool:
+    """Is there a human at the other end to answer a prompt?
+
+    Its own function so a test can be run through `CliRunner` and still take
+    the interactive branch: the runner swaps `sys.stdin` out for the duration
+    of the call, so patching the stream itself never reaches `require_yes`.
+    """
+    return sys.stdin.isatty()
 
 
 def color_supported() -> bool:
@@ -363,6 +374,74 @@ def account_choices(
     return out
 
 
+@dataclass(frozen=True)
+class QuickAddRefs:
+    """The reference lists the quick-add grammar matches names against.
+
+    `accounts`/`categories`/`hashtags` are the `(id, name, …)` tuples
+    `quickadd.parse()` takes — extra columns are ignored, so accounts keep
+    their currency for rendering. The three `*_names` maps are the *full*
+    id → name sets (archived and system rows included), for resolving ids that
+    the matching pool deliberately excludes.
+    """
+
+    accounts: list[tuple]
+    categories: list[tuple]
+    hashtags: list[tuple]
+    account_names: dict[str, str]
+    category_names: dict[str, str]
+    hashtag_names: dict[str, str]
+
+
+def _id_name_map(rows: list) -> dict[str, str]:
+    return {
+        r["id"]: r["name"]
+        for r in rows
+        if isinstance(r.get("id"), str) and isinstance(r.get("name"), str)
+    }
+
+
+def load_quickadd_refs(cfg, **kw) -> QuickAddRefs:
+    """Fetch and shape the three reference lists a typed line resolves against.
+
+    One copy for both quick-add surfaces: the flat `expense log "…"` and the
+    TUI quick-log form. What the shaping decides, and why:
+
+    * **One superset accounts fetch** (`include_archived`, `include_people`)
+      feeds both the name map and the suggestion pool; the pool then drops
+      archived accounts, so you cannot type your way into a retired one but a
+      transaction that already names one still renders.
+    * **System categories are excluded** from the pool — `@Opening` is the
+      engine's own bookkeeping, not something a human logs against.
+    * **Every page** — categories and hashtags go through `fetch_all_pages`.
+      A single unpaginated call left every tag past the engine's default page
+      invisible to the picker and unmatchable from a typed line.
+    """
+    from expense.commands import accounts_cmd, categories_cmd, hashtags_cmd
+
+    accts = items_of(
+        accounts_cmd.fetch_accounts(cfg, include_people=True, include_archived=True, **kw)
+    )
+    cats = fetch_all_pages(
+        lambda limit, offset: categories_cmd.fetch_categories(cfg, limit=limit, offset=offset, **kw)
+    )
+    tags = fetch_all_pages(
+        lambda limit, offset: hashtags_cmd.fetch_hashtags(cfg, limit=limit, offset=offset, **kw)
+    )
+    return QuickAddRefs(
+        accounts=account_choices([a for a in accts if not a.get("is_archived")]),
+        categories=[
+            (c["id"], c.get("name") or "(unnamed)")
+            for c in cats
+            if c.get("id") and not c.get("is_system")
+        ],
+        hashtags=[(t["id"], t.get("name") or "(unnamed)") for t in tags if t.get("id")],
+        account_names=_id_name_map(accts),
+        category_names=_id_name_map(cats),
+        hashtag_names=_id_name_map(tags),
+    )
+
+
 def split_settled(people: list[dict]) -> tuple[list[dict], list[dict]]:
     """Split person rows into `(outstanding, settled)`. Shared by every People panel.
 
@@ -491,22 +570,27 @@ def fetch_body(
         return client.get(path, params=params or None)
 
 
-def require_yes(yes: bool, prompt_text: str) -> None:
-    """Enforce explicit confirmation for destructive operations.
+def require_yes(yes: bool, prompt_text: str, *, aborted_text: str = "Aborted.") -> None:
+    """Enforce explicit confirmation before a write.
 
     Mirrors the pattern from `auth settings`: in non-TTY mode, --yes is mandatory;
     in TTY mode, prompt the user unless --yes was already passed.
+
+    Destructive commands (the original callers) take the default wording.
+    `expense log "<line>"` passes its own: nothing is being destroyed there —
+    the prompt exists because a typed line is *parsed*, and the parse is what
+    you are agreeing to.
     """
     if yes:
         return
-    if not sys.stdin.isatty():
+    if not stdin_is_tty():
         typer.echo(
             "Error: --yes is required for this operation in non-interactive mode.",
             err=True,
         )
         raise typer.Exit(code=1)
     if not typer.confirm(prompt_text):
-        typer.echo("Aborted.")
+        typer.echo(aborted_text)
         raise typer.Exit(code=1)
 
 

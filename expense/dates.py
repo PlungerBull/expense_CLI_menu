@@ -28,6 +28,17 @@ def now_local_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def today_local() -> date:
+    """Today in the user's local zone — the `today` the quick-add grammar
+    resolves `hoy` and a bare `18/8` against.
+
+    Its own function so tests have a seam to freeze, exactly as they freeze
+    `now_local_iso`. `date.today()` would answer in the *process* zone, which
+    is the same thing here but says less about why it is being asked.
+    """
+    return datetime.now().astimezone().date()
+
+
 class TimezoneDetectionError(RuntimeError):
     """System timezone could not be detected (no valid TZ env var, and
     /etc/localtime is not a zoneinfo symlink — some containers/WSL)."""

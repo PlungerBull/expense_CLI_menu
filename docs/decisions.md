@@ -50,6 +50,19 @@ Rules for this file:
 | A terminal too small is the user's to fix — no size guard; 80×24 correct, 60×20 lossy | 2026-08-20 | full entry below |
 | Logging is a key, not a menu row — plain `+`, and the footer stops naming the arrow keys | 2026-08-20 | full entry below |
 | Three quick-add grammar rules — contains-matching, dashed dates, tags are never created | 2026-08-25 | full entry below |
+| Two calls for the one-line `expense log` — incomplete drafts to the Inbox, and it always asks first | 2026-08-25 | full entry below |
+
+## Two calls for the one-line `expense log` (2026-08-25)
+
+**Context.** Phase 2 of the quick-add bar ([todo.md](todo.md) item 1) gave the phase-1 grammar its first caller: `expense log "tottus -38.60 $signature @korakuen hoy"`. The grammar was already settled and the batch mockup already answered these questions *for the TUI*; the flat command is a different shape — one line, one shot, no staged list — so both were put to the user again as plain questions.
+
+**Decision.** (1) **An incomplete line becomes an Inbox draft, not an error** — the routing rule holds on both surfaces ([quickadd/route.py](../expense/quickadd/route.py) is the one copy): complete and not dated ahead goes to `POST /transactions`, everything else to `POST /inbox`. **An ambiguous name counts as no name** — `$sig` matching two accounts drafts the row exactly as a missing `$` would, though the candidates are printed anyway, because the way out is to answer `n` and type more of the name. (2) **The command always asks before writing**, `--yes` skips. It echoes the parsed row first — the date spelled out in words, the account and category by name — and waits for y/N.
+
+The second call is the load-bearing one. The grammar is forgiving on purpose: `18/8/26` is a date, `hoy` is today, `$sig` finds an account from a fragment. Two-digit years were accepted at all *because* the resolved date is always echoed before the row is committed ([todo.md](todo.md) item 1) — in the TUI that echo is the staged list, and nothing reaches the engine until `ctrl+s`. The flat command has no staging step, so the prompt is where that guarantee lives. It is deliberately **flat-CLI only**: it sits in [log_cmd.py](../expense/commands/log_cmd.py), never in `expense/quickadd/`, so the TUI is not asked to confirm twice.
+
+**Rejected.** For (1): *refuse and name what is missing*, which reads well in a shell (press ↑, fix, retype) but splits one routing rule into two behaviours across two surfaces, and makes the flat command the only place a captured line can be lost; *refuse unless `--inbox`*, same objection plus a flag to remember. For the ambiguity half: *always refuse on an ambiguous name*, rejected as a second rule for what is already one thing — an unresolved reference — and unnecessary once the candidates are printed either way. For (2): *write, then echo* with `--dry-run` as the look-first path, rejected because a misread would already be in the ledger and `--dry-run` is opt-in, i.e. the check would be skipped exactly when someone is typing fast; *prompt only when something was inferred* (a two-digit year, a `contains` match rather than an exact one), rejected as an unpredictable prompt — the user cannot tell before pressing enter whether this line will stop, and a confirmation that appears sometimes trains you to dismiss it.
+
+**Also settled here, without ceremony:** the flat form's output block is option **A** of [mockups/expense-world-log-oneline.html](mockups/expense-world-log-oneline.html) (two lines — title with the amount right-aligned, then everything else dot-separated), picked 2026-08-25 over a labelled field list.
 
 ## Three quick-add grammar rules (2026-08-25)
 

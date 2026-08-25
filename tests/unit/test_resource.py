@@ -12,6 +12,7 @@ import respx
 import typer
 from typer.testing import CliRunner
 
+from expense import config as config_module
 from expense.commands._resource import (
     account_choices,
     build_update_payload,
@@ -28,6 +29,7 @@ from expense.commands._resource import (
     load_account_name_map,
     load_category_name_map,
     load_hashtag_name_map,
+    load_quickadd_refs,
     parse_hashtag_ids,
     redact_token,
     render_pagination_hint,
@@ -915,3 +917,79 @@ def test_split_settled_never_drops_a_row():
 def test_settled_label_shape():
     assert settled_label(3) == "▸ 3 settled"
     assert settled_label(1) == "▸ 1 settled"
+
+
+# ---------------------------------------------------------------------------
+# load_quickadd_refs — the reference lists both quick-add surfaces match against
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_load_quickadd_refs_shapes_all_three_lists(configured):
+    respx.get("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"id": "a1", "name": "BCP PEN", "currency_code": "PEN"},
+                {"id": "a2", "name": "Retired", "currency_code": "PEN", "is_archived": True},
+            ],
+        )
+    )
+    respx.get("https://api.example.com/v1/categories").mock(
+        return_value=_list_body(
+            [{"id": "c1", "name": "KORAKUEN"}, {"id": "c2", "name": "Opening", "is_system": True}]
+        )
+    )
+    respx.get("https://api.example.com/v1/hashtags").mock(
+        return_value=_list_body([{"id": "h1", "name": "TAXI"}])
+    )
+
+    refs = load_quickadd_refs(config_module.ensure_loaded())
+
+    # accounts keep their currency — the parser ignores the extra column, the
+    # renderer needs it to say "-38.60 PEN"
+    assert refs.accounts == [("a1", "BCP PEN", "PEN")]
+    assert refs.categories == [("c1", "KORAKUEN")]
+    assert refs.hashtags == [("h1", "TAXI")]
+
+
+@respx.mock
+def test_load_quickadd_refs_pool_excludes_what_the_maps_keep(configured):
+    """You cannot type your way into an archived account or a system category,
+    but a row that already names one still renders its name."""
+    respx.get("https://api.example.com/v1/accounts").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": "a2", "name": "Retired", "is_archived": True}]
+        )
+    )
+    respx.get("https://api.example.com/v1/categories").mock(
+        return_value=_list_body([{"id": "c2", "name": "Opening", "is_system": True}])
+    )
+    respx.get("https://api.example.com/v1/hashtags").mock(return_value=_list_body([]))
+
+    refs = load_quickadd_refs(config_module.ensure_loaded())
+
+    assert refs.accounts == [] and refs.categories == []
+    assert refs.account_names == {"a2": "Retired"}
+    assert refs.category_names == {"c2": "Opening"}
+
+
+@respx.mock
+def test_load_quickadd_refs_pages_through_every_hashtag(configured):
+    """A tag past the engine's first page was invisible to the picker and
+    unmatchable from a typed line — one unpaginated call was the cause."""
+    respx.get("https://api.example.com/v1/accounts").mock(return_value=httpx.Response(200, json=[]))
+    respx.get("https://api.example.com/v1/categories").mock(return_value=_list_body([]))
+    first = [{"id": f"h{i}", "name": f"tag{i}"} for i in range(200)]
+    route = respx.get("https://api.example.com/v1/hashtags").mock(
+        side_effect=[
+            _list_body(first, total=201),
+            _list_body([{"id": "h200", "name": "last"}], total=201),
+        ]
+    )
+
+    refs = load_quickadd_refs(config_module.ensure_loaded())
+
+    assert len(refs.hashtags) == 201
+    assert route.call_count == 2
+    assert ("h200", "last") in refs.hashtags

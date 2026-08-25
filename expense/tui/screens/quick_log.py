@@ -30,11 +30,9 @@ from rich.text import Text
 from textual import work
 from textual.widgets import Input
 
-from expense.commands import accounts_cmd, categories_cmd, hashtags_cmd
 from expense.commands._resource import (
-    account_choices,
     format_cents,
-    items_of,
+    load_quickadd_refs,
     resolve_name,
 )
 from expense.dates import to_canonical_aware
@@ -73,16 +71,6 @@ _ENGINE_FIELD = {
     "hashtags": "hashtag_ids",
     "note": "description",
 }
-
-
-def _name_map(rows: list) -> dict[str, str]:
-    """id → name from fetched rows (system + archived included, like the
-    load_*_name_map helpers these replace for this form)."""
-    return {
-        r["id"]: r["name"]
-        for r in rows
-        if isinstance(r.get("id"), str) and isinstance(r.get("name"), str)
-    }
 
 
 class QuickAddLogScreen(FormScreen):
@@ -165,29 +153,16 @@ class QuickAddLogScreen(FormScreen):
 
         try:
             cfg = config_module.ensure_loaded()
-            kw = screen_fetch_kwargs(self.app)
-            # one superset accounts fetch (include_archived) feeds both the
-            # active-only suggestion pool and the full name map (backlog 6.5b);
-            # categories/hashtags lost archive in the 2026-08-06 schema
-            # slimming, so their single fetch is already the full set
-            accts = items_of(
-                accounts_cmd.fetch_accounts(cfg, include_people=True, include_archived=True, **kw)
-            )
-            cats = items_of(categories_cmd.fetch_categories(cfg, **kw))
-            tags = items_of(hashtags_cmd.fetch_hashtags(cfg, **kw))
-            maps = tuple(_name_map(rows) for rows in (accts, cats, tags))
+            # the fetch + shaping is shared with the flat `expense log "…"`,
+            # so both quick-add surfaces suggest from exactly the same pool
+            refs = load_quickadd_refs(cfg, **screen_fetch_kwargs(self.app))
         except Exception as exc:  # surface engine/config errors in-app, don't crash
             self.app.call_from_thread(self.notify, format_error(exc), severity="error")
             return
-        active_accts = [a for a in accts if not a.get("is_archived")]
-        accounts = account_choices(active_accts)
-        categories = [
-            (c["id"], c.get("name") or "(unnamed)")
-            for c in cats
-            if c.get("id") and not c.get("is_system")
-        ]
-        hashtags = [(t["id"], t.get("name") or "(unnamed)") for t in tags if t.get("id")]
-        self.app.call_from_thread(self._set_entities, accounts, categories, hashtags, maps)
+        maps = (refs.account_names, refs.category_names, refs.hashtag_names)
+        self.app.call_from_thread(
+            self._set_entities, refs.accounts, refs.categories, refs.hashtags, maps
+        )
 
     def _set_entities(self, accounts, categories, hashtags, maps) -> None:
         self._accounts, self._categories, self._hashtags = accounts, categories, hashtags
