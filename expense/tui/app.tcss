@@ -98,8 +98,14 @@ Screen {
     height: auto;
 }
 
+/* the LOG bar's staged list — same gutter as the form's summary it replaces */
+#staged {
+    padding: 1 3;
+    height: auto;
+}
+
 /* modal screens — center the #modal box (else it collapses top-left) */
-RecordModal, SnapshotModal, ConfirmModal, PromptModal, HelpModal {
+RecordModal, SnapshotModal, ConfirmModal, PromptModal, HelpModal, DiscardStagedModal {
     align: center middle;
 }
 /* The dim scrim (pick H, 2026-08-19). `black`, NOT `$background`, and that is

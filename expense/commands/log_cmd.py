@@ -29,6 +29,7 @@ from expense import config as config_module
 from expense.commands._resource import (
     JSON_OPT,
     QuickAddRefs,
+    currency_of,
     format_cents,
     load_quickadd_refs,
     parse_hashtag_ids,
@@ -75,17 +76,6 @@ def _fail(message: str) -> None:
     raise typer.Exit(code=1)
 
 
-def _currency_of(refs: QuickAddRefs, account_id: str | None) -> str:
-    """The account's currency code, or '' — a bare number when no account is
-    named, because the currency was only ever going to come from the account."""
-    if account_id is None:
-        return ""
-    for row in refs.accounts:
-        if row[0] == account_id and len(row) > 2:
-            return str(row[2])
-    return ""
-
-
 def _reference_cell(parsed: ParsedLine, kind: str, value: str | None, names: dict) -> str:
     """One reference as the facts line shows it: the resolved name, or why not."""
     if value:
@@ -114,7 +104,7 @@ def render_row(parsed: ParsedLine, refs: QuickAddRefs) -> list[str]:
     to accept (docs/decisions.md).
     """
     amount = format_cents(parsed.amount_cents) if parsed.amount_cents is not None else "no amount"
-    currency = _currency_of(refs, parsed.account_id)
+    currency = currency_of(refs, parsed.account_id)
     if currency:
         amount = f"{amount} {currency}"
 
@@ -152,7 +142,7 @@ def render_reasons(parsed: ParsedLine, routing: Routing, refs: QuickAddRefs) -> 
             continue
         ambiguous = True
         for ident, name in token.candidates:
-            currency = _currency_of(refs, ident)
+            currency = currency_of(refs, ident)
             lines.append(f"        {name}{'    ' + currency if currency else ''}")
     if ambiguous:
         lines.append("    Answer n and type more of the name to send it to the ledger instead.")

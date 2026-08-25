@@ -40,10 +40,15 @@ expense/tui/
     reconciliations.py               # full lifecycle
     system.py       # Config / Auth / Activity / Rates screens
     quick_log.py    # the transaction form (log / edit)
+    log_bar.py      # the LOG bar — one typed line, a staged batch (quick-add phase 3).
+                    #   Parses through expense/quickadd/, routes each row to the ledger
+                    #   or the Inbox at stage time. Unreachable until phase 4 binds it
+                    #   to `+`; ctrl+s (the save) lands with it.
     create_forms.py # BarFormScreen + New{Account,Category,Hashtag} small forms
                     #   New account carries a TYPE field (bank/person, prefilled
                     #   bank) that picks POST /accounts vs POST /people
-    modals.py       # RecordModal, SnapshotModal, ConfirmModal, PromptModal
+    modals.py       # RecordModal, SnapshotModal, ConfirmModal, PromptModal,
+                    #   DiscardStagedModal (the LOG bar's one confirmation)
 ```
 
 **The fetch/print split is the anti-duplication guardrail.** Every command that
@@ -228,6 +233,14 @@ binding catches both ([decisions.md](decisions.md)).
 the `?` card still lists them. `pgdn/.` paging and `→ ←` expand/collapse **stay** in the
 footer: they are not obvious. New bindings inherit this rule — if a key only says
 "the cursor moves", it does not get a footer slot.
+
+**A screen key that a focused `Input` also claims needs `priority=True`.** Textual
+resolves the focused widget's bindings before the screen's, and `Input` binds more
+chords than it looks like — `ctrl+x` is `cut`, `ctrl+k`/`ctrl+u`/`ctrl+w` are line
+edits, `ctrl+a`/`ctrl+e` are home/end. The LOG bar's `ctrl+x drop row`
+([log_bar.py](../expense/tui/screens/log_bar.py)) would otherwise edit the line
+instead of dropping the staged row. Plain `↑`/`↓` and `escape` need nothing — `Input`
+does not bind them — and `⏎` arrives as `Input.Submitted`, not as a binding at all.
 
 **Standing constraint:** any future rename action on Manage screens ships as `e`,
 never `r` — two older mockups showing `r rename` are superseded. Mockup:

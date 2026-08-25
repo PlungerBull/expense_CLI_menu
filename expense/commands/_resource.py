@@ -393,6 +393,22 @@ class QuickAddRefs:
     hashtag_names: dict[str, str]
 
 
+def currency_of(refs: "QuickAddRefs", account_id: object) -> str:
+    """The account's currency code, or `''` when no account is named.
+
+    The currency was only ever going to come from the account — a typed line
+    never says which (`$` in `-$1800` is decoration). Shared by the flat
+    `expense log "…"` echo and the TUI staged list, which needs it per row to
+    total a batch **per currency**: soles are never added to dollars.
+    """
+    if not isinstance(account_id, str):
+        return ""
+    for row in refs.accounts:
+        if row[0] == account_id and len(row) > 2:
+            return str(row[2])
+    return ""
+
+
 def _id_name_map(rows: list) -> dict[str, str]:
     return {
         r["id"]: r["name"]

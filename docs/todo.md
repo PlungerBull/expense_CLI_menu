@@ -12,7 +12,7 @@ Rules, unchanged from the backlog this file replaces
 - **Absolute dates only.** Never "recently".
 
 **Nothing here is urgent and nothing is broken.** The flat CLI and the TUI are both
-feature-complete against the engine; 1052 unit tests green (2026-08-25), contract
+feature-complete against the engine; 1080 unit tests green (2026-08-25), contract
 suite 12/12 against the disposable engine on `:8001` (last run 2026-08-20).
 
 ---
@@ -24,8 +24,9 @@ their precondition. Land in roughly this order; none blocks another.
 
 1. **Quick-add parser + the one-line batch logger.** One `LOG` bar replaces the
    bar-cycle create form; `↵` stages a parsed line into a list, `ctrl+s` writes the
-   list, `↑↓` pick a staged row back up to edit. **Phases 1–2 have shipped** — the
-   grammar, and `expense log "<line>"` on the flat CLI; the TUI screen is phases 3–4.
+   list, `↑↓` pick a staged row back up to edit. **Phases 1–3 have shipped** — the
+   grammar, `expense log "<line>"` on the flat CLI, and the TUI screen itself;
+   **phase 4 is the save and the `+` switch**, and is all that is left.
    This is the "low-friction capture" half of the dual-UX strategy; the TUI is the "discoverable
    management" half ([decisions.md](decisions.md)).
 
@@ -84,7 +85,7 @@ their precondition. Land in roughly this order; none blocks another.
 
    ### Phases — build one at a time, each lands on green CI
 
-   **Phase 3 ships nothing the user can reach.** `+` keeps opening today's form until
+   **Phase 3 shipped nothing the user can reach.** `+` keeps opening today's form until
    phase 4 flips it, so `main` stays usable throughout.
 
    **Phase 1 shipped 2026-08-25.** The grammar lives in
@@ -116,14 +117,28 @@ their precondition. Land in roughly this order; none blocks another.
    the flat command always asks before writing — are in
    [decisions.md](decisions.md) "Two calls for the one-line `expense log`".
 
-   **Phase 3 — the TUI screen, staging only.** New screen: the LOG bar, live token
-   colouring off phase 1's spans, the completion picker rewriting the token in place
-   (mockup panes 2–3), `↵` to stage, the staged list with its `goes to` column, routing
-   decided **at stage time** (complete and not dated ahead → ledger, else inbox), `↑↓`
-   doing double duty, `↵` lifting a row back into the bar, `ctrl+x` dropping one, `esc`
-   confirming a discard. `ctrl+s` does nothing yet. Not reachable from `+`; pilot tests
-   are the only way in. **Done when:** every mockup state 1–6 and 9 renders and the keys
-   behave.
+   **Phase 3 shipped 2026-08-25.** The screen is
+   [expense/tui/screens/log_bar.py](../expense/tui/screens/log_bar.py) — the LOG bar with
+   live token colouring off phase 1's spans (a `rich` `Highlighter` fed to Textual's
+   `Input`, no widget subclass), the completion picker rewriting the token in place, `↵`
+   staging, the staged list with its `goes to` column, routing frozen **at stage time**,
+   `↑↓` doing double duty, `↵` lifting a row back, `ctrl+x` dropping one, and
+   `DiscardStagedModal` on `esc`. Nothing is written and nothing is reachable from `+`.
+   Two shared pieces landed with it: `currency_of` moved from
+   [log_cmd.py](../expense/commands/log_cmd.py) into
+   [_resource.py](../expense/commands/_resource.py) (the per-currency totals need it per
+   row), and `#staged` joined the form ids in [app.tcss](../expense/tui/app.tcss). Covered
+   by [test_tui_log_bar.py](../tests/unit/test_tui_log_bar.py) — one pilot test per mockup
+   state, plus the phase boundary (staging writes nothing).
+   The four calls the mockup left open — the raw line comes back on a lift, the tags
+   column stays, totals are per currency, and the Inbox footnote reuses `route.py`'s
+   phrases — are in [decisions.md](decisions.md) "Four calls for the LOG bar", together
+   with the date cell showing the year whenever it is not the current one.
+
+   **Two deliberate departures from the mockup, both owed to phase 4:** `ctrl+s` is **not
+   bound** (an advertised key that does nothing is the thing the 2026-08-24 footer trim
+   removed), and the discard modal offers two answers rather than three — its
+   `ctrl+s save first` arrives with the save it names.
 
    **Phase 4 — the save, and the switch.** `ctrl+s` writes: one
    `POST /transactions/batch` for the ledger rows, then a `POST /inbox` per draft. The
