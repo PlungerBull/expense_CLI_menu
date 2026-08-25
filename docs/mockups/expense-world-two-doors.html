@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Two doors — create and edit</title>
+<style>
+  :root{
+    --page:#050506; --pad:#000; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68;
+    --accent:#7fa6d6; --pos:#7fbf8f; --neg:#cf8d8d;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--page)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       padding:40px 20px 90px;font-family:var(--mono);color:var(--text);
+       -webkit-font-smoothing:antialiased}
+  .head{width:min(1000px,100%)}
+  .head h1{font-size:16px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px;font-weight:600}
+  .head p{color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 10px;max-width:82ch}
+  .head b{color:var(--text)}
+  .pane{width:min(1000px,100%);margin-top:38px}
+  .lbl{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .lbl b{color:var(--text)}
+  .bnew,.bsame{font-size:10px;letter-spacing:.12em;padding:2px 8px;border-radius:999px;margin-left:8px}
+  .bnew{border:1px solid var(--pos);color:var(--pos)}
+  .bsame{border:1px solid var(--dim);color:var(--dim)}
+  .blurb{color:var(--muted);font-size:13px;line-height:1.65;margin:8px 0 12px;max-width:84ch}
+  .blurb b{color:var(--text)} .blurb i{color:var(--muted)}
+  .blurb code,.qa code{color:var(--text);font-size:12px}
+  .flow{border:1px solid #1c1c22;border-radius:10px;padding:6px 18px;background:#08080a}
+  .term{border:1px solid #23232a;border-radius:12px;overflow:hidden;
+        box-shadow:0 22px 56px -34px #000;background:var(--pad)}
+  .tbar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#000}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:6px;color:var(--dim);font-size:12px}
+  .app{padding:14px 18px 18px}
+  pre.scr{margin:0;font-family:var(--mono);font-size:13px;line-height:1.55;
+          color:var(--text);white-space:pre;overflow-x:auto}
+  .d{color:var(--dim)} .b{font-weight:700;color:#fff} .a{color:var(--accent)}
+  .n{color:var(--neg)} .p{color:var(--pos)}
+  .cur{background:var(--text);color:var(--text);animation:blink 1.05s steps(1) infinite}
+  @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+  .qs{margin-top:12px}
+  .q{border-top:1px solid #1c1c22;padding:14px 2px}
+  .qq{margin:0 0 6px;color:var(--text);font-size:13.5px}
+  .qa{margin:0;color:var(--muted);font-size:13px;line-height:1.7;max-width:88ch}
+</style>
+</head>
+<body>
+<div class="head">
+  <h1>Two doors — create and edit</h1>
+  <p>Drawn 2026-08-25 to answer one question: <b>what does the LOG bar replace, and
+     what does it leave alone?</b></p>
+  <p>Short version — the app has two ways into the same screen today. The LOG bar takes
+     over <b>one</b> of them.</p>
+</div>
+<section class="pane">
+<div class="lbl"><b>the two doors today</b> </div>
+<p class="blurb"><code>QuickAddLogScreen</code> is one screen wearing two hats. Opened with no record it is a <b>create</b> form; opened with a row it is an <b>edit</b> form, pre-filled, and <code>ctrl+s</code> PUTs only the fields you changed.</p>
+<div class="flow"><pre class="scr">
+   <span class="b">Home           </span><span class="a">+</span> <span class="d">──────────────────</span><span class="d">┐</span>
+                                      <span class="d">├──▶</span>  <span class="b">the bar-cycle form</span>   <span class="d">(create)</span>
+   <span class="b">Transactions   </span><span class="a">+</span> <span class="d">──────────────────</span><span class="d">┘</span>
+
+   <span class="b">Transactions   </span><span class="a">⏎</span> <span class="d">on a row</span> <span class="d">─────────</span><span class="d">┐</span>
+                                      <span class="d">├──▶</span>  <span class="b">the bar-cycle form</span>   <span class="d">(edit)</span>
+   <span class="b">Inbox          </span><span class="a">⏎</span> <span class="d">on a draft</span> <span class="d">───────</span><span class="d">┘</span>
+
+   <span class="d">one screen — QuickAddLogScreen — wearing two hats:</span>
+   <span class="d">  record=None → create        record={…} → edit</span>
+</pre></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>after the LOG bar lands</b> </div>
+<p class="blurb">Only the create door moves. The edit door is untouched — same screen, same keys, same behaviour. <b>Nothing is deleted:</b> the file keeps its edit mode and loses its create mode.</p>
+<div class="flow"><pre class="scr">
+   <span class="b">Home           </span><span class="a">+</span> <span class="d">──────────────────</span><span class="d">┐</span>
+                                      <span class="d">├──▶</span>  <span class="b">LOG bar + staging list</span>  <span class="p">NEW</span>
+   <span class="b">Transactions   </span><span class="a">+</span> <span class="d">──────────────────</span><span class="d">┘</span>
+
+   <span class="b">Transactions   </span><span class="a">⏎</span> <span class="d">on a row</span> <span class="d">─────────</span><span class="d">┐</span>
+                                      <span class="d">├──▶</span>  <span class="b">the bar-cycle form</span>  <span class="a">UNCHANGED</span>
+   <span class="b">Inbox          </span><span class="a">⏎</span> <span class="d">on a draft</span> <span class="d">───────</span><span class="d">┘</span>
+
+   <span class="d">the same screen loses its create hat and keeps its edit hat.</span>
+   <span class="d">nothing is deleted — one of its two doors closes.</span>
+</pre></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>the create door — what you press + for</b> <span class="bnew">new</span></div>
+<p class="blurb">One bar, a staged batch, one save. This is the screen being built.</p>
+<div class="term"><div class="tbar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="cur">█</span>                                                                       <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  ↵ stages · ctrl+s saves all · ↑↓ pick a staged row</span>
+
+      <span class="d">date    title                     amount  account        category    goes to</span>
+  <span class="a">•</span> <span class="d">1</span> <span class="d">24 Aug</span>  <span class="b">TOTTUS PORONGOCHE</span>         <span class="n">-38.60</span>  Signature PEN  KORAKUEN    <span class="d">ledger</span>
+  <span class="a">•</span> <span class="d">2</span> <span class="d">24 Aug</span>  <span class="b">SHIMAYA RAMEN</span>             <span class="n">-96.00</span>  Signature PEN  KORAKUEN    <span class="d">ledger</span>
+  <span class="a">•</span> <span class="d">3</span> <span class="d">24 Aug</span>  <span class="b">TRAN.CEL.BM.</span>               <span class="n">-6.60</span>  BCP PEN        TRANSPORTE  <span class="d">ledger</span>
+
+  <span class="d">3 to the ledger</span> <span class="d">·</span> <span class="n">-141.20 PEN</span>
+
+<span class="d">  esc Cancel   ^s Save</span></pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>the edit door — ⏎ on an existing row</b> <span class="bsame">unchanged</span></div>
+<p class="blurb">Exactly what ships today, unchanged by any of this. You reach it from Transactions and from the Inbox.</p>
+<div class="term"><div class="tbar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> Transactions <span class="d">›</span> <span class="b">Edit</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">AMOUNT  </span> -96.00<span class="cur">█</span>                                                                 <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  signed decimal · − expense / + income · in the account&#x27;s currency</span>
+
+  <span class="d">date      </span> 2026-08-18
+  <span class="d">title     </span> SHIMAYA RAMEN
+  <span class="b">amount    </span> <span class="n">-96.00</span>
+  <span class="d">account   </span> BCP Signature PEN
+  <span class="d">category  </span> KORAKUEN
+  <span class="d">hashtags  </span> <span class="a">#CAJA CHICA</span>
+  <span class="d">note      </span> <span class="d">—</span>
+
+<span class="d">  esc Cancel   ^s Save</span></pre></div></div>
+</section>
+<section class="pane"><div class="lbl"><b>why the edit form stays</b></div><div class="qs">
+<div class="q"><p class="qq">An existing row is not a new row.</p><p class="qa">It has an <code>id</code>, a <code>version</code>, and possibly a completed reconciliation freezing four of its fields. The edit is a <code>PUT</code> of just what changed — a different write with different rules, not a create that happens to start full.</p></div>
+<div class="q"><p class="qq">Most rows have no line to come back as.</p><p class="qa">The staging list can hand a row back to the bar because <i>you typed it</i>. A row the xlsx importer created — 3,771 of them in your ledger — was never a line. There is nothing to round-trip, so an edit screen still has to show fields.</p></div>
+<div class="q"><p class="qq">Retyping a line to change one number is more work, not less.</p><p class="qa">The bar wins when you are entering many rows from scratch. Correcting one amount on one row is the opposite shape: land on the field, change it, save.</p></div>
+</div></section>
+</body>
+</html>

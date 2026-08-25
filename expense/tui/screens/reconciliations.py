@@ -48,6 +48,7 @@ from expense.commands._resource import (
 )
 from expense.dates import to_canonical_aware
 from expense.errors import EngineError, format_error
+from expense.quickadd.money import amount_to_text, parse_amount
 from expense.tui.screens._base import (
     ContentSwapLockMixin,
     EngineWriteMixin,
@@ -57,7 +58,6 @@ from expense.tui.screens._base import (
 from expense.tui.screens._form import FormScreen
 from expense.tui.screens.help import HelpBindingMixin
 from expense.tui.screens.modals import ConfirmModal
-from expense.tui.screens.quick_log import amount_to_text, parse_amount
 from expense.tui.theme import AMOUNT_RULE, BALANCE_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell, difference_cell
 from expense.tui.widgets.checklist import CheckList

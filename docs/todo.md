@@ -12,8 +12,8 @@ Rules, unchanged from the backlog this file replaces
 - **Absolute dates only.** Never "recently".
 
 **Nothing here is urgent and nothing is broken.** The flat CLI and the TUI are both
-feature-complete against the engine; 960 unit tests green, contract suite 12/12
-against the disposable engine on `:8001` (2026-08-20).
+feature-complete against the engine; 1014 unit tests green (2026-08-25), contract
+suite 12/12 against the disposable engine on `:8001` (last run 2026-08-20).
 
 ---
 
@@ -28,14 +28,17 @@ their precondition. Land in roughly this order; none blocks another.
    "low-friction capture" half of the dual-UX strategy; the TUI is the "discoverable
    management" half ([decisions.md](decisions.md)).
 
-   **[UI] — design agreed 2026-08-24, not yet approved to build:**
-   [mockups/expense-world-quickadd-batch.html](mockups/expense-world-quickadd-batch.html)
-   (nine states, the grammar, the keymap). Earlier speculative drawings, superseded but
-   kept for the launcher question:
+   **[UI] — picked 2026-08-25.** Option **D** of
+   [mockups/expense-world-log-revamp.html](mockups/expense-world-log-revamp.html)
+   ("one line") beat the receipt, the amount hero and the two-pane cockpit; the reason
+   given was that a staged batch shows every row you are about to submit at a glance.
+   Its worked-out design — nine states, the grammar, the keymap — is
+   [mockups/expense-world-quickadd-batch.html](mockups/expense-world-quickadd-batch.html).
+   Earlier speculative drawings, superseded but kept for the launcher question:
    [mockups/quick-add-bar.html](mockups/quick-add-bar.html),
    [mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html),
-   and [mockups/expense-world-log-revamp.html](mockups/expense-world-log-revamp.html)
-   (the A–E layout options this came out of).
+   [mockups/expense-world-log-quickadd.html](mockups/expense-world-log-quickadd.html)
+   (states a–c are the bar-cycle form that ships today).
 
    **The grammar, as decided** — owner calls, so they are not re-litigated:
    - **A sign makes a number an amount**, anywhere in the line; **first sign wins**
@@ -70,6 +73,62 @@ their precondition. Land in roughly this order; none blocks another.
    returns validation errors *with the index of the failing item*; it does not —
    [import_/apply.py](../expense/import_/apply.py) works around it by re-posting one
    row per batch. Either the spec describes something never built, or the shape drifted.
+
+   **Not in scope:** the "recents" row (numbered last-N templates, option E of the
+   revamp mockup) — declined 2026-08-25. The launcher hotkey
+   ([mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html))
+   is a separate question and stays parked.
+
+   ---
+
+   ### Phases — build one at a time, each lands on green CI
+
+   **Phases 2–3 ship nothing the user can reach.** `+` keeps opening today's form until
+   phase 4 flips it, so `main` stays usable throughout.
+
+   **Phase 1 shipped 2026-08-25.** The grammar lives in
+   [expense/quickadd/](../expense/quickadd/) — `parse.py` (tokenizer + name matching),
+   `when.py` (dates), `money.py` (`parse_amount`/`amount_to_text`, moved out of
+   [quick_log.py](../expense/tui/screens/quick_log.py)). Pure: no Textual, no HTTP, no
+   config, no `typer`. `parse(line, *, accounts, categories, hashtags, today)` returns a
+   `ParsedLine` with the resolved fields, the tokens that did **not** resolve (with their
+   candidates), and a `Span` per token so a caller can colour the line without
+   re-parsing. Covered by [test_quickadd_parse.py](../tests/unit/test_quickadd_parse.py).
+   The three rules the mockup left open — contains-anywhere matching, dashed ISO dates,
+   an unmatched `#tag` flagged rather than created — are in
+   [decisions.md](decisions.md) "Three quick-add grammar rules".
+
+   **Phase 2 — one line on the flat CLI.** `expense log` already exists with four
+   required flags ([log_cmd.py](../expense/commands/log_cmd.py)); add a **positional
+   line** to the same command rather than a new one, making the flags optional and
+   requiring one form or the other. `expense log "tottus -38.60 $signature @korakuen hoy"`.
+   Add `--dry-run` so `--json` returns the parse without writing — the preview surface
+   the launcher sketch always assumed, and the cheapest way to test a grammar by hand.
+   Reference lists come from the existing `fetch_*` helpers. **Done when:** you can log
+   a real transaction from one string, and `--dry-run --json` shows what it read.
+
+   **Phase 3 — the TUI screen, staging only.** New screen: the LOG bar, live token
+   colouring off phase 1's spans, the completion picker rewriting the token in place
+   (mockup panes 2–3), `↵` to stage, the staged list with its `goes to` column, routing
+   decided **at stage time** (complete and not dated ahead → ledger, else inbox), `↑↓`
+   doing double duty, `↵` lifting a row back into the bar, `ctrl+x` dropping one, `esc`
+   confirming a discard. `ctrl+s` does nothing yet. Not reachable from `+`; pilot tests
+   are the only way in. **Done when:** every mockup state 1–6 and 9 renders and the keys
+   behave.
+
+   **Phase 4 — the save, and the switch.** `ctrl+s` writes: one
+   `POST /transactions/batch` for the ledger rows, then a `POST /inbox` per draft.
+   Reuse the chunk + singleton-fallback pattern from
+   [import_/apply.py](../expense/import_/apply.py) (extract it rather than copy it) so a
+   422 can name its row. Then point `action_log_transaction`
+   ([_base.py](../expense/tui/screens/_base.py), the single `+` binding every screen
+   inherits) at the new screen, and retire `QuickAddLogScreen`'s **create** mode —
+   `record=None`, `_create_payload`, and the `_required` branch — keeping its edit mode
+   untouched, per [mockups/expense-world-two-doors.html](mockups/expense-world-two-doors.html).
+   Update [cli-spec.md](cli-spec.md) (the new command shape), [tui.md](tui.md) (the new
+   screen, the retired mode) and [decisions.md](decisions.md) (why the grammar is
+   client-side). **Done when:** mockup states 7–8 render, the contract suite still
+   passes, and `+` opens the bar.
 
 2. **Shell completions** — zsh, bash, fish. `expense <TAB>` shows commands,
    `expense auth <TAB>` shows subcommands. Lowest-effort discoverability win for the

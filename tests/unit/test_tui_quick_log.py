@@ -2,12 +2,11 @@
 
 import asyncio
 
-import pytest
 from textual.widgets import Input
 
 from expense.errors import EngineConnectionError
 from expense.tui.app import ExpenseApp
-from expense.tui.screens.quick_log import QuickAddLogScreen, amount_to_text, parse_amount
+from expense.tui.screens.quick_log import QuickAddLogScreen
 from tests.unit.helpers import wait_for
 
 ACCOUNTS = [
@@ -22,19 +21,6 @@ CATEGORIES = {
     ]
 }
 HASHTAGS = {"items": [{"id": "h1", "name": "dog"}, {"id": "h2", "name": "traveling"}]}
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [("-99.92", -9992), ("99", 9900), ("+12.5", 1250), ("0", 0), ("abc", None), ("", None)],
-)
-def test_parse_amount(text, expected):
-    assert parse_amount(text) == expected
-
-
-def test_amount_to_text_roundtrips():
-    assert amount_to_text(-9992) == "-99.92"
-    assert parse_amount(amount_to_text(-123456)) == -123456
 
 
 def _patch(monkeypatch):

@@ -60,7 +60,7 @@ extend-immutable-calls = ["typer.Option", "typer.Argument"]
 # (backlog 4.2); widen the file list / tighten flags as modules get annotated.
 [tool.mypy]
 python_version = "3.11"
-files = ["expense/http.py", "expense/config.py", "expense/errors.py"]
+files = ["expense/http.py", "expense/config.py", "expense/errors.py", "expense/quickadd/"]
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_unused_configs = true

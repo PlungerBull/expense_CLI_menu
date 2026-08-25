@@ -24,7 +24,6 @@ chords before the terminal sees them, so the footer stopped offering them
 import copy
 import uuid
 from datetime import date as date_cls
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from rich.console import Group, RenderableType
 from rich.text import Text
@@ -40,6 +39,7 @@ from expense.commands._resource import (
 )
 from expense.dates import to_canonical_aware
 from expense.errors import format_error
+from expense.quickadd.money import amount_to_text, parse_amount
 from expense.tui.screens._base import screen_fetch_kwargs
 from expense.tui.screens._form import FormScreen, form_bindings
 
@@ -73,23 +73,6 @@ _ENGINE_FIELD = {
     "hashtags": "hashtag_ids",
     "note": "description",
 }
-
-
-def parse_amount(text: str) -> int | None:
-    """`-99.92` → -9992 cents. None if unparseable. Sign is explicit."""
-    text = text.strip().replace(",", "")
-    if not text:
-        return None
-    try:
-        value = Decimal(text)
-    except InvalidOperation:
-        return None
-    return int((value * 100).to_integral_value(rounding=ROUND_HALF_UP))
-
-
-def amount_to_text(cents: int) -> str:
-    """Cents → an editable decimal string (no grouping): -9992 → '-99.92'."""
-    return str(Decimal(cents) / 100)
 
 
 def _name_map(rows: list) -> dict[str, str]:
