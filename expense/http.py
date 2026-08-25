@@ -13,8 +13,12 @@ from expense.errors import EngineConnectionError, EngineError
 _WRITE_METHODS = frozenset(["POST", "PUT", "PATCH", "DELETE"])
 
 # Bounded same-key retry for writes (backlog 3.1): the engine replays the
-# original response for a repeated X-Idempotency-Key (24h TTL), so re-sending
-# after a timeout or transient 5xx can never double-apply. Scope is exactly
+# original response for a repeated X-Idempotency-Key, so re-sending after a
+# timeout or transient 5xx can never double-apply. Keys are PERMANENT engine
+# side (engine-spec.md, `sql/026`) — there is no TTL to outlive — and a replay
+# requires the same request, since each key stores a sha256 fingerprint over
+# method/path/query/body. Re-sending an identical request is exactly what the
+# loop below does, so that holds. Scope is exactly
 # timeout + 5xx — a connect failure means the engine isn't reachable at all
 # and fails fast, and reads are safe for callers to re-run themselves.
 _WRITE_ATTEMPTS = 3

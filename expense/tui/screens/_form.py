@@ -36,7 +36,8 @@ def form_bindings(submit_desc: str) -> list[Binding | tuple[str, str, str]]:
       before the terminal sees them. The form was advertising two dead keys.
       They stay **bound** rather than deleted: they do work for anyone who has
       turned those system shortcuts off, and the replacement key is still an
-      open choice (docs/todo.md item 6, options J/K in
+      open choice (docs/todo.md "Field navigation in the edit form is
+      broken on macOS", options J/K in
       docs/mockups/expense-world-plus-and-arrows.html §4).
 
     Guarded by `test_form_navigation_keys_are_not_advertised`.

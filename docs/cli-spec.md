@@ -149,6 +149,9 @@ Two forms, one command, never mixed — passing a line **and** a content flag is
 ### `expense ping`
 - `ping` → `GET /health`. Connectivity + auth sanity check. Prints `ok (0.1s)`. *(There is no `expense health` command — the heading here claimed one until 2026-08-20.)*
 
+### `expense version`
+- `version` — prints the installed CLI version and nothing else. No engine call, no config read, so it answers even when nothing is provisioned. *(Shipped since the first release; this doc simply never listed it, found 2026-08-25 by diffing the live command tree against this file.)*
+
 ### `expense import`
 - `import <file.xlsx> [--apply] [--chunk-size N] [--json]` — bulk `.xlsx → engine` importer. Parses the spreadsheet, resolves names to ids, plans, then writes via the transactions batch endpoint. **Dry-run preview is the default**; `--apply` writes. Requires the `openpyxl` extra (`pip install -e ".[import]"`). Package: [expense/import_/](../expense/import_/).
 - **Opening balances:** rows marked `SALDO INICIAL` (case/whitespace-insensitive) in **either the title or the category column** route to `POST /v1/accounts/{id}/opening-balance` instead of the batch — their category/hashtag cells may be blank, and are discarded when present, so the marker never becomes a real category. One per (account, currency): extra rows are skipped as `duplicate-opening` (first line wins) and listed in the dry-run. A 409 at apply time (re-run, or account already seeded) counts as already-present, mirroring batch dedup semantics.

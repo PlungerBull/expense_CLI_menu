@@ -230,7 +230,8 @@ quick-add phase 4 (2026-08-25) — including inside the Inbox: one key, one mean
 Where a row lands is decided by *the line you typed* and shown in the `goes to` column
 before you press `ctrl+s`, never by which screen you were standing on; that is what
 keeps this from being the trap of one key writing to two endpoints depending on where
-you stand ([todo.md](todo.md) item 5). Plain `+`, no modifier — `shift`+`+` is not
+you stand ([todo.md](todo.md), "The TUI cannot create an inbox draft"). Plain `+`,
+no modifier — `shift`+`+` is not
 bindable at all, and the numpad and main-row keys send the same byte, so one binding
 catches both ([decisions.md](decisions.md)).
 

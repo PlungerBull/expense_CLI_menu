@@ -26,7 +26,8 @@ account.
 
 Field navigation (`ctrl+↑/↓`) is bound but **unadvertised** — macOS claims both
 chords before the terminal sees them, so the footer stopped offering them
-2026-08-24 and the replacement key is still open (docs/todo.md item 6). See
+2026-08-24 and the replacement key is still open (docs/todo.md "Field
+navigation in the edit form is broken on macOS"). See
 `form_bindings` in _form.py.
 """
 

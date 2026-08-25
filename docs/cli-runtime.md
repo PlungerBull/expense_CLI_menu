@@ -23,13 +23,15 @@ Every read command is a direct `GET` against the engine. There is no cache to wa
 Writes always go straight to the engine. There is **no offline write queue, no buffering, no replay**.
 
 - Every write command (`transactions create`, `accounts update`, `reconcile complete`, …) is a direct API call the moment you press enter.
-- Each write request carries an `X-Idempotency-Key` (UUID) minted once per logical write by `ExpenseClient`; retrying a failed write is safe — the engine returns the original response from `idempotency_keys` (24h TTL).
+- Each write request carries an `X-Idempotency-Key` (UUID) minted once per logical write by `ExpenseClient`; retrying a failed write is safe — the engine returns the original response from `idempotency_keys`. Keys are **permanent** (engine `sql/026`): no TTL, no purge, a replay works identically a year later. Replay requires the *same* request — each key stores a sha256 fingerprint over method/path/query/body, and reusing a key with a different body returns `409` rather than an unrelated snapshot. *(This doc claimed a 24h TTL until 2026-08-25; the engine dropped it and the claim went stale.)*
 - `ExpenseClient` itself retries a timed-out or 5xx write up to twice (1s/2s backoff) **with the same key** before surfacing the error, printing a stderr notice per attempt — the engine replay is what makes this safe. Connect failures are not retried (the engine isn't reachable at all), and reads never auto-retry.
 - Network errors otherwise fail fast. The CLI prints the error and exits non-zero. A developer at a terminal — or a script in CI — gets synchronous feedback. Silent buffering would corrupt the contract that the next command can rely on the previous command having landed.
 
 An offline write queue remains a per-client commitment for a future mobile client, not an inherited default. The CLI does not get one.
 
-The bulk importer (`expense import --apply`) is the same contract at scale: chunked `transactions batch` calls (default 200/request), each engine-direct with its own fresh idempotency key; the default invocation is a dry-run plan that writes nothing.
+Bulk writes are the same contract at scale, through one shared path — [expense/batch_write.py](../expense/batch_write.py), used by both `expense import --apply` and the TUI's LOG bar (`ctrl+s`). Rows go out in chunked `POST /transactions/batch` calls (default 200/request), each engine-direct with its own fresh idempotency key. The batch is **atomic**, and when the engine refuses one it does not say which row — so a refused chunk is re-posted one row per batch, which lets the good rows land and makes the bad one name itself. A `409` there is **not** a failure: ids are client-supplied, so a replayed id means the row is already in. That is what makes a retry after a half-written run safe, and it is why `expense import` re-runs converge instead of duplicating. `expense import`'s default invocation is still a dry-run plan that writes nothing.
+
+*(That fallback exists only because the engine does not return the per-item error index its spec promises — a standing contract gap, tracked in [todo.md](todo.md) "Engine-side asks".)*
 
 ## CLI as equal client
 
@@ -39,6 +41,7 @@ What stays CLI-specific (and is OK to live only here):
 
 - `~/.expense-config` filesystem storage (a future mobile client would use its keychain)
 - [expense/dates.py](../expense/dates.py) — date input forgiveness for terminal humans
+- [expense/quickadd/](../expense/quickadd/) — the one-line quick-add grammar, shared by both surfaces (`expense log "<line>"` and the TUI's LOG bar). Client-side because completion runs on every keystroke against reference lists the client already holds; the engine still validates every field it receives, so no correctness moved out of it
 - [expense/import_/](../expense/import_/) — the `.xlsx` reader behind `expense import`
 - `--json` flag and the human-output renderers — terminal UX
 
