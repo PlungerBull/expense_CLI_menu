@@ -1,11 +1,14 @@
-"""The LOG bar — phase 3, staging only (docs/todo.md item 1).
+"""The LOG bar — one typed line, a staged batch, one save.
 
-Pure builders first (the staged table and its summary render through a Rich
-console with no app), then one pilot test per mockup state
-(docs/mockups/expense-world-quickadd-batch.html, panes 1-6 and 9).
+Pure builders first (the staged table, its summary and the error block render
+through a Rich console with no app), then one pilot test per mockup state
+(docs/mockups/expense-world-quickadd-batch.html, all nine panes).
 
-The phase boundary is tested too: staging writes nothing, because `ctrl+s` does
-not exist until phase 4.
+The save half landed with quick-add phase 4 (2026-08-25) and brought the four
+calls in docs/decisions.md "What a half-written batch means": the screen stays
+and the ticks are the receipt, a partial failure re-sends only what did not
+land, `ctrl+s` leaves an unstaged line in the bar alone, and the discard card's
+third answer saves before it leaves.
 """
 
 import asyncio
@@ -16,6 +19,7 @@ from rich.console import Console
 from textual.widgets import Input, Label
 
 from expense.commands._resource import QuickAddRefs
+from expense.errors import EngineConnectionError, EngineError
 from expense.quickadd.parse import parse
 from expense.quickadd.route import route
 from expense.tui.app import ExpenseApp
@@ -23,6 +27,8 @@ from expense.tui.screens.log_bar import (
     LogBarScreen,
     Staged,
     format_date_cell,
+    save_errors,
+    save_receipt,
     span_style,
     staged_summary,
     staged_table,
@@ -473,7 +479,12 @@ def test_escape_on_an_empty_screen_just_leaves(fake_client, monkeypatch):
     asyncio.run(scenario())
 
 
-def test_staging_writes_nothing_phase_3_has_no_save(fake_client, monkeypatch):
+def test_ctrl_s_writes_the_ledger_in_one_batch_then_each_draft(fake_client, monkeypatch):
+    """The shape of the save: one atomic call, then one POST per draft.
+
+    Was `test_staging_writes_nothing_phase_3_has_no_save` — phase 3's boundary
+    marker, inverted here now that `ctrl+s` exists.
+    """
     _patch(monkeypatch)
 
     async def scenario():
@@ -483,21 +494,376 @@ def test_staging_writes_nothing_phase_3_has_no_save(fake_client, monkeypatch):
             for line in (LEDGER_LINE, NO_ACCOUNT_LINE, AHEAD_LINE):
                 _type(screen, line)
                 screen.on_input_submitted()
-            await pilot.press("ctrl+s")
-            await pilot.pause()  # let the (unbound) chord settle, then assert a non-event
             assert len(screen._staged) == 3
-            assert fake_client.calls == []
+            # Routing is frozen at stage time against the real clock, so derive
+            # what to expect from the rows rather than pinning today's date.
+            drafts = [e for e in screen._staged if e.routing.to_inbox]
+            ledger = [e for e in screen._staged if not e.routing.to_inbox]
+            assert ledger and drafts  # the three lines cover both destinations
+
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: len(fake_client.posts) == 1 + len(drafts))
+
+            batch_path, batch_body = fake_client.posts[0]
+            assert batch_path == "/transactions/batch"
+            # ONE call for every ledger row, not one call each
+            assert len(batch_body["transactions"]) == len(ledger)
+            assert [p for p, _ in fake_client.posts[1:]] == ["/inbox"] * len(drafts)
+            # the draft body is sparse — an absent field is omitted, never null
+            assert "account_id" not in fake_client.posts[1][1]
+
+            await wait_for(pilot, lambda: all(e.saved for e in screen._staged))
+            assert app.screen is screen  # it stays: the ticks are the receipt
 
     asyncio.run(scenario())
 
 
-def test_the_plus_key_still_opens_the_old_form(fake_client, monkeypatch):
-    """Phase 3 is unreachable by design — phase 4 flips this door."""
+def test_the_plus_key_opens_the_log_bar(fake_client, monkeypatch):
+    """The switch. Was `test_the_plus_key_still_opens_the_old_form`.
+
+    `+` opened `QuickAddLogScreen` with no record until phase 4; that create
+    door is closed and the bar took it over
+    (docs/mockups/expense-world-two-doors.html). Asserted on the source so a
+    future edit cannot quietly point `+` back at the form.
+    """
     import inspect
 
     from expense.tui.screens._base import LogTransactionMixin
     from expense.tui.screens.quick_log import QuickAddLogScreen
 
     source = inspect.getsource(LogTransactionMixin.action_log_transaction)
-    assert QuickAddLogScreen.__name__ in source
-    assert LogBarScreen.__name__ not in source
+    assert LogBarScreen.__name__ in source
+    assert QuickAddLogScreen.__name__ not in source
+
+
+# ---- phase 4: the save ------------------------------------------------------
+def _script(client, responses):
+    """Give the fake client a per-call answer for POST.
+
+    `FakeClient.errors["POST"]` fails *every* POST, which cannot express the
+    interesting case — the ledger batch lands and a draft does not. Each entry
+    is either an exception to raise or a dict to return, consumed in order; the
+    list running dry falls back to the ordinary empty-dict success.
+    """
+    queue = list(responses)
+
+    def post(path, json_body=None):
+        client.calls.append(("POST", path, json_body))
+        if queue:
+            answer = queue.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        return {}
+
+    client.post = post
+
+
+def _stage_lines(screen, *lines):
+    for line in lines:
+        _type(screen, line)
+        screen.on_input_submitted()
+
+
+def test_state7_every_row_ticks_and_the_screen_stays(fake_client, monkeypatch):
+    """Pane 7. The save is not an exit: the ticked list is the receipt."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE, USD_LINE)
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: all(e.saved for e in screen._staged))
+            assert app.screen is screen
+            out = _text(screen._staged_renderable())
+            assert out.count("✓") == 2
+            assert "2 logged" in out
+            assert "ctrl+s again does nothing" in out
+
+    asyncio.run(scenario())
+
+
+def test_ctrl_s_again_writes_nothing_once_every_row_is_saved(fake_client, monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE)
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: all(e.saved for e in screen._staged))
+            before = len(fake_client.calls)
+            await pilot.press("ctrl+s")
+            await pilot.pause()  # let the second chord settle, then assert a non-event
+            assert len(fake_client.calls) == before
+
+    asyncio.run(scenario())
+
+
+def test_saved_rows_clear_when_the_next_line_is_staged(fake_client, monkeypatch):
+    """Decision 1: the list only ever shows rows you are about to write.
+
+    What the finished batch leaves behind is one sentence, not a table.
+    """
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE)
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: all(e.saved for e in screen._staged))
+            # between the save and the next line: the receipt, no table
+            assert "1 logged a moment ago" in _text(
+                staged_table([], REFS, last_save=screen._last_save)
+            )
+
+            _stage_lines(screen, USD_LINE)
+            assert len(screen._staged) == 1  # the ticked row went, this one stays
+            assert not screen._staged[0].saved
+
+    asyncio.run(scenario())
+
+
+def test_state8_a_partial_failure_ticks_what_landed(fake_client, monkeypatch):
+    """Pane 8. The ledger batch lands, the draft does not — and the screen says
+    which is which, because "nothing was written" would be a lie."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE, NO_ACCOUNT_LINE)
+            _script(
+                fake_client,
+                [{}, EngineError("SERVER_ERROR", "engine exploded", None, 500, {})],
+            )
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: not screen._saving)
+
+            ledger, draft = screen._staged
+            assert ledger.saved and ledger.error is None
+            assert not draft.saved and "engine exploded" in (draft.error or "")
+            out = _text(screen._staged_renderable())
+            assert "✓" in out and "1 logged" in out
+            assert "row 2: " in out and "engine exploded" in out
+            assert "ctrl+s retries just the rows without a ✓." in out
+
+    asyncio.run(scenario())
+
+
+def test_a_retry_re_sends_only_the_rows_without_a_tick(fake_client, monkeypatch):
+    """Decision 2, the half that matters: nothing is ever written twice."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE, NO_ACCOUNT_LINE)
+            _script(fake_client, [{}, EngineError("SERVER_ERROR", "down", None, 500, {})])
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: not screen._saving)
+            fake_client.calls.clear()
+
+            await pilot.press("ctrl+s")  # the engine is healthy again
+            await wait_for(pilot, lambda: all(e.saved for e in screen._staged))
+            # the ledger row is already in — it is not in the retry at all
+            assert [p for _, p, _ in fake_client.calls] == ["/inbox"]
+
+    asyncio.run(scenario())
+
+
+def test_a_replayed_row_comes_back_409_and_counts_as_written(fake_client, monkeypatch):
+    """The response was lost, not the write. A 409 on a client-minted id means
+    the row is already there — a tick, never a second copy."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE)
+            first_id = screen._staged[0].row_id
+            _script(
+                fake_client,
+                [
+                    EngineError("CONFLICT", "id exists", None, 409, {}),  # the batch
+                    EngineError("CONFLICT", "id exists", None, 409, {}),  # its singleton
+                ],
+            )
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: not screen._saving)
+
+            assert screen._staged[0].saved  # ✓, not an error
+            assert screen._staged[0].error is None
+            assert screen._staged[0].row_id == first_id  # the id never changed
+
+    asyncio.run(scenario())
+
+
+def test_a_connection_error_writes_nothing_and_every_row_survives(fake_client, monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE, USD_LINE)
+            fake_client.errors["POST"] = EngineConnectionError(
+                url="http://127.0.0.1:8000", original=ConnectionRefusedError("refused")
+            )
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: not screen._saving)
+
+            assert len(screen._staged) == 2
+            assert not any(e.saved for e in screen._staged)
+            assert all("127.0.0.1:8000" in (e.error or "") for e in screen._staged)
+            assert app.screen is screen  # every row is still here; ctrl+s tries again
+
+    asyncio.run(scenario())
+
+
+def test_ctrl_s_leaves_a_half_typed_line_in_the_bar_alone(fake_client, monkeypatch):
+    """Decision 3: `↵` is the only thing that stages, so a save can never write
+    something you were still in the middle of."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE)
+            _type(screen, "pollo -25 $BCP PEN @KORAKUEN")  # typed, never submitted
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: all(e.saved for e in screen._staged))
+
+            assert len(screen._staged) == 1  # the bar's line was not staged
+            batch = fake_client.posts[0][1]["transactions"]
+            assert len(batch) == 1 and batch[0]["title"] == "tottus porongoche"
+            assert _bar(screen).value == "pollo -25 $BCP PEN @KORAKUEN"  # still yours
+
+    asyncio.run(scenario())
+
+
+def test_a_saved_row_cannot_be_lifted_back_into_the_bar(fake_client, monkeypatch):
+    """Editing a written row here would promise something this screen cannot do:
+    it only ever creates. Corrections are the edit form's job."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE)
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: all(e.saved for e in screen._staged))
+
+            screen._picked = 0
+            screen.on_input_submitted()  # ↵ on a picked row would normally lift it
+            assert screen._editing is None
+            assert _bar(screen).value == ""
+
+    asyncio.run(scenario())
+
+
+def test_escape_with_only_saved_rows_leaves_without_asking(fake_client, monkeypatch):
+    """ "5 rows are staged and not written" must never count ticks."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE)
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: all(e.saved for e in screen._staged))
+
+            screen.action_back()
+            await wait_for(pilot, lambda: app.screen is not screen)
+
+    asyncio.run(scenario())
+
+
+def test_state9_the_discard_card_saves_first_and_then_leaves(fake_client, monkeypatch):
+    """Pane 9's third answer, live now that the save it names exists."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE, USD_LINE)
+            screen.action_back()
+            await wait_for(pilot, lambda: isinstance(app.screen, DiscardStagedModal))
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: app.screen is not screen)
+            assert fake_client.posts  # it saved on the way out
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_save_first_keeps_the_screen_so_the_error_is_readable(fake_client, monkeypatch):
+    """You asked to leave, but an error you cannot read is the same as none."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            screen = await _open(app, pilot)
+            _stage_lines(screen, LEDGER_LINE)
+            fake_client.errors["POST"] = EngineConnectionError(
+                url="http://127.0.0.1:8000", original=ConnectionRefusedError("refused")
+            )
+            screen.action_back()
+            await wait_for(pilot, lambda: isinstance(app.screen, DiscardStagedModal))
+            await pilot.press("ctrl+s")
+            await wait_for(pilot, lambda: not screen._saving)
+
+            assert app.screen is screen  # still here
+            assert "127.0.0.1:8000" in _text(screen._staged_renderable())
+
+    asyncio.run(scenario())
+
+
+# ---- pure: the save's render layer ------------------------------------------
+def test_a_saved_row_renders_a_tick_instead_of_its_routing_marker():
+    entry = _stage(LEDGER_LINE)
+    entry.saved = True
+    out = _text(staged_table([entry], REFS, today=TODAY.isoformat()))
+    assert "✓" in out and "•" not in out
+
+
+def test_the_summary_totals_only_the_rows_still_pending():
+    """A written row stops being something you are about to do — otherwise the
+    figure under a half-saved list describes a batch that no longer exists."""
+    done, pending = _stage(LEDGER_LINE), _stage(USD_LINE)
+    done.saved = True
+    out = _text(staged_summary([done, pending], REFS, palette=PALETTE))
+    assert "1 logged" in out
+    assert "-96.00" in out and "USD" in out  # the pending row's own currency
+    assert "-38.60" not in out  # the saved one has left the total
+
+
+def test_the_error_block_names_the_row_and_says_what_to_press():
+    entry = _stage(LEDGER_LINE)
+    entry.error = "SERVER_ERROR — engine exploded"
+    out = _text(save_errors([_stage(USD_LINE), entry]))
+    assert "row 2: SERVER_ERROR — engine exploded" in out
+    assert "ctrl+s retries just the rows without a ✓." in out
+
+
+def test_the_error_block_is_empty_when_nothing_failed():
+    assert _text(save_errors([_stage(LEDGER_LINE)])).strip() == ""
+
+
+def test_the_receipt_counts_what_landed_not_what_was_hoped_for():
+    ledger, draft, failed = _stage(LEDGER_LINE), _stage(NO_ACCOUNT_LINE), _stage(USD_LINE)
+    ledger.saved = draft.saved = True
+    assert save_receipt([ledger, draft, failed]) == "1 logged · 1 draft in the Inbox"
+    assert save_receipt([failed]) == ""

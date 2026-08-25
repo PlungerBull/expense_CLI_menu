@@ -236,12 +236,20 @@ class PagedListMixin:
 
 
 class LogTransactionMixin:
-    """Adds `+` — jump straight to the log-a-transaction form.
+    """Adds `+` — jump straight to the LOG bar.
 
     Replaced the home menu's `Log a transaction` row on 2026-08-20: logging is
     the thing you do most and a menu row made it the slowest path to it. Bound
     on Home, Transactions and Inbox — the three screens where "and now write one
     down" is the obvious next thought.
+
+    **It opens the LOG bar, not the bar-cycle form** (quick-add phase 4,
+    2026-08-25): one typed line, a staged batch, one save. The form keeps its
+    *edit* door — `⏎` on an existing row — and lost only its create door
+    (docs/mockups/expense-world-two-doors.html). `+` still means one thing
+    everywhere it is bound, the Inbox included: it logs a posted transaction,
+    and a line too sparse to post is routed to the Inbox by the grammar, not by
+    which screen you happened to be standing on.
 
     **Plain `+`, no modifier, deliberately.** `shift++` was considered and is not
     bindable: for a printable key the shift is already baked into the character
@@ -261,11 +269,11 @@ class LogTransactionMixin:
     BINDINGS = [Binding("plus", "log_transaction", "Add", key_display="+")]
 
     def action_log_transaction(self) -> None:
-        # imported here, not at module scope: quick_log imports FormScreen from
-        # _form, which imports EngineWriteMixin from this module.
-        from expense.tui.screens.quick_log import QuickAddLogScreen
+        # imported here, not at module scope: log_bar imports EngineWriteMixin
+        # from this module.
+        from expense.tui.screens.log_bar import LogBarScreen
 
-        self.app.push_screen(QuickAddLogScreen(), self._after_log)
+        self.app.push_screen(LogBarScreen(), self._after_log)
 
     def _after_log(self, _result=None) -> None:
         """Hook for hosts that must react once the form closes. Home refreshes

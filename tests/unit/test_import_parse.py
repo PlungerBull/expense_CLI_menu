@@ -4,7 +4,6 @@ import pytest
 
 from expense.import_ import mapping
 from expense.import_ import plan as plan_mod
-from expense.import_.apply import chunked
 from expense.import_.parse import (
     ImportFormatError,
     OpeningRow,
@@ -268,11 +267,6 @@ def test_identical_content_on_two_lines_both_planned():
     assert [r.line for r in plan.rows] == [2, 3]
     assert plan.tx_ids[2] != plan.tx_ids[3]
     assert plan.skipped == []
-
-
-def test_chunked_sizes():
-    sizes = [len(c) for c in chunked(list(range(450)), 200)]
-    assert sizes == [200, 200, 50]
 
 
 # --- opening balances (SALDO INICIAL) ---------------------------------------

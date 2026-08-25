@@ -82,7 +82,7 @@ class ParsedLine:
         """Every required field present and every name resolved.
 
         Routing is the screen's call, not this module's: a complete row still
-        goes to the Inbox when it is dated ahead (docs/todo.md item 1).
+        goes to the Inbox when it is dated ahead (docs/decisions.md).
         """
         return not self.missing and not self.unresolved
 

@@ -53,7 +53,7 @@ def parse_date(word: str, today: date) -> tuple[str | None, bool]:
         day, month, year = match.groups()
         # Two-digit years resolve to this century. Accepted because the screen
         # echoes the resolved date in words before a row is staged, so a
-        # misread is visible rather than silent (docs/todo.md item 1).
+        # misread is visible rather than silent (docs/decisions.md).
         return _build(2000 + int(year) if len(year) == 2 else int(year), int(month), int(day))
 
     return None, False

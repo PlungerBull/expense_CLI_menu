@@ -14,6 +14,7 @@ import expense.tui.screens.home as home
 from expense.tui.app import ExpenseApp
 from expense.tui.screens._base import SectionScreen
 from expense.tui.screens.home import HomeScreen
+from expense.tui.screens.log_bar import LogBarScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from tests.unit.helpers import wait_for
 
@@ -39,6 +40,7 @@ def _stub_loaders(monkeypatch):
     monkeypatch.setattr(HomeScreen, "_load_stats", lambda self: None)
     monkeypatch.setattr(SectionScreen, "_load", lambda self: None)
     monkeypatch.setattr(QuickAddLogScreen, "_load_entities", lambda self: None)
+    monkeypatch.setattr(LogBarScreen, "_load_entities", lambda self: None)
 
 
 async def _select(app, pilot, kind):
@@ -97,10 +99,10 @@ def test_plus_opens_the_log_form_from_home(monkeypatch):
             await pilot.pause()
             assert isinstance(app.screen, HomeScreen)
             await pilot.press("+")
-            await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
-            # create mode, not edit: an empty form posting to /transactions
-            assert app.screen._mode == "create"
-            assert app.screen._resource == "transactions"
+            await wait_for(pilot, lambda: isinstance(app.screen, LogBarScreen))
+            # the LOG bar, not the bar-cycle form: quick-add phase 4 moved the
+            # create door and left the edit door alone
+            assert app.screen._staged == []
 
     asyncio.run(scenario())
 

@@ -1,7 +1,7 @@
 """Pure grammar tests for expense/quickadd/ — no Textual, no network, no clock.
 
 The checklist is the token table in docs/mockups/expense-world-quickadd-batch.html
-plus the sharp-edges list in docs/todo.md item 1. `today` is passed in, so
+plus the sharp edges recorded in docs/decisions.md. `today` is passed in, so
 nothing here depends on the machine's date.
 """
 
@@ -228,7 +228,7 @@ def test_missing_lists_only_the_required_fields():
 
 def test_is_complete_needs_every_name_resolved_too():
     """A row with all four fields but an ambiguous account is not complete —
-    routing (docs/todo.md item 1) is still the screen's call."""
+    routing (docs/decisions.md) is still the screen's call."""
     assert _p("tottus -5 $efectivo @wants").is_complete is True
     assert _p("tottus -5 $sig @wants").is_complete is False
 
@@ -265,7 +265,7 @@ def test_a_multi_word_span_covers_every_word_it_took():
 
 def test_extra_columns_on_a_reference_row_are_ignored():
     """account_choices() hands back (id, name, currency) — it passes straight
-    through, unconverted (docs/todo.md item 1 phase 1)."""
+    through, unconverted (quick-add phase 1, docs/decisions.md)."""
     assert _p("x -5 $bcp pen").account_id == "a2"
 
 

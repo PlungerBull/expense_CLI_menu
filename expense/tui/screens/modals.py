@@ -147,20 +147,25 @@ class PromptModal(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class DiscardStagedModal(ModalScreen[bool]):
+class DiscardStagedModal(ModalScreen[str]):
     """`esc` with rows staged — the one confirmation on the LOG bar.
 
     `d` discards, `enter` (and `esc`) keep editing: the safe answer is the
     reflexive one, the same call `ConfirmModal` makes. It is **not** a y/n card,
     because "yes" to "5 rows are staged and not written" reads both ways.
 
-    The mockup's third answer — `ctrl+s save first` — arrives in phase 4 with
-    the save it names (docs/mockups/expense-world-quickadd-batch.html, pane 9).
-    Offering it now would be a key that does nothing.
+    `ctrl+s save first` is the third answer, live since phase 4 shipped the save
+    it names. It writes the rows and then leaves — you pressed `esc`, so the
+    intent was to go — but only if every row lands; a failed save keeps you on
+    the screen where the error is readable.
+
+    Returns the answer by name rather than a bool: three outcomes do not fit
+    one, and `"keep"`/`"discard"`/`"save"` read at the call site.
     """
 
     BINDINGS = [
         ("d", "discard", "Discard"),
+        ("ctrl+s", "save_first", "Save first"),
         ("enter,escape", "keep", "Keep editing"),
     ]
 
@@ -175,13 +180,16 @@ class DiscardStagedModal(ModalScreen[bool]):
                 Text(f"{self._count} {rows} staged and not written.", style="bold"),
                 classes="modal-title",
             ),
-            Static(Text("[enter] keep editing    [d] discard", style="dim")),
+            Static(Text("[enter] keep editing    [d] discard    [^s] save first", style="dim")),
             id="modal",
         )
         yield Footer()
 
     def action_discard(self) -> None:
-        self.dismiss(True)
+        self.dismiss("discard")
+
+    def action_save_first(self) -> None:
+        self.dismiss("save")
 
     def action_keep(self) -> None:
-        self.dismiss(False)
+        self.dismiss("keep")

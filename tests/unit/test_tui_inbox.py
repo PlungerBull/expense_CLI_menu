@@ -4,6 +4,7 @@ import asyncio
 
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.inbox import InboxScreen, inbox_rows
+from expense.tui.screens.log_bar import LogBarScreen
 from expense.tui.screens.quick_log import QuickAddLogScreen
 from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for, wait_for_list
@@ -124,7 +125,7 @@ def test_inbox_screen_lists_and_opens_detail(monkeypatch):
             await wait_for_list(pilot, app)
             await pilot.press("enter")  # opens the edit screen (inbox draft)
             await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
-            assert app.screen._mode == "edit" and app.screen._resource == "inbox"
+            assert app.screen._resource == "inbox"
             # Drafts carry hashtag_ids and the tags survive promotion, so the
             # draft form offers the same picker as a transaction (backlog 6.1).
             assert "hashtags" in app.screen._sequence()
@@ -134,9 +135,11 @@ def test_inbox_screen_lists_and_opens_detail(monkeypatch):
 
 def test_plus_logs_a_transaction_not_a_draft(monkeypatch):
     """`+` means the same thing on every screen that has it: a posted
-    transaction (option C, 2026-08-20). Standing in the Inbox does not change
-    what it writes — creating a draft from the TUI is still not possible, and
-    `expense inbox add` remains the only way."""
+    transaction (option C, 2026-08-20) — the LOG bar since quick-add phase 4.
+    Standing in the Inbox does not change what it writes: a line lands in the
+    Inbox only when the grammar says it is too sparse to post, never because of
+    where you were standing. Creating a draft outright from the TUI is still not
+    possible, and `expense inbox add` remains the only way (docs/todo.md)."""
     import expense.commands.inbox_cmd as ic
     import expense.tui.screens.inbox as inbox_mod
 
@@ -144,6 +147,7 @@ def test_plus_logs_a_transaction_not_a_draft(monkeypatch):
     monkeypatch.setattr(inbox_mod, "load_account_name_map", lambda: ACCOUNTS)
     monkeypatch.setattr(inbox_mod, "load_category_name_map", lambda: CATEGORIES)
     monkeypatch.setattr(QuickAddLogScreen, "_load_entities", lambda self: None)
+    monkeypatch.setattr(LogBarScreen, "_load_entities", lambda self: None)
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
@@ -152,8 +156,7 @@ def test_plus_logs_a_transaction_not_a_draft(monkeypatch):
             await app.push_screen(InboxScreen())
             await wait_for_list(pilot, app)
             await pilot.press("+")
-            await wait_for(pilot, lambda: isinstance(app.screen, QuickAddLogScreen))
-            assert app.screen._mode == "create"
-            assert app.screen._resource == "transactions"
+            await wait_for(pilot, lambda: isinstance(app.screen, LogBarScreen))
+            assert app.screen._staged == []
 
     asyncio.run(scenario())

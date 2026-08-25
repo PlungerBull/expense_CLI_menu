@@ -84,6 +84,7 @@ KNOWN_LOCAL = frozenset(
         "jan",
         "acc1",
         "acc2",
+        "acc3",  # third account in the LOG bar's name-map fixture (quick-add)
         "cat1",
         "cat2",
         "tag1",  # hashtag name-map fixture, test_tui_inbox.py (backlog 6.1)

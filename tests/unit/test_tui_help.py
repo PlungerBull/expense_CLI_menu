@@ -338,7 +338,7 @@ def test_form_navigation_keys_are_not_advertised():
     sees them, so the form was advertising two dead keys.
 
     All four stay *bound* — they work wherever those system shortcuts are off,
-    and the replacement is still unpicked (docs/todo.md item 7). This guard is
+    and the replacement is still unpicked (docs/todo.md item 6). This guard is
     what fails if someone re-adds one as a plain tuple, which defaults to shown.
     """
     bindings = [

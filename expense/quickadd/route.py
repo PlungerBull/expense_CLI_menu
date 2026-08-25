@@ -4,7 +4,7 @@ One copy of the rule for both surfaces — the flat `expense log "…"` asks it
 once per line, the TUI staged list asks it per row to fill its `goes to`
 column (docs/mockups/expense-world-quickadd-batch.html).
 
-The rule, as decided (docs/todo.md item 1): a row reaches the ledger only if
+The rule, as decided (docs/decisions.md): a row reaches the ledger only if
 it is **complete** and **not dated ahead**. Everything else is a draft —
 `POST /inbox` takes sparse bodies (only `id` is required) and has no
 future-date check, which is gated at promote instead.

@@ -1,4 +1,10 @@
-"""Phase 2 quick-add Log screen tests (fake client)."""
+"""The bar-cycle transaction / draft **edit** form (fake client).
+
+Edit-only since quick-add phase 4 (2026-08-25) moved the create door to the LOG
+bar — see [test_tui_log_bar.py](test_tui_log_bar.py). The create-flow tests that
+lived here went with it; what the form still owns is pre-fill, the diffed PUT,
+and the suggestion pickers.
+"""
 
 import asyncio
 
@@ -84,7 +90,7 @@ def test_load_entities_three_superset_queries(fake_client, monkeypatch):
     async def scenario():
         app = ExpenseApp()
         async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
+            screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
             await _wait_loaded(screen, pilot)
             assert sorted(calls) == [("accounts", True), ("categories", False), ("hashtags", False)]
@@ -114,49 +120,22 @@ def test_edit_with_null_hashtag_ref_renders_dash_not_crash(fake_client, monkeypa
     asyncio.run(scenario())
 
 
-def test_quick_log_normal_flow_submits_payload(fake_client, monkeypatch):
-    _patch(monkeypatch)
-
-    async def scenario():
-        app = ExpenseApp()
-        async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
-            await app.push_screen(screen)
-            await _wait_loaded(screen, pilot)
-            _enter(screen, "")  # date
-            _enter(screen, "Dog walker")  # title
-            _enter(screen, "-99.92")  # amount
-            _enter(screen, "BCP P")  # account → BCP PEN
-            _enter(screen, "Masco")  # category → Mascotas
-            _enter(screen, "#dog")  # hashtag add (# stripped)
-            _enter(screen, "")  # hashtags done
-            _enter(screen, "")  # note → creates
-            await wait_for(pilot, lambda: fake_client.posts)
-            path, body = fake_client.posts[0]
-            assert path == "/transactions"
-            assert body["amount_cents"] == -9992 and body["account_id"] == "acc1"
-            assert body["category_id"] == "cat1" and body["hashtag_ids"] == ["h1"]
-            assert "transfer" not in body  # fail-closed: feature removed 2026-08-10
-
-    asyncio.run(scenario())
-
-
 def test_quick_log_guards_double_submit(fake_client, monkeypatch):
     _patch(monkeypatch)
 
     async def scenario():
         app = ExpenseApp()
         async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
+            screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
             await _wait_loaded(screen, pilot)
             screen._values.update(title="x", amount=-500, account="acc1", category="cat1")
             screen.action_submit()
             screen.action_submit()  # in flight → ignored
             screen.action_submit()
-            await wait_for(pilot, lambda: fake_client.posts)
+            await wait_for(pilot, lambda: fake_client.puts)
             await pilot.pause()  # let the ignored submits settle, then assert a non-event
-            assert len(fake_client.posts) == 1
+            assert len(fake_client.puts) == 1
 
     asyncio.run(scenario())
 
@@ -166,7 +145,7 @@ def test_suggest_window_keeps_highlight_visible():
 
     from rich.console import Console
 
-    screen = QuickAddLogScreen()
+    screen = QuickAddLogScreen(record=TXN, resource="transactions")
     screen._current = 3  # account (an entity field)
     screen._suggestions = [(f"c{i}", f"Cat{i}", "PEN") for i in range(20)]
     screen._suggest_idx = 17
@@ -185,7 +164,6 @@ def test_edit_prefills_and_puts_only_changed_fields(fake_client, monkeypatch):
             screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
             await _wait_loaded(screen, pilot)
-            assert screen._mode == "edit"
             assert screen._values["title"] == "Farmacia" and screen._values["amount"] == -4250
             # change just the title, then save
             screen._current = screen._sequence().index("title")
@@ -295,7 +273,6 @@ def test_no_form_offers_cleared():
     completed reconciliation that adds up.
     """
     for screen in (
-        QuickAddLogScreen(),
         QuickAddLogScreen(record={"id": "t1", "title": "x"}, resource="transactions"),
         QuickAddLogScreen(record={"id": "i1", "title": "x"}, resource="inbox"),
     ):
@@ -322,7 +299,7 @@ def test_quick_log_rejects_zero_and_unknown_account(fake_client, monkeypatch):
     async def scenario():
         app = ExpenseApp()
         async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
+            screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
             await _wait_loaded(screen, pilot)
             _enter(screen, "")  # date
@@ -352,7 +329,7 @@ def test_quick_log_fetch_error_notifies_not_crash(fake_client, monkeypatch):
     async def scenario():
         app = ExpenseApp()
         async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
+            screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
             await wait_for(pilot, lambda: notices)
             assert notices and "engine down" in notices[0]
@@ -378,9 +355,23 @@ def test_quick_log_fetch_error_uses_canonical_renderer(fake_client, monkeypatch)
     async def scenario():
         app = ExpenseApp()
         async with app.run_test() as pilot:
-            screen = QuickAddLogScreen()
+            screen = QuickAddLogScreen(record=TXN, resource="transactions")
             await app.push_screen(screen)
             await wait_for(pilot, lambda: notices)
             assert notices and "could not reach engine at https://x.invalid" in notices[0]
 
     asyncio.run(scenario())
+
+
+def test_the_form_cannot_be_opened_without_a_record():
+    """The create door is shut, and shut structurally.
+
+    `+` opened this screen with `record=None` until quick-add phase 4
+    (2026-08-25); it opens the LOG bar now. Making `record` required means no
+    future caller can reopen that door by accident — it is a TypeError, not a
+    second create form drifting quietly out of sync with the bar.
+    """
+    import pytest
+
+    with pytest.raises(TypeError):
+        QuickAddLogScreen()

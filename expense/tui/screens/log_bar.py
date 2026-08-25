@@ -1,14 +1,24 @@
-"""The LOG bar — one typed line, a staged batch, one save (phase 3: staging).
+"""The LOG bar — one typed line, a staged batch, one save.
 
-The capture surface of the quick-add item (docs/todo.md item 1), drawn in
+The capture surface of the quick-add bar, drawn in
 docs/mockups/expense-world-quickadd-batch.html. You type one line, press `↵`,
 and it lands in a list you can read before anything is written; `↑↓` pick a
 staged row back up, `ctrl+x` drops one, `esc` confirms a discard.
 
-**Phase 3 ships the staging half only.** `ctrl+s` is not bound and this screen
-is not reachable from `+` — `action_log_transaction` still opens the bar-cycle
-form, so `main` stays usable. Phase 4 adds the writes and flips that door
-(docs/mockups/expense-world-two-doors.html).
+**This is what `+` opens** (quick-add phase 4, 2026-08-25). The bar-cycle form
+it replaced kept its *edit* door — `⏎` on an existing row — and lost only its
+create one (docs/mockups/expense-world-two-doors.html): an existing row has an
+id, a version and possibly a reconciliation freezing four of its fields, so
+correcting one is a PUT of what changed, not a line retyped from scratch.
+
+**The save** is `ctrl+s`: one `POST /transactions/batch` for the complete rows,
+then one `POST /inbox` per draft, through `expense/batch_write.py` — the same
+chunk-then-row-by-row pattern `expense import` uses, because the engine refuses
+an atomic batch without saying which row. What that means when only half of it
+lands is four owner calls, recorded in docs/decisions.md "What a half-written
+batch means": the screen stays and the ticks are the receipt, a retry re-sends
+only the rows without one, an unstaged line in the bar is never written, and
+the discard card's `ctrl+s save first` leaves only if the save succeeds.
 
 The grammar is not here. Every line goes through `expense/quickadd/` — the same
 module the flat `expense log "…"` calls — so the two surfaces read a line
@@ -30,6 +40,7 @@ docs/decisions.md "Four calls for the LOG bar":
 """
 
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 from rich.console import Group, RenderableType
 from rich.highlighter import Highlighter
@@ -42,6 +53,7 @@ from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Static
 
+from expense.batch_write import BatchOutcome, RowResult, post_transaction_batch
 from expense.commands._resource import (
     QuickAddRefs,
     currency_of,
@@ -49,12 +61,13 @@ from expense.commands._resource import (
     load_quickadd_refs,
     resolve_name,
 )
-from expense.dates import today_local
-from expense.errors import format_error
+from expense.dates import now_local_iso, to_canonical_aware, today_local
+from expense.errors import EngineConnectionError, EngineError, format_error
 from expense.quickadd.parse import ParsedLine, Span, Unresolved, parse
+from expense.quickadd.payload import inbox_payload, transaction_payload
 from expense.quickadd.route import Routing, describe, route
 from expense.quickadd.when import format_date_words
-from expense.tui.screens._base import EngineWriteMixin, screen_fetch_kwargs
+from expense.tui.screens._base import screen_fetch_kwargs
 from expense.tui.screens.modals import DiscardStagedModal
 from expense.tui.theme import ACCENT, AMOUNT_RULE, PALETTE, Palette
 from expense.tui.widgets.cells import amount_cell
@@ -79,16 +92,32 @@ EMPTY_LINES = (
     "Nothing staged. Type a line and press ↵ — nothing reaches the engine",
     "until you press ctrl+s.",
 )
+
+#: The marker a written row carries. A saved row is done — it is never re-sent.
+SAVED_GLYPH = "✓"
 EXAMPLE = "e.g.  tottus -38.60 $signature @korakuen #caja hoy"
 
 GRAMMAR_HINT = "what · ±amount · $account · @category · #tag · when"
 STAGE_HINT = "↵ stages the line"
-STAGED_HINT = "↵ stages · ↑↓ picks a staged row when the bar is empty"
+STAGED_HINT = "↵ stages · ctrl+s saves all · ↑↓ picks a staged row when the bar is empty"
+SAVING_HINT = "writing…"
 PICKER_HINT = "↑↓ moves, ↵ writes the full name into the line"
 COMPLETED_HINT = "↵ completed the token in place — the line always says what will be saved"
 EDIT_HINT = "the row came back as the line that made it · ↵ puts it back · esc leaves it alone"
 SIGN_HINT = "a sign is what makes a number an amount"
 LOADING_HINT = "loading accounts, categories and tags…"
+
+
+def wire_date(parsed: ParsedLine) -> str:
+    """The `date` a payload builder wants: canonical RFC 3339 with an offset.
+
+    Same rule the flat `expense log` applies (`log_cmd._log_from_line`) — a line
+    that named no date is written as *now*, not as local midnight, so a row
+    logged this afternoon sorts after one logged this morning.
+    """
+    if not parsed.date_given:
+        return now_local_iso()
+    return to_canonical_aware(parsed.date)
 
 
 @dataclass
@@ -99,11 +128,30 @@ class Staged:
     so a round trip through the staged list can never lose or reword anything
     (decided 2026-08-25). `parsed` and `routing` are computed once, at stage
     time, and never recomputed on render: the `goes to` column is a promise.
+
+    `saved` is the phase-4 half. A saved row is done: it keeps a `✓`, it is
+    never re-sent, and `ctrl+s` only ever covers the rows without one.
+
+    **`row_id` and `date` are frozen at stage time too**, for the same reason
+    the routing is. The id makes a retry safe: a row whose response was lost
+    replays under the id it already had, so the engine answers 409 and the row
+    ticks instead of landing twice — a fresh id per attempt would double-write.
+    The date is frozen because the `date` column is a promise as much as
+    `goes to` is: a batch typed at 23:59 and saved at 00:01 must not silently
+    change day between what you read and what you wrote.
     """
 
     line: str
     parsed: ParsedLine
     routing: Routing
+    row_id: str = field(default_factory=lambda: str(uuid4()))
+    date: str = ""
+    saved: bool = False
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.date:
+            self.date = wire_date(self.parsed)
 
 
 # ---------------------------------------------------------------------------
@@ -209,11 +257,12 @@ def staged_rows(
     for number, entry in enumerate(entries, start=1):
         parsed, routing = entry.parsed, entry.routing
         ahead = parsed.date > today
-        glyph, glyph_style = (
-            ("!", palette.error if palette else "")
-            if routing.to_inbox
-            else ("•", ACCENT if palette else "")
-        )
+        if entry.saved:
+            glyph, glyph_style = SAVED_GLYPH, (palette.success if palette else "")
+        elif routing.to_inbox:
+            glyph, glyph_style = "!", (palette.error if palette else "")
+        else:
+            glyph, glyph_style = "•", (ACCENT if palette else "")
         marker = Text.assemble((glyph, glyph_style), " ", (str(number), "dim"))
         date = Text(
             format_date_cell(parsed.date, today),
@@ -253,10 +302,23 @@ def staged_table(
     palette: Palette | None = None,
     picked: int | None = None,
     today: str = "",
+    last_save: str = "",
 ) -> RenderableType:
     """The staged list. The picked row is reverse video, like every cursor in
-    this app — a Rich style, never CSS (docs/tui.md §3)."""
+    this app — a Rich style, never CSS (docs/tui.md §3).
+
+    `last_save` is the receipt from a save whose rows have since been cleared —
+    the list only ever shows pending rows, so what a finished batch leaves
+    behind is one sentence, not a table (decided 2026-08-25).
+    """
     if not entries:
+        if last_save:
+            return Group(
+                Text(f"  Nothing staged. {last_save} a moment ago.", style="dim"),
+                Text("  Type a line and press ↵.", style="dim"),
+                Text(""),
+                Text("  " + EXAMPLE, style="dim"),
+            )
         lines = [Text("  " + line, style="dim") for line in EMPTY_LINES]
         lines.append(Text(""))
         lines.append(Text("  " + EXAMPLE, style="dim"))
@@ -271,6 +333,23 @@ def staged_table(
     return table
 
 
+def save_receipt(entries: list[Staged]) -> str:
+    """`2 logged · 1 draft in the Inbox` — what a save actually wrote.
+
+    Counted from `saved`, never from the routing alone, so a partial save says
+    what landed rather than what was hoped for. Empty string when nothing has
+    been written yet, which is what keeps it out of the at-rest screen.
+    """
+    logged = sum(1 for e in entries if e.saved and not e.routing.to_inbox)
+    drafts = sum(1 for e in entries if e.saved and e.routing.to_inbox)
+    parts = []
+    if logged:
+        parts.append(f"{logged} logged")
+    if drafts:
+        parts.append(f"{drafts} draft{'' if drafts == 1 else 's'} in the Inbox")
+    return " · ".join(parts)
+
+
 def staged_summary(
     entries: list[Staged], refs: QuickAddRefs, *, palette: Palette | None = None
 ) -> RenderableType:
@@ -283,19 +362,33 @@ def staged_summary(
     **The Inbox reasons are route.py's own phrases**, prefixed with the row
     number. The flat `expense log` prints the same strings, which is the point:
     one wording, in one place, for both surfaces.
+
+    **Saved rows are counted, not totalled** (phase 4). Once a row is written it
+    stops being something you are about to do, so it leaves the per-currency
+    totals and joins the receipt line — otherwise the figure under a half-saved
+    list would describe a batch that no longer exists.
     """
     if not entries:
         return Text("")
-    ledger = [e for e in entries if not e.routing.to_inbox]
-    drafts = [(n, e) for n, e in enumerate(entries, start=1) if e.routing.to_inbox]
+    pending = [e for e in entries if not e.saved]
+    ledger = [e for e in pending if not e.routing.to_inbox]
+    drafts = [(n, e) for n, e in enumerate(entries, start=1) if e.routing.to_inbox and not e.saved]
 
     lines: list[Text] = []
+    receipt = save_receipt(entries)
+    if receipt:
+        line = Text("  ", style="dim")
+        line.append(receipt, style=palette.success if palette else "")
+        if not pending:
+            line.append(" · ctrl+s again does nothing — the list is done", style="dim")
+        lines.append(line)
+
     if ledger:
         totals: dict[str, int] = {}
         for entry in ledger:
             code = currency_of(refs, entry.parsed.account_id)
             totals[code] = totals.get(code, 0) + (entry.parsed.amount_cents or 0)
-        # every row staged is going to the ledger — say it the short way
+        # every row still pending is going to the ledger — say it the short way
         head = f"{len(ledger)} staged" if not drafts else f"{len(ledger)} to the ledger"
         line = Text("  " + head, style="dim")
         for code, cents in totals.items():
@@ -314,6 +407,26 @@ def staged_summary(
             line.append(" — " + " · ".join(whys), style="dim")
         lines.append(line)
 
+    return Group(*lines) if lines else Text("")
+
+
+def save_errors(entries: list[Staged], *, palette: Palette | None = None) -> RenderableType:
+    """What the engine refused, row by row, under the table.
+
+    The engine's own message is passed through `format_error` upstream and
+    printed verbatim — the "engine errors surface cleanly" rule; this only adds
+    the row number, so the sentence can be matched to a line in the list.
+    """
+    failed = [(n, e) for n, e in enumerate(entries, start=1) if e.error]
+    if not failed:
+        return Text("")
+    lines: list[Text] = []
+    for number, entry in failed:
+        line = Text("  ", style="dim")
+        line.append(f"row {number}: ", style="dim")
+        line.append(entry.error or "", style=palette.error if palette else "")
+        lines.append(line)
+    lines.append(Text("  ctrl+s retries just the rows without a ✓.", style="dim"))
     return Group(*lines)
 
 
@@ -330,7 +443,7 @@ class _Picker:
     candidates: list[tuple[str, str]] = field(default_factory=list)
 
 
-class LogBarScreen(EngineWriteMixin, Screen):
+class LogBarScreen(Screen):
     """The LOG bar and its staged list.
 
     Not a `FormScreen`: that class is built around cycling a *sequence* of
@@ -350,6 +463,7 @@ class LogBarScreen(EngineWriteMixin, Screen):
         Binding("ctrl+x", "drop_row", "Drop row", priority=True, show=False),
         Binding("up", "move(-1)", "Up", show=False),
         Binding("down", "move(1)", "Down", show=False),
+        Binding("ctrl+s", "save", "Save"),
     ]
 
     crumb = ("Capture & ledger", "Log")
@@ -366,6 +480,8 @@ class LogBarScreen(EngineWriteMixin, Screen):
         self._completed = False
         self._echo = False  # the bar was set by us, not typed into
         self._hl = LineHighlighter()
+        self._saving = False
+        self._last_save = ""  # the receipt left behind once saved rows clear
 
     # ---- layout ------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -490,21 +606,143 @@ class LogBarScreen(EngineWriteMixin, Screen):
 
     def action_back(self) -> None:
         """`esc`: cancel an edit · unpick a row · confirm a discard · leave."""
+        if self._saving:
+            self.notify("Writing — one moment.")
+            return
         if self._editing is not None:
             self._cancel_edit()
         elif self._picked is not None:
             self._picked = None
-        elif self._staged:
-            self.app.push_screen(DiscardStagedModal(len(self._staged)), self._after_discard)
+        elif self._pending():
+            self.app.push_screen(DiscardStagedModal(len(self._pending())), self._after_discard)
             return
         else:
             self.dismiss()
             return
         self._refresh_view()
 
-    def _after_discard(self, discard: bool | None) -> None:
-        if discard:
+    def _after_discard(self, answer: str | None) -> None:
+        """`d` leaves the rows behind · `ctrl+s` writes them first, then leaves.
+
+        The save-first arm dismisses only once every row lands — a failed save
+        keeps you on the screen, because an error you cannot read is the same
+        as no error at all (decided 2026-08-25).
+        """
+        if answer == "discard":
             self.dismiss()
+        elif answer == "save":
+            self._begin_save(leave_after=True)
+
+    # ---- the save ----------------------------------------------------------
+    def _pending(self) -> list[Staged]:
+        """The rows `ctrl+s` covers: everything not already written."""
+        return [e for e in self._staged if not e.saved]
+
+    def action_save(self) -> None:
+        """`ctrl+s`: write every staged row that is not already saved.
+
+        A half-typed line in the bar is **not** staged and **not** saved
+        (decided 2026-08-25) — `↵` is the only thing that stages, so a save can
+        never write something you were still in the middle of.
+        """
+        self._begin_save(leave_after=False)
+
+    def _begin_save(self, *, leave_after: bool) -> None:
+        if self._saving or not self._pending():
+            return
+        self._saving = True
+        for entry in self._pending():
+            entry.error = None  # a retry starts clean; only the ticks persist
+        self._refresh_view()
+        self._save(leave_after)
+
+    @work(thread=True, group="engine-write")
+    def _save(self, leave_after: bool) -> None:
+        """One `POST /transactions/batch` for the ledger rows, then one
+        `POST /inbox` per draft.
+
+        Not `EngineWriteMixin.run_write`: that is one request per queued item,
+        it drops the response, and it clears the queue on the first error —
+        none of which fits a batch with a per-row fallback. The worker still
+        runs in run_write's `engine-write` group, so it cannot race one.
+        """
+        # lazy, like every other write site: the test fixture patches
+        # `expense.http.ExpenseClient` and only an in-function lookup sees it
+        from expense import config as config_module
+        from expense.http import ExpenseClient
+
+        ledger = [e for e in self._pending() if not e.routing.to_inbox]
+        drafts = [e for e in self._pending() if e.routing.to_inbox]
+        try:
+            cfg = config_module.ensure_loaded()
+            with ExpenseClient(cfg, verbose=self.app._verbose) as client:
+                if ledger:
+                    items = [
+                        transaction_payload(e.parsed, row_id=e.row_id, date=e.date) for e in ledger
+                    ]
+                    outcome = post_transaction_batch(client, items)
+                    self.app.call_from_thread(self._apply_outcome, ledger, outcome)
+                for entry in drafts:
+                    body = inbox_payload(entry.parsed, row_id=entry.row_id, date=entry.date)
+                    try:
+                        client.post("/inbox", json_body=body)
+                    except EngineError as err:
+                        # 409 = this id is already a draft: the row IS in
+                        ok = err.status == 409
+                        note = None if ok else format_error(err)
+                        self.app.call_from_thread(self._mark, entry, ok, note)
+                    else:
+                        self.app.call_from_thread(self._mark, entry, True, None)
+        except EngineConnectionError as err:
+            message = format_error(err)
+            self.app.call_from_thread(self._stop_save, message)
+        except Exception as err:  # noqa: BLE001 - a worker crash must not be silent
+            self.app.call_from_thread(self._stop_save, str(err))
+        else:
+            self.app.call_from_thread(self._save_finished, leave_after)
+            return
+        self.app.call_from_thread(self._save_finished, False)
+
+    def _apply_outcome(self, rows: list[Staged], outcome: BatchOutcome) -> None:
+        """Fold the shared batch result onto the staged rows it came from.
+
+        `CREATED` and `EXISTED` both mean the engine holds the row — the second
+        is a replay of an id we already minted, which is exactly what a retry
+        after a half-written save produces.
+        """
+        errors = outcome.errors
+        for index, result in enumerate(outcome.results):
+            entry = rows[index]
+            if result in (RowResult.CREATED, RowResult.EXISTED):
+                self._mark(entry, True, None)
+            elif result is RowResult.FAILED:
+                self._mark(entry, False, errors.get(index))
+            elif outcome.stopped:
+                self._mark(entry, False, outcome.stop_error)
+
+    def _mark(self, entry: Staged, saved: bool, error: str | None) -> None:
+        entry.saved = saved
+        entry.error = error
+        self._refresh_view()
+
+    def _stop_save(self, message: str) -> None:
+        for entry in self._pending():
+            entry.error = message
+        self._refresh_view()
+
+    def _save_finished(self, leave_after: bool) -> None:
+        self._saving = False
+        written = save_receipt(self._staged)
+        if written:
+            self._last_save = written
+        if leave_after and not self._pending():
+            self.dismiss()
+            return
+        if self._pending():
+            self.notify("Some rows were not written.", title="Failed", severity="error")
+        elif written:
+            self.notify(written)
+        self._refresh_view()
 
     # ---- the three things ↵ does ------------------------------------------
     def _complete_token(self) -> None:
@@ -538,10 +776,23 @@ class LogBarScreen(EngineWriteMixin, Screen):
         parsed = self._parsed
         if parsed is None:
             return
+        # A finished batch clears the moment the next one starts: the list only
+        # ever shows rows you are about to write, and what the save wrote lives
+        # on as `_last_save` (decided 2026-08-25).
+        if self._staged and not self._pending():
+            self._staged.clear()
+            self._picked = None
+            self._editing = None
         entry = Staged(line=line, parsed=parsed, routing=route(parsed, today_local()))
-        if self._editing is not None:
-            self._staged[self._editing] = entry
-            self._picked = self._editing
+        # A written row is never replaced: it has an id the engine already holds,
+        # and overwriting it here would drop the tick and write the row twice.
+        editing = self._editing
+        if editing is not None and self._staged[editing].saved:
+            editing = None
+            self.notify("That row is already written — this stages a new one.")
+        if editing is not None:
+            self._staged[editing] = entry
+            self._picked = editing
         else:
             self._staged.append(entry)
             self._picked = None
@@ -550,7 +801,16 @@ class LogBarScreen(EngineWriteMixin, Screen):
         self._completed = False
 
     def _lift(self, index: int) -> None:
-        """Put a staged row back in the bar as the raw line that made it."""
+        """Put a staged row back in the bar as the raw line that made it.
+
+        A written row cannot be lifted: editing it would suggest the change
+        reaches the ledger, and it does not — this screen only ever creates.
+        Correcting a written row is the edit form's job (`⏎` on it in
+        Transactions), which is exactly why that door stayed open.
+        """
+        if self._staged[index].saved:
+            self.notify(f"Row {index + 1} is written. Edit it from Transactions.")
+            return
         self._editing = index
         self._set_bar(self._staged[index].line)
 
@@ -568,6 +828,8 @@ class LogBarScreen(EngineWriteMixin, Screen):
         self.query_one("#staged", Static).update(self._staged_renderable())
 
     def _hint(self) -> str:
+        if self._saving:
+            return SAVING_HINT
         if self._refs is None:
             return LOADING_HINT
         if self._editing is not None:
@@ -619,8 +881,18 @@ class LogBarScreen(EngineWriteMixin, Screen):
         refs = self._refs
         if refs is None:
             return Text("")
-        return Group(
-            staged_table(self._staged, refs, palette=PALETTE, picked=self._picked),
+        parts: list[RenderableType] = [
+            staged_table(
+                self._staged,
+                refs,
+                palette=PALETTE,
+                picked=self._picked,
+                last_save=self._last_save,
+            ),
             Text(""),
             staged_summary(self._staged, refs, palette=PALETTE),
-        )
+        ]
+        errors = save_errors(self._staged, palette=PALETTE)
+        if isinstance(errors, Group):
+            parts.extend((Text(""), errors))
+        return Group(*parts)

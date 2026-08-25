@@ -39,11 +39,14 @@ expense/tui/
     inbox.py        transactions.py  accounts.py  categories.py  hashtags.py
     reconciliations.py               # full lifecycle
     system.py       # Config / Auth / Activity / Rates screens
-    quick_log.py    # the transaction form (log / edit)
-    log_bar.py      # the LOG bar — one typed line, a staged batch (quick-add phase 3).
-                    #   Parses through expense/quickadd/, routes each row to the ledger
-                    #   or the Inbox at stage time. Unreachable until phase 4 binds it
-                    #   to `+`; ctrl+s (the save) lands with it.
+    quick_log.py    # the transaction / draft EDIT form (`⏎` on a row). Its create
+                    #   mode moved to the LOG bar 2026-08-25 — `record` is required now
+    log_bar.py      # the LOG bar — what `+` opens. One typed line, a staged batch,
+                    #   one save. Parses through expense/quickadd/, routes each row to
+                    #   the ledger or the Inbox at stage time; ctrl+s writes the ledger
+                    #   rows in ONE POST /transactions/batch (via expense/batch_write.py)
+                    #   then each draft to POST /inbox. Saved rows keep a ✓ until the
+                    #   next line is staged; a partial failure re-sends only the rest.
     create_forms.py # BarFormScreen + New{Account,Category,Hashtag} small forms
                     #   New account carries a TYPE field (bank/person, prefilled
                     #   bank) that picks POST /accounts vs POST /people
@@ -222,10 +225,22 @@ them — they are hand-written into the `?` card
 
 **`+` logs a transaction** — Home, Transactions and Inbox (`LogTransactionMixin` in
 [_base.py](../expense/tui/screens/_base.py), splatted into each host's BINDINGS like
-`HelpBindingMixin`). It always opens the same empty form posting to `/transactions`,
-including inside the Inbox: one key, one meaning. Plain `+`, no modifier — `shift`+`+`
-is not bindable at all, and the numpad and main-row keys send the same byte, so one
-binding catches both ([decisions.md](decisions.md)).
+`HelpBindingMixin`). It always opens the same capture screen — the **LOG bar**, since
+quick-add phase 4 (2026-08-25) — including inside the Inbox: one key, one meaning.
+Where a row lands is decided by *the line you typed* and shown in the `goes to` column
+before you press `ctrl+s`, never by which screen you were standing on; that is what
+keeps this from being the trap of one key writing to two endpoints depending on where
+you stand ([todo.md](todo.md) item 5). Plain `+`, no modifier — `shift`+`+` is not
+bindable at all, and the numpad and main-row keys send the same byte, so one binding
+catches both ([decisions.md](decisions.md)).
+
+**The LOG bar's own keys** ([log_bar.py](../expense/tui/screens/log_bar.py)): `↵`
+stages the line — or completes the open token, or puts a lifted row back; `↑↓` drive
+the completion picker while a token is open and move through staged rows when the bar
+is empty; `ctrl+s` writes everything not already written; `ctrl+x` drops the picked
+row; `esc` unpicks, then leaves (confirming if rows are staged and unwritten). The bar
+always holds focus, which is why no bare letter is a command there and why the screen
+has no `?` — a focused `Input` swallows printable keys.
 
 **The footer never advertises the arrow keys.** `Navigate` is declared `show=False` on
 `CursorList`, `CheckList`, `CategoriesView` and `MonthGridView` (user, 2026-08-20 —

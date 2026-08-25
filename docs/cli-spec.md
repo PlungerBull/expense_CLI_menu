@@ -157,6 +157,7 @@ Two forms, one command, never mixed — passing a line **and** a content flag is
 
 ### `expense world`
 - `world` — launches the Textual TUI, the interactive front door over the same fetch/write layer. `expense` (no args) keeps group-help behavior. Replaced the questionary `expense menu` (deleted 2026-07-02). Reference: [tui.md](tui.md).
+  - **`+` opens the LOG bar** (2026-08-25) — the same quick-add grammar as `log "<line>"` above, as a staged batch: `↵` stages a line, the list shows every row and where it is going, `ctrl+s` writes the ledger rows in one `POST /transactions/batch` and each draft to `POST /inbox`. Design: [mockups/expense-world-quickadd-batch.html](mockups/expense-world-quickadd-batch.html); behaviour of the save in [decisions.md](decisions.md) "What a half-written batch means".
 
 ---
 
@@ -195,8 +196,8 @@ Two forms, one command, never mixed — passing a line **and** a content flag is
 
 ## To Be Defined
 
-- **Quick-add bar in the TUI** — the one-line grammar is **built** and reachable from the flat CLI (`expense log "<line>"`, 2026-08-25); what remains is the TUI's staged-batch screen and the `+` switch, phases 3–4 in [todo.md](todo.md). The worked-out design is [mockups/expense-world-quickadd-batch.html](mockups/expense-world-quickadd-batch.html); the flat command's output block is [mockups/expense-world-log-oneline.html](mockups/expense-world-log-oneline.html) (option A, picked 2026-08-25). Superseded speculative drawings: [mockups/quick-add-bar.html](mockups/quick-add-bar.html), [mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html) (the launcher hotkey is still an open question), [mockups/expense-world-log-quickadd.html](mockups/expense-world-log-quickadd.html).
 - Shell completions (zsh, bash, fish)
+- The quick-add **launcher hotkey** — a global chord that opens the LOG bar from outside the TUI ([mockups/quick-add-launcher-options.html](mockups/quick-add-launcher-options.html)). Parked, not scheduled.
 - `expense import csv` — CSV variant of the shipped `.xlsx` importer, only if a real migration needs it (see [todo.md](todo.md))
 
-*(Resolved and moved above: `expense world` shipped as a command — see its group entry. The local SQLite cache shipped cache-by-default through Step 7b.3, then was deleted 2026-08-06 with the engine's `/sync` — see [decisions.md](decisions.md) "Delete the local replica".)*
+*(Resolved and moved above: the TUI quick-add bar shipped whole 2026-08-25 — the grammar, `expense log "<line>"`, the staged batch and the `+` switch — so it is documented under `expense world` rather than pending here; superseded speculative drawings, kept for the parked launcher question: [mockups/quick-add-bar.html](mockups/quick-add-bar.html), [mockups/expense-world-log-quickadd.html](mockups/expense-world-log-quickadd.html). `expense world` shipped as a command — see its group entry. The local SQLite cache shipped cache-by-default through Step 7b.3, then was deleted 2026-08-06 with the engine's `/sync` — see [decisions.md](decisions.md) "Delete the local replica".)*

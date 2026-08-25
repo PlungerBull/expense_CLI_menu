@@ -67,6 +67,19 @@
   <p>ANSI-only: default text, dim, blue accent, red/green for sign, reverse video for the
      picked row. No hex anywhere, so it reads the same on a light terminal.</p>
   <div class="chg">
+    <h2>v3 — what shipped, 2026-08-25</h2>
+    <ul>
+      <li><b>Panes 7 and 8 are redrawn</b> to the four calls you made when phase 4
+          was planned. Pane 8 in particular changed shape: the interesting failure
+          is not "nothing was written", it is <b>half</b> written — the drafts post
+          after the batch, so the engine can die between them.</li>
+      <li><b>A saved row is done.</b> It keeps its ✓, it is never re-sent, and it
+          cannot be lifted back into the bar (correcting a written row is the edit
+          form's job, which is why that door stayed open).</li>
+      <li><b>Pane 9's third answer is live</b> — <code>ctrl+s save first</code>
+          saves and then leaves, unless the save fails, in which case you stay
+          where the error is readable.</li>
+    </ul>
     <h2>v2 — what your review changed</h2>
     <ul>
       <li><b>Completion now rewrites the line</b> (pane 3). Answering your <code>@sig</code>
@@ -184,7 +197,7 @@
 </section>
 <section class="pane">
 <div class="lbl"><b>7</b> <span>· ctrl+s — saved</span></div>
-<p class="blurb">The ledger rows go in <b>one</b> <code>POST /transactions/batch</code>; the incomplete one goes to <code>POST /inbox</code> after it.</p>
+<p class="blurb">The ledger rows go in <b>one</b> <code>POST /transactions/batch</code>; the incomplete one goes to <code>POST /inbox</code> after it. <b>The screen stays</b> — the ticked list is the receipt, and it is cleared the moment you stage the next line, so the list only ever shows rows you are about to write. Between the two, the empty list says what just happened: <code>Nothing staged. 3 logged · 2 drafts in the Inbox a moment ago.</code> <i>(Owner's call, 2026-08-25.)</i></p>
 <div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
 <span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
 
@@ -202,8 +215,8 @@
   <span class="p">3 logged</span> <span class="d">·</span> <span class="a">2 drafts in the Inbox</span> <span class="d">·</span> <span class="d">ctrl+s again does nothing — the list is done</span></pre></div></div>
 </section>
 <section class="pane">
-<div class="lbl"><b>8</b> <span>· when it cannot be written at all</span></div>
-<p class="blurb"><b>Routing at stage time means the engine has almost nothing left to refuse.</b> A row is only sent to the ledger when it is already complete and not dated ahead; everything else was already addressed to the Inbox, which accepts it. So what is left is the engine being unreachable, logged out, or down — and then nothing is written and every row survives. (If a 422 does slip through — an account archived in another window since the list loaded — the screen re-posts row by row to name it, the same fallback <code>expense import</code> has used since it shipped.)</p>
+<div class="lbl"><b>8</b> <span>· when only half of it is written</span></div>
+<p class="blurb"><b>Routing at stage time means the engine has almost nothing left to refuse.</b> A row is only sent to the ledger when it is already complete and not dated ahead; everything else was already addressed to the Inbox, which accepts it. So what is left is the engine being unreachable, logged out, or down — and because the drafts are posted after the batch, that can land <i>between</i> the two. <b>The screen never claims more or less than what happened:</b> rows that reached the engine keep their <span class="p">✓</span> and are done, rows that did not keep their marker and carry the error, and <code>ctrl+s</code> re-sends <i>only</i> the rows without a tick. Nothing can be written twice — each row carries an id the client minted at stage time, so a row that did land replays as a <code>409</code>, which is a tick, not a second copy. <i>(Owner's call, 2026-08-25.)</i> (A 422 — an account archived in another window since the list loaded — is isolated the same way: the screen re-posts row by row to name it, the fallback <code>expense import</code> has used since it shipped.)</p>
 <div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
 <span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
 
@@ -212,14 +225,17 @@
 <span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
 
       <span class="d">date    title                      amount  account        category    tags         goes to</span>
-  <span class="a">•</span> <span class="d">1</span> <span class="d">20 Aug</span>  <span class="b">TOTTUS PORONGOCHE</span>          <span class="n">-38.60</span>  Signature PEN  KORAKUEN    <span class="a">#CAJA CHICA</span>  <span class="d">ledger</span>
-  <span class="a">•</span> <span class="d">2</span> <span class="d">20 Aug</span>  <span class="b">SHIMAYA RAMEN</span>              <span class="n">-96.00</span>  Signature PEN  KORAKUEN    <span class="a">#CAJA CHICA</span>  <span class="d">ledger</span>
+  <span class="p">✓</span> <span class="d">1</span> <span class="d">20 Aug</span>  <span class="b">TOTTUS PORONGOCHE</span>          <span class="d">-38.60</span>  <span class="d">Signature PEN</span>  <span class="d">KORAKUEN</span>    <span class="d">#CAJA CHICA</span>  <span class="d">ledger</span>
+  <span class="p">✓</span> <span class="d">2</span> <span class="d">20 Aug</span>  <span class="b">SHIMAYA RAMEN</span>              <span class="d">-96.00</span>  <span class="d">Signature PEN</span>  <span class="d">KORAKUEN</span>    <span class="d">#CAJA CHICA</span>  <span class="d">ledger</span>
   <span class="e">!</span> <span class="d">3</span> <span class="d">18 Aug</span>  <span class="b">APPARKA MALL</span>                <span class="n">-3.50</span>  <span class="e">— account?</span>     TRANSPORTE  <span class="a">#TAXI</span>        <span class="a">inbox</span>
-  <span class="a">•</span> <span class="d">4</span> <span class="d">20 Aug</span>  <span class="b">TRAN.CEL.BM.</span>                <span class="n">-6.60</span>  BCP PEN        TRANSPORTE  <span class="a">#TAXI</span>        <span class="d">ledger</span>
+  <span class="p">✓</span> <span class="d">4</span> <span class="d">20 Aug</span>  <span class="b">TRAN.CEL.BM.</span>                <span class="d">-6.60</span>  <span class="d">BCP PEN</span>        <span class="d">TRANSPORTE</span>  <span class="d">#TAXI</span>        <span class="d">ledger</span>
   <span class="e">!</span> <span class="d">5</span> <span class="e">22 Aug</span>  <span class="b">ALQUILER</span>                <span class="n">-1,800.00</span>  BCP PEN        HOGAR       <span class="d">—</span>            <span class="a">inbox</span>
 
-  <span class="e">CONNECTION_ERROR</span> <span class="d">— could not reach the engine at 127.0.0.1:8000.</span>
-  <span class="d">Nothing was written. Every row is still here; ctrl+s tries again.</span></pre></div></div>
+  <span class="p">3 logged</span> <span class="d">·</span> <span class="d">2 to the Inbox</span>
+
+  <span class="d">row 3:</span> <span class="e">CONNECTION_ERROR — could not reach the engine at 127.0.0.1:8000.</span>
+  <span class="d">row 5:</span> <span class="e">CONNECTION_ERROR — could not reach the engine at 127.0.0.1:8000.</span>
+  <span class="d">ctrl+s retries just the rows without a ✓.</span></pre></div></div>
 </section>
 <section class="pane">
 <div class="lbl"><b>9</b> <span>· esc with rows staged</span></div>

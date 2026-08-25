@@ -1,15 +1,24 @@
-"""Log / edit a transaction — quick-add bar (Phase 2).
+"""Edit a transaction or an inbox draft — the bar-cycle form.
 
 One input bar cycles through fields; a summary fills below. Entity fields
 (account/category/hashtags) show a live-filtered suggestion list — pick
 existing entities only.
 
-CREATE (record=None): Date › Title › Amount › Account › Category ›
-Hashtags › Note.
+**Edit only, since quick-add phase 4 (2026-08-25).** This screen had a second
+hat — opened with no record it was a *create* form, and `+` opened it that way.
+`+` now opens the LOG bar ([log_bar.py](log_bar.py)) and the create hat is
+gone; nothing else about the file changed
+(docs/mockups/expense-world-two-doors.html). Why the edit form stays: an
+existing row has an id, a version and possibly a completed reconciliation
+freezing four of its fields, so the write is a PUT of just what changed; most
+rows — every one the xlsx importer made — were never a typed line and have
+nothing to round-trip; and retyping a line to fix one number is more work, not
+less.
 
-EDIT (record + resource): the same bar pre-filled. Sequence: Date › Title ›
-Amount › Account › Category › Hashtags › Note. `ctrl+s` PUTs only the changed
-fields. (`Cleared` was here until 2026-08-17 — the engine deleted the column.)
+Reached by `⏎` on a row in Transactions or on a draft in the Inbox. Sequence:
+Date › Title › Amount › Account › Category › Hashtags › Note. `ctrl+s` PUTs
+only the changed fields. (`Cleared` was here until 2026-08-17 — the engine
+deleted the column.)
 
 `enter` saves & advances · `↑/↓` move the suggestion highlight · `ctrl+s`
 submits. Sign explicit (− expense / + income); currency derived from the
@@ -17,12 +26,11 @@ account.
 
 Field navigation (`ctrl+↑/↓`) is bound but **unadvertised** — macOS claims both
 chords before the terminal sees them, so the footer stopped offering them
-2026-08-24 and the replacement key is still open (docs/todo.md item 7). See
+2026-08-24 and the replacement key is still open (docs/todo.md item 6). See
 `form_bindings` in _form.py.
 """
 
 import copy
-import uuid
 from datetime import date as date_cls
 
 from rich.console import Group, RenderableType
@@ -76,27 +84,21 @@ _ENGINE_FIELD = {
 class QuickAddLogScreen(FormScreen):
     BINDINGS = form_bindings("Save")
 
-    def __init__(self, *, record: dict | None = None, resource: str | None = None) -> None:
+    def __init__(self, *, record: dict, resource: str = "transactions") -> None:
         super().__init__()
-        self._mode = "edit" if record else "create"
-        self._resource = resource or "transactions"
-        self._record = record or {}
+        self._resource = resource
+        self._record = record
         self._accounts: list = []
         self._categories: list = []
         self._hashtags: list = []
         self._original: dict = {}
 
-        if self._mode == "edit":
-            self.crumb = (
-                ("Capture & ledger", "Inbox", "Edit draft")
-                if self._resource == "inbox"
-                else ("Capture & ledger", "Transactions", "Edit")
-            )
-            self._prefill(self._record)
-        else:
-            self.crumb = ("Capture & ledger", "Log a transaction")
-            self._values = {"date": date_cls.today().isoformat()}
-            self._display = {"date": self._values["date"]}
+        self.crumb = (
+            ("Capture & ledger", "Inbox", "Edit draft")
+            if self._resource == "inbox"
+            else ("Capture & ledger", "Transactions", "Edit")
+        )
+        self._prefill(self._record)
 
     # ---- edit pre-fill ---------------------------------------------------
     def _prefill(self, rec: dict) -> None:
@@ -132,17 +134,10 @@ class QuickAddLogScreen(FormScreen):
 
     # ---- field sequence --------------------------------------------------
     def _sequence(self) -> list[str]:
-        if self._mode == "edit":
-            # Same sequence for both resources: drafts have carried hashtag_ids
-            # since 2026-08-14 and the tags survive promotion, so there is no
-            # reason for the inbox form to differ (backlog 6.1, 2026-08-16).
-            return ["date", "title", "amount", "account", "category", "hashtags", "note"]
+        # Same sequence for both resources: drafts have carried hashtag_ids
+        # since 2026-08-14 and the tags survive promotion, so there is no
+        # reason for the inbox form to differ (backlog 6.1, 2026-08-16).
         return ["date", "title", "amount", "account", "category", "hashtags", "note"]
-
-    def _required(self) -> tuple[str, ...]:
-        if self._mode == "edit":
-            return ()  # diff-based; the record is already valid
-        return ("title", "amount", "account", "category")
 
     def _after_mount(self) -> None:
         self._load_entities()
@@ -167,17 +162,17 @@ class QuickAddLogScreen(FormScreen):
     def _set_entities(self, accounts, categories, hashtags, maps) -> None:
         self._accounts, self._categories, self._hashtags = accounts, categories, hashtags
         self._acc_names, self._cat_names, self._tag_names_map = maps
-        if self._mode == "edit":  # resolve pre-filled ids → names
-            # resolve_name (shared) renders a null reference as "—" instead of
-            # crashing on None[:8] (backlog 6.2e)
-            if "account" in self._values:
-                self._display["account"] = resolve_name(self._values["account"], self._acc_names)
-            if "category" in self._values:
-                self._display["category"] = resolve_name(self._values["category"], self._cat_names)
-            if self._values.get("hashtags"):
-                self._display["hashtags"] = " ".join(
-                    "#" + resolve_name(t, self._tag_names_map) for t in self._values["hashtags"]
-                )
+        # resolve pre-filled ids → names.
+        # resolve_name (shared) renders a null reference as "—" instead of
+        # crashing on None[:8] (backlog 6.2e)
+        if "account" in self._values:
+            self._display["account"] = resolve_name(self._values["account"], self._acc_names)
+        if "category" in self._values:
+            self._display["category"] = resolve_name(self._values["category"], self._cat_names)
+        if self._values.get("hashtags"):
+            self._display["hashtags"] = " ".join(
+                "#" + resolve_name(t, self._tag_names_map) for t in self._values["hashtags"]
+            )
         self._recompute(self.query_one("#bar", Input).value)
         self._refresh_view()
 
@@ -316,30 +311,11 @@ class QuickAddLogScreen(FormScreen):
 
     # ---- submit ----------------------------------------------------------
     def _submit_request(self) -> tuple[str, str, dict, str] | None:
-        if self._mode == "edit":
-            payload = self._edit_payload()
-            if not payload:
-                self.notify("No changes to save.")
-                return None
-            return ("PUT", f"/{self._resource}/{self._record['id']}", payload, "Saving…")
-        payload = self._create_payload()
-        return ("POST", "/transactions", payload, "Creating transaction…")
-
-    def _create_payload(self) -> dict:
-        date = to_canonical_aware(self._values.get("date") or date_cls.today().isoformat())
-        payload = {
-            "id": str(uuid.uuid4()),
-            "title": self._values["title"],
-            "amount_cents": self._values["amount"],
-            "account_id": self._values["account"],
-            "category_id": self._values["category"],
-            "date": date,
-        }
-        if self._values.get("hashtags"):
-            payload["hashtag_ids"] = self._values["hashtags"]
-        if self._values.get("note"):
-            payload["description"] = self._values["note"]
-        return payload
+        payload = self._edit_payload()
+        if not payload:
+            self.notify("No changes to save.")
+            return None
+        return ("PUT", f"/{self._resource}/{self._record['id']}", payload, "Saving…")
 
     def _edit_payload(self) -> dict:
         payload: dict = {}
@@ -358,8 +334,5 @@ class QuickAddLogScreen(FormScreen):
         return payload
 
     def _done(self) -> None:
-        if self._mode == "edit":
-            self.notify("Saved.")
-        else:
-            self.notify("Transaction created.")
+        self.notify("Saved.")
         self.dismiss()

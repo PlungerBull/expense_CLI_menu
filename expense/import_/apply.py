@@ -9,10 +9,15 @@ rest still land. Re-runs after a partial run or with appended sheet rows
 converge instead of silently dropping.
 """
 
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from expense.batch_write import (
+    CHUNK_SIZE,
+    BatchOutcome,
+    RowResult,
+    post_transaction_batch,
+)
 from expense.commands._resource import fetch_all_pages
 from expense.dates import to_canonical_aware
 from expense.errors import EngineConnectionError, EngineError, format_error
@@ -275,11 +280,6 @@ def _apply_openings(client: ExpenseClient, plan: ImportPlan, res, result: ApplyR
     return True
 
 
-def chunked(items: list, size: int) -> Iterator[list]:
-    for i in range(0, len(items), size):
-        yield items[i : i + size]
-
-
 def _line_range(items: list[dict], line_by_id: dict[str, int]) -> str:
     lines = sorted(line_by_id[item["id"]] for item in items)
     if lines[0] == lines[-1]:
@@ -287,50 +287,42 @@ def _line_range(items: list[dict], line_by_id: dict[str, int]) -> str:
     return f"sheet lines {lines[0]}-{lines[-1]}"
 
 
-def _apply_singletons(
-    client: ExpenseClient,
-    chunk: list[dict],
-    chunk_index: int,
-    line_by_id: dict[str, int],
-    result: ApplyResult,
-) -> bool:
-    """Retry a 409'd/422'd chunk row-by-row via singleton batches.
+def _fold_outcome(
+    outcome: BatchOutcome, items: list[dict], line_by_id: dict[str, int], result: ApplyResult
+) -> None:
+    """Turn an index-aligned `BatchOutcome` into this importer's vocabulary.
 
-    An atomic-batch failure doesn't say which row; posting one row per batch
-    keeps the endpoint's semantics while letting good rows land — 409s are
-    skipped as already-imported, other errors report the row's sheet line.
-    Returns False when a connection error stopped the run (this chunk's unsent
-    tail is already counted failed).
+    The batch mechanics live in [batch_write.py](../batch_write.py), shared with
+    the TUI's LOG bar since 2026-08-25; what stays here is the sheet-line
+    phrasing, which only a workbook has. A grouped failure keeps its range
+    (`sheet lines 2-3`) so a chunk-level 403 is still reported once.
     """
-    for pos, item in enumerate(chunk):
-        try:
-            client.post("/transactions/batch", json_body={"transactions": [item]})
+    for row in outcome.results:
+        if row is RowResult.CREATED:
             result.tx_created += 1
-        except EngineError as err:
-            if err.status == 409:
-                result.tx_skipped_existing += 1
-            else:
-                result.tx_failed += 1
-                # format_error keeps the envelope's fields + hints — sheet-line
-                # context is prefixed so it survives multi-line output (6.3a)
-                result.failures.append(
-                    (
-                        chunk_index,
-                        f"sheet line {line_by_id[item['id']]}, id {item['id']}: "
-                        f"{format_error(err)}",
-                    )
-                )
-        except EngineConnectionError as err:
-            result.tx_failed += len(chunk) - pos
-            result.failures.append(
-                (
-                    chunk_index,
-                    f"CONNECTION_ERROR: {format_error(err)} — rows from sheet line "
-                    f"{line_by_id[item['id']]} on were not sent",
-                )
+        elif row is RowResult.EXISTED:
+            result.tx_skipped_existing += 1
+        else:
+            result.tx_failed += 1
+
+    for failure in outcome.failures:
+        rows = [items[i] for i in failure.indices]
+        where = _line_range(rows, line_by_id)
+        if len(rows) == 1:
+            # the singleton fallback found this row — name its id too, as it
+            # always has, so a duplicate title is still unambiguous
+            where = f"{where}, id {rows[0]['id']}"
+        result.failures.append((failure.chunk_index, f"{where}: {failure.message}"))
+
+    if outcome.stopped:
+        unsent = [line_by_id[items[i]["id"]] for i in outcome.unsent]
+        where = f"rows from sheet line {min(unsent)} on were not sent" if unsent else "run stopped"
+        result.failures.append(
+            (
+                outcome.stop_chunk_index if outcome.stop_chunk_index is not None else -1,
+                f"CONNECTION_ERROR: {outcome.stop_error} — {where}",
             )
-            return False
-    return True
+        )
 
 
 def apply_plan(
@@ -338,7 +330,7 @@ def apply_plan(
     plan: ImportPlan,
     res: ResolveResult,
     *,
-    chunk_size: int = 200,
+    chunk_size: int = CHUNK_SIZE,
 ) -> ApplyResult:
     result = ApplyResult(resolve=res)
 
@@ -366,34 +358,6 @@ def apply_plan(
         tx_id = plan.tx_ids[row.line]
         items.append(build_tx_payload(row, tx_id, res))
         line_by_id[tx_id] = row.line
-    for chunk_index, chunk in enumerate(chunked(items, chunk_size)):
-        try:
-            client.post("/transactions/batch", json_body={"transactions": chunk})
-            result.tx_created += len(chunk)
-        except EngineError as err:
-            if err.status in (409, 422):
-                if not _apply_singletons(client, chunk, chunk_index, line_by_id, result):
-                    # Fallback hit a connection error: its chunk tail is counted;
-                    # add the never-sent later chunks, mirroring the branch below.
-                    result.tx_failed += len(items) - (chunk_index * chunk_size + len(chunk))
-                    break
-            else:
-                # 401/403/5xx would fail identically per row — don't hammer.
-                result.tx_failed += len(chunk)
-                result.failures.append(
-                    (chunk_index, f"{_line_range(chunk, line_by_id)}: {format_error(err)}")
-                )
-        except EngineConnectionError as err:
-            # Stop sending, but return normally so the caller still renders the
-            # summary of committed chunks.
-            remaining = len(items) - chunk_index * chunk_size
-            result.tx_failed += remaining
-            result.failures.append(
-                (
-                    chunk_index,
-                    f"CONNECTION_ERROR: {format_error(err)} — rows from sheet line "
-                    f"{line_by_id[chunk[0]['id']]} on were not sent",
-                )
-            )
-            break
+    outcome = post_transaction_batch(client, items, chunk_size=chunk_size)
+    _fold_outcome(outcome, items, line_by_id, result)
     return result
