@@ -230,11 +230,14 @@ def test_monthly_report_screen_renders_and_slides_window(monkeypatch):
             title = str(app.screen.query(".section-title").first().render())
             assert "2025-11 → 2025-12" in title
 
-            await pilot.press("right_square_bracket")  # ] → newer
+            # The month window rides the page keys since 2026-08-27 (option C,
+            # mockups/expense-world-movement-keys.html). `pgup` is newer, `pgdn`
+            # older — paging down walks back in time, like a newest-first ledger.
+            await pilot.press("pageup")  # pgup → newer
             await wait_for(pilot, lambda: len(calls) >= 2)
             assert calls[1]["to_ym"] == (2026, 1)
 
-            await pilot.press("left_square_bracket")  # [ → back one older
+            await pilot.press("pagedown")  # pgdn → back one older
             await wait_for(pilot, lambda: len(calls) >= 3)
             assert calls[2]["to_ym"] == (2025, 12)
 

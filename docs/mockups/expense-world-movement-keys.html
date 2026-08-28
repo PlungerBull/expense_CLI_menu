@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — where j k h l · pgdn/pgup · , . · [ ] actually live (2026-08-26)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     THE ASK, 2026-08-26, verbatim:
+       "Where do we use J K H L and why do we have pgdn , []??? do a sketch
+        and show me where we use those, i want to keep it ULTRA SIMPLISTIC
+        and then using it ill come up with more shortcuts."
+
+     WHAT THIS PAGE IS
+       An inventory, not a proposal. Every claim below was read out of the
+       source today, file:line cited. Nothing here is a variant to pick yet —
+       §4 is the only thing that asks a question, and it asks the simplest
+       possible one: which of these keys are duplicates you can delete for
+       free, and which are the only way to reach something.
+
+     PROVENANCE
+       · REAL (source) — every binding, count and file:line. Read from
+         expense/tui/**.py on 2026-08-26.
+       · DRAWN (schematic) — the terminal panes. They are simplified shapes
+         showing WHICH widget owns which key, not character-exact captures
+         of the running app. Footer strings ARE real (they are the Binding
+         descriptions / key_display values from source).
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --line:#2a2a30;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+    --dup:#6a9955; --load:#d7ba7d; --key:#4fc1ff; --off:#3a3d44;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:20px;
+       padding:38px 20px 90px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  h1{width:min(1180px,100%);font-size:17px;font-weight:600;letter-spacing:.02em;margin:0}
+  h2{width:min(1180px,100%);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+     color:var(--muted);margin:30px 0 -4px;padding-top:18px;border-top:1px solid var(--line)}
+  .sub{width:min(1180px,100%);color:var(--dim);font-size:12.5px;line-height:1.8;margin:0}
+  .sub b{color:var(--muted)} .sub code{color:#9aa3b2}
+  .cards{width:min(1180px,100%);display:grid;gap:14px;grid-template-columns:repeat(2,1fr)}
+  .card{border:1px solid var(--line);border-radius:6px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .card .keys{font-size:22px;letter-spacing:.10em;color:var(--key);font-weight:600}
+  .card .keys em{font-style:normal;color:var(--dim);font-size:12px;letter-spacing:.03em;margin-left:8px}
+  .facts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:12px;line-height:1.7}
+  .facts dt{color:var(--dim);text-transform:uppercase;letter-spacing:.10em;font-size:10.5px;padding-top:3px}
+  .facts dd{margin:0;color:var(--text)}
+  .facts dd small{color:var(--dim)}
+  .tag{display:inline-block;font-size:10.5px;letter-spacing:.10em;text-transform:uppercase;
+       padding:2px 7px;border-radius:3px;border:1px solid currentColor}
+  .tag.dup{color:var(--dup)} .tag.load{color:var(--load)}
+  .app{background:#1e1e1e;color:#cccccc;font-size:11.5px;line-height:1.5;
+       padding:10px 12px;border-radius:5px;white-space:pre;overflow-x:auto;border:1px solid var(--line)}
+  .rev{background:#cccccc;color:#1e1e1e}
+  .k{color:var(--key)} .mut{color:#666666} .warn{color:var(--load)} .ok{color:var(--dup)}
+  .del{color:#c75450}
+  .row{width:min(1180px,100%);display:grid;gap:14px}
+  .row.two{grid-template-columns:repeat(2,1fr)}
+  .row.three{grid-template-columns:repeat(3,1fr)}
+  .tw{display:flex;flex-direction:column;gap:6px}
+  .cap{font-size:11px;color:var(--dim);letter-spacing:.03em;line-height:1.6}
+  .cap b{color:var(--muted)}
+  table{width:min(1180px,100%);border-collapse:collapse;font-size:12px}
+  th,td{border-bottom:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:middle}
+  th{color:var(--muted);font-weight:600;font-size:10.5px;letter-spacing:.10em;text-transform:uppercase;
+     border-bottom:1px solid #3a3a42}
+  th.c,td.c{text-align:center}
+  td.scr{color:var(--text)} td.w{color:var(--dim);font-size:11px}
+  .yes{color:var(--key)} .no{color:var(--off)}
+  .note{width:min(1180px,100%);border-left:2px solid var(--line);padding:2px 0 2px 14px;
+        color:var(--dim);font-size:12px;line-height:1.8}
+  .note b{color:var(--muted)}
+  .verdict{width:min(1180px,100%);display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .vbox{border:1px solid var(--line);border-radius:6px;padding:16px 18px}
+  .vbox h3{margin:0 0 10px;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+  .vbox.dup h3{color:var(--dup)} .vbox.load h3{color:var(--load)}
+  .vbox .big{font-size:26px;letter-spacing:.14em;margin:6px 0 12px}
+  .vbox.dup .big{color:var(--dup)} .vbox.load .big{color:var(--load)}
+  .vbox p{margin:0 0 8px;font-size:12px;line-height:1.8;color:var(--dim)}
+  .vbox p b{color:var(--text)}
+  .src{color:var(--dim);font-size:11px}
+</style>
+</head>
+<body>
+
+<h1>expense world — where <span class="k">j k h l</span> · <span class="k">pgdn/pgup</span> · <span class="k">, .</span> · <span class="k">[ ]</span> actually live</h1>
+<p class="sub">
+  2026-08-26 · an <b>inventory</b>, read out of source today, not a proposal. Four key families, four
+  different stories. Two of them turn out to be pure duplicates of the arrow keys — you can delete
+  them and lose <b>nothing</b>. The other two are the <b>only</b> way to reach something, so
+  "arrows only" has to answer for them first. That is the whole page.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════ §1 -->
+<h2>§1 · The four families, at a glance</h2>
+<p class="sub">
+  Keys live on <b>widgets</b>, not on screens — which is why the same key appears on twelve screens
+  at once, or on exactly one. <code>SEEN ON</code> counts the screens a user can actually press it on.
+</p>
+
+<div class="cards">
+
+  <div class="card">
+    <div class="keys">j&nbsp; k <em>vim down / up</em></div>
+    <dl class="facts">
+      <dt>does</dt><dd>exactly what <span class="k">↓</span> <span class="k">↑</span> already do — same action, same line of code</dd>
+      <dt>owner</dt><dd>4 widgets <small>— CursorList, CheckList, CategoriesView, MonthGridView</small></dd>
+      <dt>seen on</dt><dd>12 screens</dd>
+      <dt>footer</dt><dd><span class="mut">never shown</span> <small>(show=False, 2026-08-20 trim)</small></dd>
+      <dt>source</dt><dd class="src">cursor_list.py:98–99 · checklist.py:66–67 · outstanding.py:198–199 · reports.py:68–69</dd>
+    </dl>
+    <div><span class="tag dup">pure duplicate</span></div>
+  </div>
+
+  <div class="card">
+    <div class="keys">h&nbsp; l <em>vim left / right</em></div>
+    <dl class="facts">
+      <dt>does</dt><dd>exactly what <span class="k">←</span> <span class="k">→</span> already do — collapse / expand</dd>
+      <dt>owner</dt><dd>3 tree views <small>— PeopleView, CategoriesView, MonthGridView</small></dd>
+      <dt>seen on</dt><dd><b>2 screens</b> <small>— Outstanding, Monthly report. Nowhere else has a tree.</small></dd>
+      <dt>footer</dt><dd>rides along on <span class="k">→ Expand</span> / <span class="k">← Collapse</span> <small>— the letter itself is never printed</small></dd>
+      <dt>source</dt><dd class="src">outstanding.py:120–121, 200–201 · reports.py:70–71</dd>
+    </dl>
+    <div><span class="tag dup">pure duplicate</span></div>
+  </div>
+
+  <div class="card">
+    <div class="keys">, &nbsp; . <em>comma / period</em></div>
+    <dl class="facts">
+      <dt>does</dt><dd>exactly what <span class="k">pgup</span> <span class="k">pgdn</span> do — same <code>page(±1)</code></dd>
+      <dt>owner</dt><dd>2 widgets <small>— CursorList, CheckList</small></dd>
+      <dt>seen on</dt><dd>10 screens</dd>
+      <dt>footer</dt><dd>shown, fused: <span class="k">pgdn/.</span> <span class="k">pgup/,</span></dd>
+      <dt>why</dt><dd>home-row twins of pgup/pgdn — they are the <code>&lt;</code> <code>&gt;</code> keys. Added 2026-07-13 with the pagination standard.</dd>
+      <dt>source</dt><dd class="src">cursor_list.py:101–102 · checklist.py:69–70</dd>
+    </dl>
+    <div><span class="tag dup">pure duplicate</span></div>
+  </div>
+
+  <div class="card">
+    <div class="keys">pgdn&nbsp; pgup</div>
+    <dl class="facts">
+      <dt>does</dt><dd>turn the page</dd>
+      <dt>owner</dt><dd>2 widgets <small>— CursorList, CheckList</small></dd>
+      <dt>seen on</dt><dd>10 screens</dd>
+      <dt>footer</dt><dd>shown — <span class="k">pgdn/. Next</span> <span class="k">pgup/, Prev</span> <small>(hidden when one page holds it all)</small></dd>
+      <dt class="warn">but</dt><dd><b>no arrow does this.</b> On Transactions / Inbox / Activity / Rates the arrows <b>stop dead</b> at the page edge — decided 2026-07-13, see §3.</dd>
+      <dt>source</dt><dd class="src">cursor_list.py:101–102 · checklist.py:69–70 · _base.py:157 PagedListMixin</dd>
+    </dl>
+    <div><span class="tag load">load-bearing</span></div>
+  </div>
+
+  <div class="card" style="grid-column:1 / -1">
+    <div class="keys">[ &nbsp; ] <em>square brackets</em></div>
+    <dl class="facts">
+      <dt>does</dt><dd>slide the Monthly report's 4-month window <b>older</b> / <b>newer</b></dd>
+      <dt>owner</dt><dd><b>1 screen</b> — MonthlyReportScreen. Bound on the <b>screen</b>, not a widget: the only one of these five that is.</dd>
+      <dt>seen on</dt><dd><b>1 screen.</b> Press them anywhere else and nothing happens.</dd>
+      <dt>footer</dt><dd>shown — <span class="k">[ Older</span> <span class="k">] Newer</span></dd>
+      <dt class="warn">but</dt><dd><b>no arrow does this.</b> The grid already spends <span class="k">←</span><span class="k">→</span> on expand/collapse, so the window had nowhere else to go. <code>[</code> <code>]</code> were picked in 2026-07-13 <i>precisely because they were unbound</i> — and page keys were rejected for the window on the grounds that "same key, different meaning violates the keymap contract."</dd>
+      <dt>source</dt><dd class="src">reports.py:155–156 · decisions.md "TUI rows-per-page" (rejected list)</dd>
+    </dl>
+    <div><span class="tag load">load-bearing</span></div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ §2 -->
+<h2>§2 · Where, drawn</h2>
+<p class="sub">
+  Five widget shapes carry every movement key in the app. <b>DRAWN (schematic)</b> — the pane shapes are
+  simplified; the <b>footer strings are real</b> (they are the Binding descriptions from source).
+</p>
+
+<div class="row three">
+  <div class="tw">
+    <div class="app">┌─ Transactions ───────────────┐
+│ DATE    TITLE        AMOUNT │
+│ <span class="rev">08-24   Cafe        -4.50  </span>│
+│ 08-24   Rent      -900.00  │
+│ 08-23   Salary   +3200.00  │
+│ <span class="mut">…</span>                            │
+└ rows 1-20 of 133 · page 1/7 ┘
+<span class="mut">esc Back  r Refresh  + Add</span>
+<span class="k">pgdn/. Next  pgup/, Prev  ⏎ Open</span></div>
+    <div class="cap"><b>CursorList</b> — 9 screens: Transactions, Inbox, Accounts,
+      Categories, Hashtags, Reconciliations ×2, Activity, Rates.<br>
+      <span class="k">↑↓</span> + <span class="k">j k</span> move · <span class="k">pgdn pgup</span> + <span class="k">, .</span> page · <span class="k">⏎</span> open<br>
+      <span class="warn">No h/l — there is no tree here.</span></div>
+  </div>
+
+  <div class="tw">
+    <div class="app">┌─ Reconcile · 12 txns ────────┐
+│ <span class="rev">[x] 08-24  Cafe      -4.50  </span>│
+│ [ ] 08-24  Rent   -900.00  │
+│ [x] 08-23  Salary +3200.0  │
+│ <span class="mut">…</span>                            │
+└ items 1-20 of 41 · page 1/3 ┘
+<span class="mut">esc Back  r Refresh  c Complete</span>
+<span class="k">space Toggle  pgdn/. Next  pgup/, Prev</span></div>
+    <div class="cap"><b>CheckList</b> — 1 screen: Reconciliation detail.<br>
+      <span class="k">↑↓</span> + <span class="k">j k</span> move · <span class="k">pgdn pgup</span> + <span class="k">, .</span> page · <span class="k">space</span> toggle<br>
+      <span class="warn">No h/l. No ⏎.</span></div>
+  </div>
+
+  <div class="tw">
+    <div class="app">╭─ EXPENSE WORLD ──────────────╮
+│  NET  +1,240.50              │
+│                              │
+│  <span class="rev">Transactions                </span>│
+│  Inbox                       │
+│  Accounts                    │
+│  Reports                     │
+╰──────────────────────────────╯
+<span class="mut">+ Add   q Quit   ? Keys</span></div>
+    <div class="cap"><b>CursorOptionList</b> — 1 screen: Home.<br>
+      <span class="k">↑↓</span> move · <span class="k">⏎</span> open — <b>and that is all.</b><br>
+      <span class="del">No j/k. No paging. No h/l.</span> It declares zero
+      bindings of its own; everything comes from Textual's OptionList.</div>
+  </div>
+</div>
+
+<div class="row two" style="margin-top:4px">
+  <div class="tw">
+    <div class="app">┌─ Outstanding ────────────────┐
+│ PEOPLE                       │
+│ <span class="rev">▶ Settled (4)               </span>│  <span class="k">← → / h l</span>
+│                              │
+│ CATEGORIES                   │
+│ <span class="rev">▼ Food              -412.00 </span>│  <span class="k">← → / h l</span>
+│   ├ Groceries      -280.00   │  <span class="k">↑ ↓ / j k</span>
+│   └ Eating out     -132.00   │
+└──────────────────────────────┘
+<span class="mut">esc Back  r Refresh</span>  <span class="k">→ Expand  ← Collapse</span></div>
+    <div class="cap"><b>PeopleView + CategoriesView</b> — 1 screen: Outstanding.
+      The <b>only</b> screen with two focusable regions, so <span class="k">tab</span> already
+      moves between them (Textual's default focus_next — nobody designed that).<br>
+      <span class="warn">PeopleView has h/l but NO j/k</span> — it is one fold, not a cursor list.
+      CategoriesView has both. <span class="del">Neither pages.</span></div>
+  </div>
+
+  <div class="tw">
+    <div class="app">┌─ Monthly report ─────────────┐
+│           MAY  JUN  JUL  AUG │
+│ <span class="rev">▼ Food     -380 -412 -395 -401</span>│  <span class="k">← → / h l</span>
+│   #dinner  -90 -110  -88 -102│  <span class="k">↑ ↓ / j k</span>
+│ ▶ Rent    -900 -900 -900 -900│
+│ ▶ Salary +3200 +3200 +3200   │
+└──────────────────────────────┘
+<span class="mut">esc Back  r Refresh</span>  <span class="k">→ Expand  ← Collapse  [ Older  ] Newer</span></div>
+    <div class="cap"><b>MonthGridView</b> — 1 screen: Monthly report. The <b>only</b>
+      screen where all four families would want the same two keys at once:
+      <span class="k">←→</span> is spent on expand/collapse, so the month window had to
+      take <span class="k">[ ]</span>. <span class="del">No paging here either.</span></div>
+  </div>
+</div>
+
+<div class="note" style="margin-top:8px">
+  <b>Not on this page, because they have no movement keys at all:</b> Config, Auth
+  (static key/value tables) · the LOG bar and every form (a focused <code>Input</code> owns the
+  keyboard — <span class="k">↑↓</span> drive the suggestion list and no bare letter is a command,
+  which is why <span class="k">j k h l</span> could never work there) · every modal.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ §3 -->
+<h2>§3 · The same thing as a matrix</h2>
+<p class="sub">One row per screen. This is the literal answer to "where do we use those".</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Screen</th><th>Widget it hosts</th>
+      <th class="c">↑ ↓</th><th class="c">j k</th>
+      <th class="c">← →</th><th class="c">h l</th>
+      <th class="c">pgdn pgup</th><th class="c">, .</th><th class="c">[ ]</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="scr">Home</td><td class="w">CursorOptionList</td>
+      <td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Transactions</td><td class="w">CursorList</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Inbox</td><td class="w">CursorList</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Accounts</td><td class="w">CursorList</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Categories</td><td class="w">CursorList</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Hashtags</td><td class="w">CursorList</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Reconciliations</td><td class="w">CursorList ×2 panes</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Reconciliation detail</td><td class="w">CheckList</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Activity</td><td class="w">CursorList</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Rates</td><td class="w">CursorList</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Outstanding</td><td class="w">PeopleView <span style="color:#5b5f68">(fold only)</span></td>
+      <td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td></tr>
+    <tr><td class="scr" style="padding-left:24px;color:#5b5f68">↳ same screen</td><td class="w">CategoriesView</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td></tr>
+    <tr><td class="scr">Monthly report</td><td class="w">MonthGridView</td>
+      <td class="c yes">●</td><td class="c yes">●</td><td class="c yes">●</td><td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c yes">●</td></tr>
+    <tr><td class="scr">Config · Auth</td><td class="w">static tables</td>
+      <td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td></tr>
+    <tr><td class="scr">LOG bar · all forms</td><td class="w">Input (owns the keyboard)</td>
+      <td class="c yes">●</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td></tr>
+    <tr><td class="scr">All modals</td><td class="w">—</td>
+      <td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td><td class="c no">·</td></tr>
+  </tbody>
+</table>
+
+<div class="note" style="margin-top:14px">
+  <b>Why the arrows stop at the page edge</b> — the one fact that makes pgdn/pgup load-bearing.
+  On the four fetch-paged screens (Transactions, Inbox, Activity, Rates) the list holds
+  <i>one fetched page</i>, and <code>j</code>/<code>k</code> deliberately clamp there. Making
+  <span class="k">↓</span> auto-fetch the next page was drawn as an option on 2026-07-13 and
+  <b>rejected</b>: <i>"holding j to skim would fire a fetch per keystroke at every boundary."</i>
+  That reasoning still holds — which is why "arrows only" cannot simply absorb paging.
+  <span class="src">decisions.md "TUI rows-per-page adapt to the terminal" · cursor_list.py:19–20</span>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ §4 -->
+<h2>§4 · The delete test — the only question on this page</h2>
+<p class="sub">
+  For each family: <b>if it vanished tomorrow, what becomes unreachable?</b>
+  That splits the five families cleanly in two, and it is the whole basis for going ultra-simplistic.
+</p>
+
+<div class="verdict">
+  <div class="vbox dup">
+    <h3>Free to delete — nothing becomes unreachable</h3>
+    <div class="big">j&nbsp; k&nbsp; h&nbsp; l&nbsp; ,&nbsp; .</div>
+    <p><b>Six keys, zero capability.</b> Every one is a second name for an arrow or a page key
+      that is already bound, already in the footer, and already works.</p>
+    <p><b>What you gain:</b> <code>j</code> <code>k</code> <code>h</code> <code>l</code> become
+      free as <b>command letters</b> on every list screen. Today they are unusable — bind
+      <code>l</code> to anything and the list widget silently eats it first. That is four letters
+      back for the shortcuts you said you want to invent next.</p>
+    <p><b>What you lose:</b> vim muscle memory, for whoever has it. Nothing else. They are already
+      invisible — <code>j k</code> were dropped from the footer on 2026-08-20 and <code>h l</code>
+      never printed their letter.</p>
+  </div>
+
+  <div class="vbox load">
+    <h3>Cannot delete without a replacement</h3>
+    <div class="big">pgdn&nbsp; pgup&nbsp; [&nbsp; ]</div>
+    <p><b>Four keys, and each is the only door to something.</b></p>
+    <p><b>pgdn / pgup</b> — delete these and page 2 of Transactions, Inbox, Activity and Rates is
+      unreachable, because the arrows clamp at the edge on purpose (§3). Any "arrows only" plan has
+      to either reopen that 2026-07-13 decision or give paging a different home.</p>
+    <p><b>[ and ]</b> — delete these and the Monthly report is frozen on the last four months.
+      They are the strangest key in the app: <b>one screen, one job</b>, and the reason they exist
+      at all is that <span class="k">←→</span> were already spent on expand/collapse in that same
+      grid. If you want them gone, the window needs another axis —
+      <span class="k">shift+←→</span> is free and would read as "move the container, not the cursor".</p>
+  </div>
+</div>
+
+<div class="note" style="margin-top:16px">
+  <b>The one-sentence summary:</b> of the ten keys you asked about, <b>six are duplicates you can
+  delete for free</b>, and <b>four exist only because the arrow keys ran out</b> — twice at the
+  page edge, once inside the month grid.
+</div>
+
+<p class="sub" style="margin-top:20px">
+  <b>Nothing here has been changed in code.</b> This page is the inventory you asked for, so the
+  next call is yours: delete the six duplicates, and/or decide where paging and the month window
+  live if the arrows are to be the only movement keys.
+</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════ §5 -->
+<h2>§5 · Decided so far — and the one key still open</h2>
+<p class="sub">
+  2026-08-27. <b>Deleting:</b> <span class="k">j k h l , .</span> — six duplicates, zero capability lost.
+  <b>Keeping:</b> <span class="k">pgdn pgup</span> — load-bearing, no arrow reaches page 2.
+  <b>Still open:</b> <span class="k">[ ]</span>, the one-screen key.
+</p>
+
+<div class="note">
+  <b>The finding that makes <span class="k">[ ]</span> easy to remove:</b> on all three tree views,
+  expand/collapse <b>already has a complete second door</b> — <code>enter</code> and <code>space</code>
+  both toggle the row <span class="src">(reports.py:72 · outstanding.py:122, 202)</span>. So
+  <span class="k">← →</span> on a tree is a duplicate in exactly the same way <span class="k">h l</span>
+  is. Freeing it costs nothing. The only question is what should take the month window.
+</div>
+
+<div class="row three" style="margin-top:16px">
+
+  <div class="tw">
+    <div class="cap" style="font-size:12.5px;color:var(--text);letter-spacing:.10em;text-transform:uppercase">
+      A · <span class="k">← →</span> becomes the month window</div>
+    <div class="app">┌─ Monthly report ─────────────┐
+│           MAY  JUN  JUL  AUG │
+│ <span class="rev">▼ Food     -380 -412 -395 -401</span>│
+│   #dinner  -90 -110  -88 -102│
+│ ▶ Rent    -900 -900 -900 -900│
+└──────────────────────────────┘
+<span class="mut">esc Back  r Refresh</span>  <span class="k">⏎ Expand  ← Older  → Newer</span>
+
+┌─ Outstanding ────────────────┐
+│ <span class="rev">▼ Food              -412.00 </span>│
+│   ├ Groceries      -280.00   │
+└──────────────────────────────┘
+<span class="mut">esc Back  r Refresh</span>  <span class="k">⏎ Expand/collapse</span>
+<span class="mut">                    ← → do nothing</span></div>
+    <div class="cap">
+      <b>One key, one meaning:</b> <span class="k">←→</span> = move along the data's horizontal
+      axis, everywhere. Expand/collapse drops to <span class="k">⏎</span>/<span class="k">space</span>.<br>
+      <span class="warn"><b>The risk:</b></span> that grid <i>looks</i> like a tree — rows carry
+      ▼/▶. A hand that presses <span class="k">→</span> on a ▶ row expects it to open, and instead
+      the whole window slides. Same gesture, very different result.
+    </div>
+  </div>
+
+  <div class="tw">
+    <div class="cap" style="font-size:12.5px;color:var(--text);letter-spacing:.10em;text-transform:uppercase">
+      B · <span class="k">⇧← ⇧→</span> takes the window</div>
+    <div class="app">┌─ Monthly report ─────────────┐
+│           MAY  JUN  JUL  AUG │
+│ <span class="rev">▼ Food     -380 -412 -395 -401</span>│
+│   #dinner  -90 -110  -88 -102│
+│ ▶ Rent    -900 -900 -900 -900│
+└──────────────────────────────┘
+<span class="mut">esc Back  r Refresh</span>  <span class="k">→ Expand  ← Collapse</span>
+<span class="k">                  ⇧← Older  ⇧→ Newer</span>
+
+┌─ Outstanding ────────────────┐
+│ <span class="rev">▼ Food              -412.00 </span>│
+│   ├ Groceries      -280.00   │
+└──────────────────────────────┘
+<span class="mut">esc Back  r Refresh</span>  <span class="k">→ Expand  ← Collapse</span>
+<span class="ok">                    (unchanged)</span></div>
+    <div class="cap">
+      <b>Nothing retrained.</b> <span class="k">←→</span> stays expand/collapse everywhere;
+      the window moves one modifier up — "shift = move the container, not the cursor".<br>
+      <span class="warn"><b>The cost:</b></span> a third tier of arrow keys, and
+      <span class="k">⇧←</span> is not a key anyone discovers by accident.
+    </div>
+  </div>
+
+  <div class="tw">
+    <div class="cap" style="font-size:12.5px;color:var(--text);letter-spacing:.10em;text-transform:uppercase">
+      C · <span class="k">pgdn pgup</span> takes the window</div>
+    <div class="app">┌─ Monthly report ─────────────┐
+│           MAY  JUN  JUL  AUG │
+│ <span class="rev">▼ Food     -380 -412 -395 -401</span>│
+│   #dinner  -90 -110  -88 -102│
+│ ▶ Rent    -900 -900 -900 -900│
+└──────────────────────────────┘
+<span class="mut">esc Back  r Refresh</span>  <span class="k">→ Expand  ← Collapse</span>
+<span class="k">                  pgdn Older  pgup Newer</span>
+
+┌─ Outstanding ────────────────┐
+│ <span class="rev">▼ Food              -412.00 </span>│
+│   ├ Groceries      -280.00   │
+└──────────────────────────────┘
+<span class="mut">esc Back  r Refresh</span>  <span class="k">→ Expand  ← Collapse</span>
+<span class="ok">                    (unchanged)</span></div>
+    <div class="cap">
+      <b>No new key family at all.</b> <span class="k">pgdn/pgup</span> are already staying, and both
+      are <b>completely unbound</b> on the report today <span class="src">(verified: reports.py has no
+      page bindings)</span>.<br>
+      <b>And it unifies a meaning:</b> pgdn/pgup = "the next window of data" — 20 more rows on a list,
+      4 more months on the report. <span class="k">←→</span> untouched, <span class="k">[ ]</span> gone,
+      total key families <b>down by one</b>.
+    </div>
+  </div>
+
+</div>
+
+<div class="note" style="margin-top:16px;border-left-color:var(--dup)">
+  <b style="color:var(--dup)">C looks like the answer.</b> It is the only one of the three that
+  removes <span class="k">[ ]</span> without <i>adding</i> anything: no retraining of
+  <span class="k">←→</span>, no new modifier tier, and one honest meaning for a key family you had
+  already decided to keep. The single open detail is direction — <b>pgdn = older</b> reads right if
+  the ledger lists newest-first (scrolling down = further back in time), but say the word and it flips.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ §6 -->
+<h2>§6 · Before deleting <span class="k">,</span> and <span class="k">.</span> — a keyboard question</h2>
+<div class="note" style="border-left-color:var(--load)">
+  <b style="color:var(--load)">On a MacBook there is no physical PgDn or PgUp key.</b> They are
+  <code>fn+↓</code> and <code>fn+↑</code> — a two-key chord. Which means
+  <span class="k">,</span> and <span class="k">.</span> are not really duplicates on that keyboard:
+  they are the <b>only single-key way to page</b>, and deleting them makes paging <i>harder</i>,
+  not simpler, on the ten screens that page.
+  <br><br>
+  This flips depending on hardware, so it is a question, not a finding:
+  <b>do you drive this on the laptop keyboard, or on an external one with real PgDn/PgUp keys?</b>
+  If it is the laptop, the ultra-simplistic move is arguably the opposite of what it looks like —
+  keep <span class="k">, .</span> as the primary page keys and let pgdn/pgup be the alias.
+</div>
+
+</body>
+</html>

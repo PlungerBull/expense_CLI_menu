@@ -7,16 +7,16 @@ is pure, so formatting is unit-testable without an event loop.
 
 Every list renders at most `page_size` rows — min(20, what fits the terminal)
 since 2026-07-13 (adaptive rows, pick A + cap 20; the screen measures and calls
-`set_page_size` on resize); `pgdn`/`.` and `pgup`/`,` page. Two modes share the
+`set_page_size` on resize); `pgdn`/`pgup` page. Two modes share the
 one widget:
 
 - window mode (default): `_rows` holds the full dataset and the visible
-  window follows the cursor (`cursor // page_size`), so `j`/`k` walk straight
+  window follows the cursor (`cursor // page_size`), so `↑`/`↓` walk straight
   through page boundaries and cursor-restore-after-write lands on the right
   page for free.
 - fetched-page mode (`page_meta=(offset, total)`): `_rows` is one page a
   screen fetched with real limit/offset; the page keys post `PageRequested`
-  and the screen refetches (see `PagedListMixin`). `j`/`k` clamp at the edge —
+  and the screen refetches (see `PagedListMixin`). `↑`/`↓` clamp at the edge —
   paging is always a deliberate keypress (mockup pick A).
 
 The widget is its own quiet-border panel (app.tcss): screens name it via
@@ -95,11 +95,11 @@ class CursorList(Static):
         # footer slot (user, 2026-08-20 — "its obvious and it just occupies space
         # unnecessarily"). The keys are unchanged and the `?` card still lists them,
         # which is where a key that needs explaining belongs.
-        Binding("down,j", "move(1)", "Navigate", tooltip="Down", show=False),
-        Binding("up,k", "move(-1)", "Up", show=False),
+        Binding("down", "move(1)", "Navigate", tooltip="Down", show=False),
+        Binding("up", "move(-1)", "Up", show=False),
         Binding("enter", "select", "Open"),
-        Binding("pagedown,full_stop", "page(1)", "Next", key_display="pgdn/.", tooltip="Next page"),
-        Binding("pageup,comma", "page(-1)", "Prev", key_display="pgup/,", tooltip="Previous page"),
+        Binding("pagedown", "page(1)", "Next", key_display="pgdn", tooltip="Next page"),
+        Binding("pageup", "page(-1)", "Prev", key_display="pgup", tooltip="Previous page"),
     ]
 
     class Selected(Message):

@@ -63,11 +63,11 @@ class CheckList(Static):
         # footer slot (user, 2026-08-20 — "its obvious and it just occupies space
         # unnecessarily"). The keys are unchanged and the `?` card still lists them,
         # which is where a key that needs explaining belongs.
-        Binding("down,j", "move(1)", "Navigate", tooltip="Down", show=False),
-        Binding("up,k", "move(-1)", "Up", show=False),
+        Binding("down", "move(1)", "Navigate", tooltip="Down", show=False),
+        Binding("up", "move(-1)", "Up", show=False),
         Binding("space", "toggle", "Toggle"),
-        Binding("pagedown,full_stop", "page(1)", "Next", key_display="pgdn/.", tooltip="Next page"),
-        Binding("pageup,comma", "page(-1)", "Prev", key_display="pgup/,", tooltip="Previous page"),
+        Binding("pagedown", "page(1)", "Next", key_display="pgdn", tooltip="Next page"),
+        Binding("pageup", "page(-1)", "Prev", key_display="pgup", tooltip="Previous page"),
     ]
 
     class Toggled(Message):

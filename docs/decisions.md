@@ -53,6 +53,7 @@ Rules for this file:
 | Two calls for the one-line `expense log` — incomplete drafts to the Inbox, and it always asks first | 2026-08-25 | full entry below |
 | Four calls for the LOG bar — the raw line comes back, tags stay, totals are per currency, one wording for why | 2026-08-25 | full entry below |
 | What a half-written batch means — the LOG bar's save, and `+` switching to it | 2026-08-25 | full entry below |
+| One key per job — `j k h l , .` deleted, and the month window moves to `pgdn`/`pgup` | 2026-08-27 | full entry below |
 
 ## What a half-written batch means (2026-08-25)
 
@@ -152,9 +153,9 @@ The second call is the load-bearing one. The grammar is forgiving on purpose: `1
 
 **Context.** The Monthly report screen was the last unwired home-menu entry ([tui.md](tui.md)). The first mockup proposed a single-month view (categories + hashtag breakdown + totals, `[`/`]` to change month) — a natural mirror of the flat `reports monthly --date`. The user rejected it on review: a single month of category spend is what **Outstanding Amounts already shows**; a second screen rendering the same shape one navigation-step away adds no information, just a month picker.
 
-**Decision.** The screen is a **4-month grid** — categories as rows, the last four months as columns (window ends at the current month), home-currency cells, net-only footer; `[`/`]` slide the window one month older/newer, no clamp. **Picked 2026-07-08 (option A of two drawn):** rows expand `▼/▶` into their hashtag combos across all four columns, reusing the Outstanding tree keymap; collapsed by default so the grid first reads like the CLI range table. One engine call per window (`GET /v1/reports/monthly` with from/to via the shared `fetch_range`); the grid merge (`build_range_grid`) is shared with the flat range renderer.
+**Decision.** The screen is a **4-month grid** — categories as rows, the last four months as columns (window ends at the current month), home-currency cells, net-only footer; `[`/`]` slide the window one month older/newer, no clamp. *(keys superseded 2026-08-27 — see "One key per job")* **Picked 2026-07-08 (option A of two drawn):** rows expand `▼/▶` into their hashtag combos across all four columns, reusing the Outstanding tree keymap; collapsed by default so the grid first reads like the CLI range table. One engine call per window (`GET /v1/reports/monthly` with from/to via the shared `fetch_range`); the grid merge (`build_range_grid`) is shared with the flat range renderer.
 
-**Rejected.** (1) **Single-month view** — duplicates Outstanding Amounts; the report's value over the dashboard is the *time axis*, so the screen must show it. (2) **Single-month + a range-view toggle** — two layouts to build and maintain when the sliding window already covers the trend need with one. (3) **`←`/`→` for month navigation** — collides with the tree's expand/collapse bindings, hence `[`/`]`. (4) **Option B (flat, always-expanded grid)** — offered in the mockup, not picked; long months can't fold their hashtag noise.
+**Rejected.** (1) **Single-month view** — duplicates Outstanding Amounts; the report's value over the dashboard is the *time axis*, so the screen must show it. (2) **Single-month + a range-view toggle** — two layouts to build and maintain when the sliding window already covers the trend need with one. (3) **`←`/`→` for month navigation** — collides with the tree's expand/collapse bindings, hence `[`/`]`. *(Still true, and still why `←`/`→` were not chosen when the window moved to `pgdn`/`pgup` on 2026-08-27.)* (4) **Option B (flat, always-expanded grid)** — offered in the mockup, not picked; long months can't fold their hashtag noise.
 
 ## `SyncContractError` + exit code 5 for /sync contract violations (2026-07-08)
 
@@ -214,7 +215,7 @@ The second call is the load-bearing one. The grammar is forgiving on purpose: `1
 
 **Context.** User request: no table shows more than 20 rows; the rest paginates. Before this, the TUI drew whole payloads into one Rich table (a fixed first-50 for Transactions/Activity/Rates — pages 2+ unreachable — and *everything* for Manage/Reconciliations), and CLI `list` commands printed whatever the source returned (engine default 50, replica default 100). The engine/cache already shared the offset envelope `{items, total, limit, offset}` and the CLI already had `--limit`/`--offset` + `render_pagination_hint` — the standard mostly had to be wired, not built.
 
-**Decision.** A single 20-row page standard, `DEFAULT_PAGE_ROWS` in [_resource.py](../expense/commands/_resource.py) (one copy for CLI and TUI). **TUI, two tiers:** unbounded datasets (Transactions, Inbox, Activity, Rates) are *fetch-paged* — `PagedListMixin` sends real `limit=20&offset=20·page`, `pgdn`/`.` and `pgup`/`,` refetch, `j`/`k` clamp at the fetched edge (paging is a deliberate keypress); full-data screens (Manage lists, Reconciliations panes, the recon CheckList at 20 items = 40 lines) are *display-windowed* — fetch untouched where guard-pinned, the 20-row window follows the cursor so `j`/`k` walk through and cursor-restore-after-write lands on the right page. Every list became its own quiet-border panel (dossier pick L2 + treatment A): border title absorbs the old title/legend row, border subtitle carries `rows 21-40 of 133 · page 2 of 7`; page keys hide on a single page. Manage Categories/Hashtags switched to `fetch_all_pages` (they silently truncated at the replica's 100 before). **CLI:** human mode defaults to `limit=20` via `effective_limit` and the existing hint takes over; explicit flags win; `--json` sends no default and stays byte-verbatim. `accounts list` gained `--limit`/`--offset` (`queries.list_accounts` is dual-shape: flag-less keeps the flat list internal consumers rely on). **Exempt:** Outstanding's category tree and (pick still open) its static tables, the Monthly grid, System kv-tables, Home. Mockup + recorded picks: [mockups/expense-world-pagination.html](mockups/expense-world-pagination.html).
+**Decision.** A single 20-row page standard, `DEFAULT_PAGE_ROWS` in [_resource.py](../expense/commands/_resource.py) (one copy for CLI and TUI). **TUI, two tiers:** unbounded datasets (Transactions, Inbox, Activity, Rates) are *fetch-paged* — `PagedListMixin` sends real `limit=20&offset=20·page`, `pgdn`/`.` and `pgup`/`,` refetch, `j`/`k` clamp at the fetched edge (paging is a deliberate keypress) *(keys superseded 2026-08-27 — see "One key per job")*; full-data screens (Manage lists, Reconciliations panes, the recon CheckList at 20 items = 40 lines) are *display-windowed* — fetch untouched where guard-pinned, the 20-row window follows the cursor so `j`/`k` walk through and cursor-restore-after-write lands on the right page. Every list became its own quiet-border panel (dossier pick L2 + treatment A): border title absorbs the old title/legend row, border subtitle carries `rows 21-40 of 133 · page 2 of 7`; page keys hide on a single page. Manage Categories/Hashtags switched to `fetch_all_pages` (they silently truncated at the replica's 100 before). **CLI:** human mode defaults to `limit=20` via `effective_limit` and the existing hint takes over; explicit flags win; `--json` sends no default and stays byte-verbatim. `accounts list` gained `--limit`/`--offset` (`queries.list_accounts` is dual-shape: flag-less keeps the flat list internal consumers rely on). **Exempt:** Outstanding's category tree and (pick still open) its static tables, the Monthly grid, System kv-tables, Home. Mockup + recorded picks: [mockups/expense-world-pagination.html](mockups/expense-world-pagination.html).
 
 **Rejected.** *Client-side slicing for envelope-backed reads* — CLAUDE.md's thin-wrapper rule names exactly this shortcut as rejected; the next client must inherit real pagination, and the CLI exists to exercise the engine's contract. *Realigning the replica's default limit (100) to the engine's 50* — would silently change `--json` cache-read output; left as-is and noted here (the >100-row name-map completeness gap is a separate backlog concern). *`[`/`]` as page keys* — Monthly report owns them for month-window sliding; same key, different meaning violates the keymap contract, so `pgdn`/`pgup` + `.`/`,` (all previously unbound). *`j` auto-fetching past the fetched edge* (mockup step-3 option B) — holding `j` to skim would fire a fetch per keystroke at every boundary. *10-item CheckList pages* (strict "20 physical lines") — doubles page-flipping in the most keyboard-intensive flow; 20 items counts data rows like every other table.
 
@@ -222,7 +223,7 @@ The second call is the load-bearing one. The grammar is forgiving on purpose: `1
 
 **Context.** The user noticed `expense world` reacting to mouse clicks and drag-selections and asked to remove it. That behavior was never designed — we wrote zero mouse handlers (no `on_click`/`on_mouse_*`/`capture_mouse` anywhere under [expense/tui/](../expense/tui/)). It comes entirely from Textual's default: on launch the driver enables terminal mouse tracking (`\x1b[?1000h`/`1003h`/`1006h`), after which built-in widgets (`OptionList` menu, `Input` bars, `Footer`) act on clicks. A felt side effect: while Textual owns the mouse, the terminal's native text-selection / copy is suppressed.
 
-**Decision.** Launch keyboard-only — `run_world` passes `mouse=False` to `.run()` ([app.py](../expense/tui/app.py)). Textual 8.2.7's driver short-circuits `_enable_mouse_support()` when the flag is false, so the tracking sequences are never written: the app ignores the mouse (clicks, drags, scroll wheel) and native select-to-copy works again. Nothing is lost — every affordance already has a full keyboard path, and the custom `CursorList`/`CheckList` widgets were keyboard-only from the start. Locked by [test_tui_mouse.py](../tests/unit/test_tui_mouse.py) (asserts `run_world` launches with `mouse=False`). Mouse-wheel scroll is the only casualty; keyboard scroll (`↑`/`↓`, `j`/`k`, `PageUp`/`PageDown`, `,`/`.`) is unaffected. This retires the "mouse" line from the parked live-niceties list ([todo.md](todo.md)) — mouse is now deliberately off, not a future add.
+**Decision.** Launch keyboard-only — `run_world` passes `mouse=False` to `.run()` ([app.py](../expense/tui/app.py)). Textual 8.2.7's driver short-circuits `_enable_mouse_support()` when the flag is false, so the tracking sequences are never written: the app ignores the mouse (clicks, drags, scroll wheel) and native select-to-copy works again. Nothing is lost — every affordance already has a full keyboard path, and the custom `CursorList`/`CheckList` widgets were keyboard-only from the start. Locked by [test_tui_mouse.py](../tests/unit/test_tui_mouse.py) (asserts `run_world` launches with `mouse=False`). Mouse-wheel scroll is the only casualty; keyboard scroll (`↑`/`↓`, `PageUp`/`PageDown`) is unaffected. This retires the "mouse" line from the parked live-niceties list ([todo.md](todo.md)) — mouse is now deliberately off, not a future add.
 
 **Rejected.** *Leave Textual's default mouse on* — the behavior was unintended and, worse, blocks native terminal text-selection/copy, a real ergonomic loss in a read-heavy TUI. *Per-widget mouse handlers to swallow clicks* — brittle, wouldn't restore text selection (Textual still owns the mouse), and pointless when a single launch flag disables tracking at the source.
 
@@ -543,3 +544,54 @@ so deleting them would remove working behaviour to fix a labelling problem.
 orphans `action_field`, which the replacement key will want). Guard:
 `test_form_navigation_keys_are_not_advertised`. What remains open is only the J/K
 choice above.
+
+---
+
+## One key per job — `j k h l , .` deleted, and the month window moves to `pgdn`/`pgup` (2026-08-27)
+
+**Context.** The user asked for a conflict sweep of every TUI shortcut, then for an
+inventory: *"Where do we use J K H L and why do we have pgdn , []??? ... i want to keep
+it ULTRA SIMPLISTIC and then using it ill come up with more shortcuts."* The sweep found
+no live conflict, but it found ten movement keys doing the work of four. Read out of
+source and drawn per key family in
+[mockups/expense-world-movement-keys.html](mockups/expense-world-movement-keys.html),
+the test applied to each was: **if it vanished tomorrow, what becomes unreachable?**
+
+**Decision.** Two groups, opposite answers.
+
+*Deleted — six keys, zero capability lost.* `j`/`k` were a second name for `↓`/`↑`,
+`h`/`l` for `←`/`→`, `,`/`.` for `pgup`/`pgdn` — same action, same line of code, and
+none of them printed their own letter in the footer. The reason to remove them is not
+tidiness: a widget alias silently outranks a screen binding, so `j k h l` were
+*unusable* as command letters on any list screen. Deleting them hands four letters back
+to the command namespace, which is what the user asked the inventory for.
+
+*Kept — `pgdn`/`pgup` are load-bearing.* On the four fetch-paged screens the arrows
+clamp at the fetched edge on purpose (2026-07-13, below), so no arrow reaches page 2.
+The user confirmed an external keyboard with real PgDn/PgUp keys, which is what makes
+`,`/`.` safe to drop — on a MacBook they would have been the only *single-key* paging
+(`fn+↓`/`fn+↑` otherwise) and deleting them would have made paging harder, not simpler.
+
+*Moved — the month window rides the page keys.* `[`/`]` were the app's only
+one-screen, one-job binding, and they existed only because the Monthly grid had already
+spent `←`/`→` on expand/collapse. `pgdn`/`pgup` are unbound on that screen (the grid is
+not a paged list) and already mean *"the next window of data"* — a month slide is that
+same idea with 4 months instead of 20 rows. `pgdn` goes **older**, matching a
+newest-first ledger where paging down walks back in time. Guarded by
+`test_no_duplicate_movement_key_aliases` and `test_square_brackets_are_not_bound_anywhere`
+in [test_tui_help.py](../tests/unit/test_tui_help.py).
+
+**Rejected.** *`←`/`→` for the month window* (option A) — freeing them is genuinely
+cheap, because expand/collapse already has a complete second door in `enter`/`space` on
+all three tree views. But that grid *looks* like a tree: rows carry `▼/▶`, and a hand
+pressing `→` on a `▶` row expects it to open, not to slide the whole window. Same
+gesture, very different result. *`shift+←`/`shift+→` for the window* (option B) — works
+and retrains nothing, but adds a third tier of arrow keys for one screen, and `⇧←` is
+not discoverable by accident. *Keeping the vim aliases as "free" extras* — they are only
+free until something wants the letter, and then the failure is silent. *Deleting
+`pgdn`/`pgup` in favour of arrows that auto-page at the edge* — already rejected
+2026-07-13 ("holding `j` to skim would fire a fetch per keystroke at every boundary");
+that reasoning is unchanged. Note this entry is the mirror image of that day's
+*`[`/`]` as page keys* rejection: the objection then was "same key, different meaning",
+and it does not apply here — the report has no list, so `pgdn`/`pgup` acquire no second
+meaning, they acquire their **only** one.

@@ -37,7 +37,7 @@ PACKAGE = "expense.tui"
 
 #: A `show=False` binding whose action is the inverse of a shown one needs no row
 #: of its own: it renders as a dim parenthetical on its partner's row
-#: (`j / ↓   Down   (k / ↑ up)`). Textual's panel prints it as a row with a blank
+#: (`↓   Down   (↑ up)`). Textual's panel prints it as a row with a blank
 #: description instead — the `↑ k` row in the §1.2 capture. Maps folded action →
 #: the action whose row it joins.
 FOLD_INTO = {"move(-1)": "move(1)"}
@@ -123,7 +123,7 @@ def declared_bindings(klass: type) -> list[Binding]:
     whole filter: it is how Textual's `home`/`end`/`tab` bindings stay out
     without a suppression list that would rot.
 
-    Bindings arrive already split per key (`"down,j"` → two Bindings), which is
+    Bindings arrive already split per key (`"n,escape,enter"` → three Bindings), which is
     what `_grouped_rows` re-joins into one row.
     """
     seen: set[tuple[str, str]] = set()

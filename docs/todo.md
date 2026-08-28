@@ -17,8 +17,8 @@ Rules, unchanged from the backlog this file replaces
   quote the item's bolded title instead, so a renumber can never make them lie.
 
 **Nothing here is a regression and nothing blocks daily use.** The flat CLI and the
-TUI are both feature-complete against the engine; **1108 unit tests green
-(2026-08-25)**, contract suite **12/12** against the disposable engine on `:8001`
+TUI are both feature-complete against the engine; **1110 unit tests green
+(2026-08-27)**, contract suite **12/12** against the disposable engine on `:8001`
 (last run 2026-08-25). Exactly one item below is a genuine defect — the macOS field
 keys, under **Bugs**; the rest are a missing capability, ergonomics, one engine-side
 ask, and one cosmetic follow-up.
@@ -48,6 +48,21 @@ per the first rule above, the item itself is gone — git history is the archive
    options **J** and **K** are drawn in
    [mockups/expense-world-plus-and-arrows.html](mockups/expense-world-plus-and-arrows.html)
    §4, neither picked. **[UI]** · *smallest item here; one answer unblocks it.*
+
+   **A third candidate the mockup does not draw: `tab` / `shift+tab` (found 2026-08-27,
+   during the movement-key sweep).** It is the only option that costs nothing —
+   plain `↑↓` keep their single meaning (the suggestion list) and nothing is
+   sacrificed, which is what J-vs-K was a choice *between*. Verified that day: every
+   form has exactly one focusable widget (`Input#bar`), so Textual's screen-level
+   `tab` → `app.focus_next` is a **no-op on every form today**; the key is free.
+   `tab` is also already the de-facto region key elsewhere — Outstanding is the one
+   screen with two focusable regions and `tab` moves between them, undesigned. Fits
+   the rule set 2026-08-27 in [decisions.md](decisions.md) "One key per job".
+   **One wrinkle to decide with it:** forms have no `?` card (a focused `Input`
+   swallows printable keys), so a form key has no discovery surface — this may be the
+   one case where an arrow-family key earns a footer slot (`⇥ Field` beside
+   `esc Cancel  ^s Save`), against the standing "arrows never get a slot" rule from
+   [tui.md](tui.md) §4.
 
 ## Missing capability
 

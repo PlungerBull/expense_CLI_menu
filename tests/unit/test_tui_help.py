@@ -31,6 +31,7 @@ from expense.tui.screens.help import (
     screen_inventory,
 )
 from expense.tui.screens.inbox import InboxScreen
+from expense.tui.screens.modals import ConfirmModal
 from expense.tui.widgets.cursor_list import CursorList
 from tests.unit.helpers import wait_for, wait_for_loaded
 
@@ -94,6 +95,51 @@ def test_every_declared_binding_has_help_text():
     assert not undocumented, f"bindings with nothing for the ? card to show: {undocumented}"
 
 
+def _all_declared_bindings():
+    for klass in _declaring_classes():
+        for item in klass.__dict__["BINDINGS"]:
+            for binding in Binding.make_bindings([item]):
+                yield klass, binding
+
+
+def test_no_duplicate_movement_key_aliases():
+    """`j k h l , .` are gone, and may not come back.
+
+    Every one was a second name for a key already bound and already in the
+    footer — `j/k` for `↓/↑`, `h/l` for `←/→`, `,/.` for `pgup/pgdn` — so
+    deleting them cost no capability at all (inventory + pick:
+    docs/mockups/expense-world-movement-keys.html §4, 2026-08-27).
+
+    Guarding it is about the letters, not the tidiness: `j k h l` are usable as
+    *command* letters on a list screen only while no widget claims them first.
+    A stray alias would silently eat a future binding — which is exactly how the
+    pile accumulated the first time.
+    """
+    banned = {"j", "k", "h", "l", "comma", "full_stop"}
+    offenders = [
+        f"{klass.__name__}: {b.key} → {b.action}"
+        for klass, b in _all_declared_bindings()
+        if b.key in banned
+    ]
+    assert not offenders, f"duplicate movement aliases are deleted, not re-added: {offenders}"
+
+
+def test_square_brackets_are_not_bound_anywhere():
+    """The month window rides `pgdn`/`pgup` since 2026-08-27 (option C).
+
+    `[`/`]` were the app's only one-screen, one-job keys, and they existed only
+    because the Monthly grid had already spent `←`/`→` on expand/collapse. The
+    page keys already meant "the next window of data"; a month slide is that same
+    idea with months instead of rows.
+    """
+    offenders = [
+        f"{klass.__name__}: {b.key}"
+        for klass, b in _all_declared_bindings()
+        if b.key in {"left_square_bracket", "right_square_bracket"}
+    ]
+    assert not offenders, f"square brackets were retired: {offenders}"
+
+
 def test_folded_bindings_still_carry_their_word():
     """A folded inverse renders as `(k / ↑ up)` — it needs its description even
     though it never gets a row, or the parenthetical reads `(k / ↑ )`."""
@@ -115,27 +161,30 @@ def test_declared_bindings_keeps_only_our_own():
     achieved by walking the MRO for *declaring* classes, not by a suppression
     list that would rot as Textual changes."""
     keys = {binding.key for binding in declared_bindings(CursorList)}
-    assert keys == {"down", "j", "up", "k", "enter", "pagedown", "full_stop", "pageup", "comma"}
+    assert keys == {"down", "up", "enter", "pagedown", "pageup"}
     for intruder in ("home", "end", "tab", "shift+tab", "left", "right", "ctrl+c"):
         assert intruder not in keys
 
 
 def test_rows_join_keys_typed_character_first():
-    """`j / ↓` and `. / pgdn`, not the reverse: the letter is what you press."""
-    rows = {row.description: row.keys for row in key_rows(declared_bindings(CursorList))}
-    assert rows["Down"] == "j / ↓"
-    assert rows["Next page"] == ". / pgdn"
-    assert rows["Previous page"] == ", / pgup"
-    assert rows["Open"] == "⏎"
+    """`n / esc / ⏎`, not the reverse: the letter is what you actually press.
+
+    CursorList used to be the example (`j / ↓`, `. / pgdn`) until the duplicate
+    keys were deleted 2026-08-27 — every one of its keys is now unprintable, so
+    the ordering rule needs a binding that still mixes the two kinds. ConfirmModal
+    is the surviving one."""
+    rows = {row.description: row.keys for row in key_rows(declared_bindings(ConfirmModal))}
+    assert rows["No"] == "n / esc / ⏎"
+    assert rows["Yes"] == "y"
 
 
 def test_inverse_alias_folds_into_its_partner_row():
-    """`up,k` is `show=False` and has no row of its own — it rides along on the
+    """`up` is `show=False` and has no row of its own — it rides along on the
     down row instead of becoming a blank-description row."""
     rows = key_rows(declared_bindings(CursorList))
-    assert not any(row.keys == "k / ↑" for row in rows)
+    assert not any(row.description == "Up" for row in rows)
     down = next(row for row in rows if row.description == "Down")
-    assert down.note == "(k / ↑ up)"
+    assert down.note == "(↑ up)"
 
 
 def test_refresh_and_back_sort_to_the_end():

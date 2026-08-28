@@ -65,10 +65,10 @@ class MonthGridView(Static):
         # footer slot (user, 2026-08-20 — "its obvious and it just occupies space
         # unnecessarily"). The keys are unchanged and the `?` card still lists them,
         # which is where a key that needs explaining belongs.
-        Binding("down,j", "move(1)", "Navigate", tooltip="Down", show=False),
-        Binding("up,k", "move(-1)", "Up", show=False),
-        Binding("right,l", "expand", "Expand"),
-        Binding("left,h", "collapse", "Collapse"),
+        Binding("down", "move(1)", "Navigate", tooltip="Down", show=False),
+        Binding("up", "move(-1)", "Up", show=False),
+        Binding("right", "expand", "Expand"),
+        Binding("left", "collapse", "Collapse"),
         Binding("enter,space", "toggle", "Expand or collapse", show=False),
     ]
 
@@ -151,9 +151,17 @@ class MonthlyReportScreen(SectionScreen):
 
     crumb = ("Reports", "Monthly report")
     CARD_WIDTH = 92
+    # The month window rides the page keys (2026-08-27, mockup
+    # expense-world-movement-keys.html option C). `[`/`]` were a one-screen,
+    # one-job pair that existed only because this grid had already spent
+    # `←`/`→` on expand/collapse. `pgdn`/`pgup` are unbound here — the grid is
+    # not a paged list — and they already mean "the next window of data"
+    # everywhere else, which is exactly what a month slide is: 4 more months
+    # instead of 20 more rows. `pgdn` goes OLDER, matching a newest-first
+    # ledger where paging down walks back in time.
     BINDINGS = [
-        Binding("left_square_bracket", "older", "Older", key_display="["),
-        Binding("right_square_bracket", "newer", "Newer", key_display="]"),
+        Binding("pagedown", "older", "Older", key_display="pgdn"),
+        Binding("pageup", "newer", "Newer", key_display="pgup"),
     ]
 
     def __init__(self, end: tuple[int, int] | None = None) -> None:

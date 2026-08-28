@@ -132,7 +132,7 @@ rather than a partial total ([decisions.md](decisions.md)). Rows with nothing sp
 hidden, on the dashboard, the monthly report and the Outstanding tree alike.
 
 The Monthly report is a sliding **4-month grid** (categories × months, `▼/▶` hashtag
-rows, `[`/`]` slide the window) — deliberately not a single-month view, which would
+rows, `pgdn`/`pgup` slide the window) — deliberately not a single-month view, which would
 have duplicated Outstanding Amounts.
 
 **Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before
@@ -246,9 +246,21 @@ has no `?` — a focused `Input` swallows printable keys.
 **The footer never advertises the arrow keys.** `Navigate` is declared `show=False` on
 `CursorList`, `CheckList`, `CategoriesView` and `MonthGridView` (user, 2026-08-20 —
 *"its obvious and it just occupies space unnecessarily"*). The keys work unchanged and
-the `?` card still lists them. `pgdn/.` paging and `→ ←` expand/collapse **stay** in the
-footer: they are not obvious. New bindings inherit this rule — if a key only says
+the `?` card still lists them. `pgdn`/`pgup` paging and `→ ←` expand/collapse **stay** in
+the footer: they are not obvious. New bindings inherit this rule — if a key only says
 "the cursor moves", it does not get a footer slot.
+
+**One key per job — the vim aliases and the brackets are gone (2026-08-27).** `j k h l`
+and `,` `.` were deleted: every one was a second name for a key that was already bound
+and already in the footer, so removing them cost no capability and handed `j k h l` back
+as *command* letters (a widget alias silently outranks a screen binding, which is what
+made them unusable before). `[`/`]` went too — the month window rides `pgdn`/`pgup`,
+which were unbound on that screen and already meant "the next window of data": 4 more
+months instead of 20 more rows. Both are guarded by
+[test_tui_help.py](../tests/unit/test_tui_help.py)
+(`test_no_duplicate_movement_key_aliases`, `test_square_brackets_are_not_bound_anywhere`).
+Inventory that drove it, with the delete test per key family:
+[mockups/expense-world-movement-keys.html](mockups/expense-world-movement-keys.html).
 
 **A screen key that a focused `Input` also claims needs `priority=True`.** Textual
 resolves the focused widget's bindings before the screen's, and `Input` binds more
@@ -291,14 +303,15 @@ terminal)** rows — the page IS the screenful, so the panel border/subtitle/foo
 clip and no dead scrollbar appears. A resize re-measures
 (`SectionScreen.measure_list_rows`, floor 5) and keeps the first visible row.
 `DEFAULT_PAGE_ROWS` (20, one copy shared with the CLI) is the cap and the pre-layout
-fallback. Page keys: `pgdn`/`.` next, `pgup`/`,` previous — hidden when one page holds
-it all.
+fallback. Page keys: `pgdn` next, `pgup` previous — hidden when one page holds it all.
+They carry the Monthly report's month window too (`pgdn` older, `pgup` newer): one
+meaning, "the next window of data", whether the window is rows or months.
 
 Transactions / Inbox / Activity / Rates fetch real `limit`/`offset` pages sized to the
-window via `PagedListMixin` (`j`/`k` clamp at the fetched edge; a resize refetches with
+window via `PagedListMixin` (`↑`/`↓` clamp at the fetched edge; a resize refetches with
 the offset re-anchored). Full-data screens window locally — Manage, the two
 Reconciliations panes splitting the space equally, the recon checklist at fit÷2 items —
-where `j`/`k` walk through and cursor-restore lands on its page. Lists are quiet-border
+where `↑`/`↓` walk through and cursor-restore lands on its page. Lists are quiet-border
 panels: border title carries the screen title, border subtitle the page status
 (`rows 21-40 of 133 · page 2 of 7`). Exempt: the Outstanding tree, static tables, the
 Monthly grid, System kv-tables. Picks:
