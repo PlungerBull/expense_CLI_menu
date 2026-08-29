@@ -144,7 +144,7 @@ class MonthGridView(Static):
         self._render_grid()
 
 
-class MonthlyReportScreen(SectionScreen):
+class OverviewScreen(SectionScreen):
     """Four months of category spend, ending at `_end` (default: this month).
     Only supplies the window state, the fetch, and the widgets; SectionScreen
     owns the worker/card/loading/error/refresh."""

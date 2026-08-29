@@ -30,7 +30,7 @@ _CASES = [
     ("auth", home.AuthScreen),
     ("activity", home.ActivityScreen),
     ("rates", home.RatesScreen),
-    ("report", home.MonthlyReportScreen),
+    ("report", home.OverviewScreen),
 ]
 
 

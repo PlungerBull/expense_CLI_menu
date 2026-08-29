@@ -7,7 +7,7 @@ from rich.text import Text
 import expense.commands.reports_cmd as reports_cmd
 from expense.commands.reports_cmd import build_range_grid
 from expense.tui.app import ExpenseApp
-from expense.tui.screens.reports import MonthGridView, MonthlyReportScreen, shift_month
+from expense.tui.screens.overview import MonthGridView, OverviewScreen, shift_month
 from tests.unit.helpers import wait_for
 
 # Two months with overlapping-but-different categories: Rent only in Nov,
@@ -211,13 +211,13 @@ def test_monthly_report_screen_renders_and_slides_window(monkeypatch):
         return RANGE_BODY
 
     monkeypatch.setattr(reports_cmd, "fetch_range", fake_fetch_range)
-    monkeypatch.setattr("expense.tui.screens.reports.load_hashtag_name_map", lambda: NAMES)
+    monkeypatch.setattr("expense.tui.screens.overview.load_hashtag_name_map", lambda: NAMES)
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
     async def scenario():
         app = ExpenseApp()
         async with app.run_test() as pilot:
-            await app.push_screen(MonthlyReportScreen(end=(2025, 12)))
+            await app.push_screen(OverviewScreen(end=(2025, 12)))
             await wait_for(
                 pilot,
                 lambda: (
@@ -246,7 +246,7 @@ def test_monthly_report_screen_renders_and_slides_window(monkeypatch):
 
 def test_grid_cells_are_theme_colored_not_literal():
     """Amount cells go through the palette; empty cells dash; unpriced ones warn."""
-    from expense.tui.screens.reports import _grid_cell
+    from expense.tui.screens.overview import _grid_cell
     from expense.tui.theme import PALETTE
 
     negative = _grid_cell({"cents": -100, "unconverted": 0}, PALETTE)

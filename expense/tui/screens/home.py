@@ -32,8 +32,8 @@ from expense.tui.screens.hashtags import HashtagsScreen
 from expense.tui.screens.help import HelpBindingMixin
 from expense.tui.screens.inbox import InboxScreen
 from expense.tui.screens.outstanding import OutstandingScreen
+from expense.tui.screens.overview import OverviewScreen
 from expense.tui.screens.reconciliations import ReconciliationsScreen
-from expense.tui.screens.reports import MonthlyReportScreen
 from expense.tui.screens.system import (
     ActivityScreen,
     AuthScreen,
@@ -75,7 +75,7 @@ _SCREENS: dict[str, type[Screen]] = {
     "transactions": TransactionsScreen,
     "reconciliations": ReconciliationsScreen,
     "outstanding": OutstandingScreen,
-    "report": MonthlyReportScreen,
+    "report": OverviewScreen,
     "accounts": AccountsScreen,
     "categories": CategoriesScreen,
     "hashtags": HashtagsScreen,
