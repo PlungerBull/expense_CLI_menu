@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world &mdash; Overview: packing the columns left (2026-08-29)</title>
+<style>
+:root{
+  --bg:#0e0e11; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --line:#2a2a30;
+  --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  --key:#4fc1ff; --pos:#6a9955; --neg:#c75450; --warn:#d7ba7d; --panel:#141419;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg)}
+body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:18px;
+     padding:38px 20px 90px;font-family:var(--mono);color:var(--text);
+     -webkit-font-smoothing:antialiased}
+h1{width:min(1180px,100%);font-size:17px;font-weight:600;letter-spacing:.02em;margin:0}
+h2{width:min(1180px,100%);font-size:13px;font-weight:600;letter-spacing:.14em;
+   text-transform:uppercase;color:var(--muted);margin:30px 0 -4px;padding-top:18px;
+   border-top:1px solid var(--line)}
+h3{width:min(1180px,100%);font-size:12.5px;font-weight:600;letter-spacing:.06em;margin:14px 0 -4px}
+p,.sub{width:min(1180px,100%);color:var(--muted);font-size:12.5px;line-height:1.85;margin:0}
+.sub b{color:var(--text)} .sub code,code{color:var(--key);font-size:12px}
+.frame{width:min(1180px,100%);background:var(--panel);border:1px solid var(--line);
+       border-radius:7px;padding:16px 18px;overflow-x:auto}
+pre{margin:0;font-size:11.5px;line-height:1.55;white-space:pre;font-family:var(--mono)}
+.dim{color:var(--dim)} .pos{color:var(--pos)} .neg{color:var(--neg)}
+.b{font-weight:700;color:#fff} .sect{color:var(--key);font-weight:600}
+.tot{color:var(--text);font-weight:700}
+.cur{background:#2c3440;display:inline-block}
+.tag{display:inline-block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+     padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);
+     margin-left:8px;vertical-align:2px}
+.rec{border-color:#3f6d4a;color:#8fd39f}
+.ruler{width:min(1180px,100%);color:var(--dim);font-size:11px;margin:-2px 0 0}
+table.cmp{width:min(1180px,100%);border-collapse:collapse;font-size:12.5px}
+table.cmp th,table.cmp td{border:1px solid var(--line);padding:8px 10px;text-align:left;
+                          vertical-align:top;color:var(--muted)}
+table.cmp th{color:var(--text);font-weight:600;background:#16161c}
+table.cmp td b{color:var(--text)}
+.ask{width:min(1180px,100%);background:#16161c;border-left:3px solid var(--key);
+     border-radius:0 6px 6px 0;padding:12px 16px;color:var(--text);font-size:12.5px;line-height:1.8}
+</style>
+</head>
+<body>
+
+<h1>Overview &mdash; packing the columns left</h1>
+
+<div class="ask">
+  <b>The ask, 2026-08-29, verbatim:</b> &ldquo;If you see this image, youll see that data
+  is going too much to the right, id liek it more tightly coupled even if there is
+  space.&rdquo;
+</div>
+
+<p class="sub">
+  <b>Nothing is built.</b> Pick one and it gets built; that is the rule in CLAUDE.md
+  (&ldquo;Mock every screen before building it&rdquo;) and showing is not approval.
+  <br><br>
+  <b>Provenance.</b> Every figure on this page is <b>real</b> &mdash; read off your live
+  Overview on 2026-08-29 (5 accounts, 10 categories, flow 2026-05&nbsp;&rarr;&nbsp;2026-08).
+  The frames are <b>character-exact</b>: generated, not hand-spaced, so the gaps you see
+  are the gaps the terminal draws. They are drawn at <b>110 columns</b> so they stay
+  readable here; your real terminal is roughly <b>200</b>, where every gap below is about
+  twice as wide.
+</p>
+
+<h2>1 &middot; Why it happens</h2>
+<p class="sub">
+  Two lines of <code>overview.py</code>, one cause. The grid is
+  <code>Table(expand=True)</code> with <code>add_column("Category", ratio=1)</code>:
+  <code>expand</code> makes the table fill the pane and <code>ratio=1</code> hands
+  <i>all</i> the slack to the label column, so on a 200-column terminal roughly
+  <b>140 blank columns</b> get stuffed between your category names and your numbers. The
+  Accounts panel is the same table call without the ratio, which pads the name column to
+  the same effect. Nothing is aligning to the right on purpose &mdash; the numbers are
+  right-aligned inside columns that were themselves inflated.
+</p>
+<p class="sub">
+  The content actually needs <b>59 columns</b>: 15 for the widest label
+  (<code>&#9654;&nbsp;SUSCRIPCIONES</code>) and 44 for four numeric columns at the widest
+  cell (<code>467,189.17</code>). Everything past 59 is padding.
+</p>
+
+<h3>Today, as drawn at 110 columns</h3>
+<div class="frame"><pre><span class="b">Overview</span><span class="dim">  ·  balances today  ·  flow 2026-05 → 2026-08</span>
+
+<span class="sect">Accounts</span>
+BCP PEN                                                                                         <span class="dim">PEN</span>   <span class="pos">5,018.93</span>
+BCP Oro PEN                                                                                     <span class="dim">PEN</span>    <span class="neg">-691.64</span>
+BCP USD                                                                                         <span class="dim">USD</span>       <span class="pos">1.30</span>
+BCP Oro USD                                                                                     <span class="dim">USD</span>     <span class="neg">-88.82</span>
+BCP Signature USD                                                                               <span class="dim">USD</span>    <span class="neg">-532.84</span>
+
+<span class="sect">Spent by category</span>
+<span class="dim">Category                                                          </span> <span class="dim">   2026-05</span> <span class="dim">   2026-06</span> <span class="dim">   2026-07</span> <span class="dim">   2026-08</span>
+<span class="cur">▶ INGRESOS                                                          <span class="pos">13,917.21</span>          <span class="dim">—</span>  <span class="pos">13,743.55</span>  <span class="pos">16,641.28</span></span>
+▶ WANTS                                                             <span class="neg">-1,843.03</span>  <span class="neg">-2,460.51</span>  <span class="neg">-1,216.92</span>  <span class="neg">-1,608.43</span>
+▶ PERROS                                                            <span class="neg">-1,263.60</span>  <span class="neg">-2,516.00</span>  <span class="neg">-3,406.70</span>    <span class="neg">-112.40</span>
+▶ SUSCRIPCIONES                                                       <span class="neg">-770.42</span>    <span class="neg">-605.96</span>    <span class="neg">-933.09</span>  <span class="neg">-1,038.88</span>
+▶ SALUD                                                             <span class="neg">-1,385.20</span>  <span class="neg">-8,057.10</span>    <span class="neg">-477.00</span>    <span class="neg">-306.60</span>
+▶ DEPORTE                                                             <span class="neg">-114.08</span>  <span class="neg">-1,347.40</span>    <span class="neg">-387.98</span>    <span class="neg">-461.98</span>
+▶ OTROS                                                             <span class="neg">-4,752.68</span>  <span class="pos">11,372.12</span>    <span class="neg">-649.00</span>   <span class="pos">1,751.09</span>
+▶ TRANSPORTE                                                          <span class="neg">-328.00</span>    <span class="neg">-259.90</span>    <span class="neg">-136.70</span>     <span class="neg">-28.70</span>
+▶ HOGAR                                                             <span class="neg">-1,047.99</span>    <span class="neg">-860.69</span>  <span class="neg">-3,195.28</span>  <span class="neg">-1,041.96</span>
+▶ KORAKUEN                                                          <span class="neg">-4,448.40</span>  <span class="neg">-3,529.46</span>  <span class="neg">-2,469.75</span>     <span class="pos">439.97</span>
+<span class="dim">inflow                                                            </span>  <span class="pos">23,482.40</span>  <span class="pos">38,994.94</span>  <span class="pos">39,500.19</span> <span class="pos">467,189.17</span>
+<span class="dim">outflow                                                           </span>  <span class="pos">25,518.59</span>  <span class="pos">47,259.84</span>  <span class="pos">38,629.06</span> <span class="pos">452,955.78</span>
+<span class="tot">net                                                               </span>  <span class="neg">-2,036.19</span>  <span class="neg">-8,264.90</span>     <span class="pos">871.13</span>  <span class="pos">14,233.39</span>
+
+<span class="dim">grid is home-currency · balances are each account&#x27;s own · — = no activity · unrated = no exchange rate</span></pre></div>
+<p class="ruler">The highlighted row is the grid cursor. Note it runs the full width &mdash;
+that is the one thing worth keeping, and it is what separates the three options below.</p>
+
+<h2>2 &middot; Option A &mdash; natural width</h2>
+<p class="sub">
+  <code>expand=False</code> on both tables. Each table becomes exactly as wide as its
+  content and sits at the left margin. The tightest possible answer, and the smallest
+  diff &mdash; two keyword changes.
+  <br><b>The cost:</b> the cursor bar shrinks to the content too, so the reverse-video
+  highlight is now a 59-column stub instead of a full-width bar. On a wide terminal a
+  short bar is harder to catch with the eye.
+</p>
+<div class="frame"><pre><span class="b">Overview</span><span class="dim">  ·  balances today  ·  flow 2026-05 → 2026-08</span>
+
+<span class="sect">Accounts</span>
+BCP PEN           <span class="dim">PEN</span>   <span class="pos">5,018.93</span>
+BCP Oro PEN       <span class="dim">PEN</span>    <span class="neg">-691.64</span>
+BCP USD           <span class="dim">USD</span>       <span class="pos">1.30</span>
+BCP Oro USD       <span class="dim">USD</span>     <span class="neg">-88.82</span>
+BCP Signature USD <span class="dim">USD</span>    <span class="neg">-532.84</span>
+
+<span class="sect">Spent by category</span>
+<span class="dim">Category       </span> <span class="dim">   2026-05</span> <span class="dim">   2026-06</span> <span class="dim">   2026-07</span> <span class="dim">   2026-08</span>
+<span class="cur">▶ INGRESOS       <span class="pos">13,917.21</span>          <span class="dim">—</span>  <span class="pos">13,743.55</span>  <span class="pos">16,641.28</span></span>
+▶ WANTS          <span class="neg">-1,843.03</span>  <span class="neg">-2,460.51</span>  <span class="neg">-1,216.92</span>  <span class="neg">-1,608.43</span>
+▶ PERROS         <span class="neg">-1,263.60</span>  <span class="neg">-2,516.00</span>  <span class="neg">-3,406.70</span>    <span class="neg">-112.40</span>
+▶ SUSCRIPCIONES    <span class="neg">-770.42</span>    <span class="neg">-605.96</span>    <span class="neg">-933.09</span>  <span class="neg">-1,038.88</span>
+▶ SALUD          <span class="neg">-1,385.20</span>  <span class="neg">-8,057.10</span>    <span class="neg">-477.00</span>    <span class="neg">-306.60</span>
+▶ DEPORTE          <span class="neg">-114.08</span>  <span class="neg">-1,347.40</span>    <span class="neg">-387.98</span>    <span class="neg">-461.98</span>
+▶ OTROS          <span class="neg">-4,752.68</span>  <span class="pos">11,372.12</span>    <span class="neg">-649.00</span>   <span class="pos">1,751.09</span>
+▶ TRANSPORTE       <span class="neg">-328.00</span>    <span class="neg">-259.90</span>    <span class="neg">-136.70</span>     <span class="neg">-28.70</span>
+▶ HOGAR          <span class="neg">-1,047.99</span>    <span class="neg">-860.69</span>  <span class="neg">-3,195.28</span>  <span class="neg">-1,041.96</span>
+▶ KORAKUEN       <span class="neg">-4,448.40</span>  <span class="neg">-3,529.46</span>  <span class="neg">-2,469.75</span>     <span class="pos">439.97</span>
+<span class="dim">inflow         </span>  <span class="pos">23,482.40</span>  <span class="pos">38,994.94</span>  <span class="pos">39,500.19</span> <span class="pos">467,189.17</span>
+<span class="dim">outflow        </span>  <span class="pos">25,518.59</span>  <span class="pos">47,259.84</span>  <span class="pos">38,629.06</span> <span class="pos">452,955.78</span>
+<span class="tot">net            </span>  <span class="neg">-2,036.19</span>  <span class="neg">-8,264.90</span>     <span class="pos">871.13</span>  <span class="pos">14,233.39</span>
+
+<span class="dim">grid is home-currency · balances are each account&#x27;s own · — = no activity · unrated = no exchange rate</span></pre></div>
+
+<h2>3 &middot; Option B &mdash; label rail, trailing spacer <span class="tag rec">recommended</span></h2>
+<p class="sub">
+  Keep <code>expand=True</code>, drop <code>ratio=1</code>, pin the label column to a fixed
+  rail (18 for the grid, 20 for accounts) and add one <b>empty trailing column</b> that
+  absorbs the slack instead. The numbers pack left exactly as in A, and because the table
+  still spans the pane the <b>cursor bar keeps its full width</b>.
+  <br><b>Why this one:</b> it is the only option that gives you the tight coupling you
+  asked for without paying for it somewhere else. The rail also means the numbers stop
+  moving when you expand a category with a long child name &mdash; today every column
+  shifts.
+  <br><b>The cost:</b> a label longer than the rail is truncated rather than widening the
+  table. At 18, <code>&#9654;&nbsp;SUSCRIPCIONES</code> (15) still fits with room to spare;
+  the rail is a number you can pick.
+</p>
+<div class="frame"><pre><span class="b">Overview</span><span class="dim">  ·  balances today  ·  flow 2026-05 → 2026-08</span>
+
+<span class="sect">Accounts</span>
+BCP PEN              <span class="dim">PEN</span>   <span class="pos">5,018.93</span>                                                                           
+BCP Oro PEN          <span class="dim">PEN</span>    <span class="neg">-691.64</span>                                                                           
+BCP USD              <span class="dim">USD</span>       <span class="pos">1.30</span>                                                                           
+BCP Oro USD          <span class="dim">USD</span>     <span class="neg">-88.82</span>                                                                           
+BCP Signature USD    <span class="dim">USD</span>    <span class="neg">-532.84</span>                                                                           
+
+<span class="sect">Spent by category</span>
+<span class="dim">Category          </span> <span class="dim">   2026-05</span> <span class="dim">   2026-06</span> <span class="dim">   2026-07</span> <span class="dim">   2026-08</span>                                                
+<span class="cur">▶ INGRESOS          <span class="pos">13,917.21</span>          <span class="dim">—</span>  <span class="pos">13,743.55</span>  <span class="pos">16,641.28</span>                                                </span>
+▶ WANTS             <span class="neg">-1,843.03</span>  <span class="neg">-2,460.51</span>  <span class="neg">-1,216.92</span>  <span class="neg">-1,608.43</span>                                                
+▶ PERROS            <span class="neg">-1,263.60</span>  <span class="neg">-2,516.00</span>  <span class="neg">-3,406.70</span>    <span class="neg">-112.40</span>                                                
+▶ SUSCRIPCIONES       <span class="neg">-770.42</span>    <span class="neg">-605.96</span>    <span class="neg">-933.09</span>  <span class="neg">-1,038.88</span>                                                
+▶ SALUD             <span class="neg">-1,385.20</span>  <span class="neg">-8,057.10</span>    <span class="neg">-477.00</span>    <span class="neg">-306.60</span>                                                
+▶ DEPORTE             <span class="neg">-114.08</span>  <span class="neg">-1,347.40</span>    <span class="neg">-387.98</span>    <span class="neg">-461.98</span>                                                
+▶ OTROS             <span class="neg">-4,752.68</span>  <span class="pos">11,372.12</span>    <span class="neg">-649.00</span>   <span class="pos">1,751.09</span>                                                
+▶ TRANSPORTE          <span class="neg">-328.00</span>    <span class="neg">-259.90</span>    <span class="neg">-136.70</span>     <span class="neg">-28.70</span>                                                
+▶ HOGAR             <span class="neg">-1,047.99</span>    <span class="neg">-860.69</span>  <span class="neg">-3,195.28</span>  <span class="neg">-1,041.96</span>                                                
+▶ KORAKUEN          <span class="neg">-4,448.40</span>  <span class="neg">-3,529.46</span>  <span class="neg">-2,469.75</span>     <span class="pos">439.97</span>                                                
+<span class="dim">inflow            </span>  <span class="pos">23,482.40</span>  <span class="pos">38,994.94</span>  <span class="pos">39,500.19</span> <span class="pos">467,189.17</span>                                                
+<span class="dim">outflow           </span>  <span class="pos">25,518.59</span>  <span class="pos">47,259.84</span>  <span class="pos">38,629.06</span> <span class="pos">452,955.78</span>                                                
+<span class="tot">net               </span>  <span class="neg">-2,036.19</span>  <span class="neg">-8,264.90</span>     <span class="pos">871.13</span>  <span class="pos">14,233.39</span>                                                
+
+<span class="dim">grid is home-currency · balances are each account&#x27;s own · — = no activity · unrated = no exchange rate</span></pre></div>
+
+<h2>4 &middot; Option C &mdash; capped screen</h2>
+<p class="sub">
+  Leave both tables alone and cap the <i>screen</i>: a max-width container (66 columns for
+  the grid, 38 for the accounts band) that the tables expand inside. Tight on your wide
+  terminal, and on a narrow one it behaves exactly as today because the cap never binds.
+  <br><b>The cost:</b> two caps to keep in step rather than one rule, and the grid keeps a
+  few columns of padding by construction (the label column still absorbs whatever the cap
+  leaves). The cursor bar spans the cap, which is a middle answer between A and B.
+</p>
+<div class="frame"><pre><span class="b">Overview</span><span class="dim">  ·  balances today  ·  flow 2026-05 → 2026-08</span>
+
+<span class="sect">Accounts</span>
+BCP PEN                <span class="dim">PEN</span>   <span class="pos">5,018.93</span> 
+BCP Oro PEN            <span class="dim">PEN</span>    <span class="neg">-691.64</span> 
+BCP USD                <span class="dim">USD</span>       <span class="pos">1.30</span> 
+BCP Oro USD            <span class="dim">USD</span>     <span class="neg">-88.82</span> 
+BCP Signature USD      <span class="dim">USD</span>    <span class="neg">-532.84</span> 
+
+<span class="sect">Spent by category</span>
+<span class="dim">Category              </span> <span class="dim">   2026-05</span> <span class="dim">   2026-06</span> <span class="dim">   2026-07</span> <span class="dim">   2026-08</span>
+<span class="cur">▶ INGRESOS              <span class="pos">13,917.21</span>          <span class="dim">—</span>  <span class="pos">13,743.55</span>  <span class="pos">16,641.28</span></span>
+▶ WANTS                 <span class="neg">-1,843.03</span>  <span class="neg">-2,460.51</span>  <span class="neg">-1,216.92</span>  <span class="neg">-1,608.43</span>
+▶ PERROS                <span class="neg">-1,263.60</span>  <span class="neg">-2,516.00</span>  <span class="neg">-3,406.70</span>    <span class="neg">-112.40</span>
+▶ SUSCRIPCIONES           <span class="neg">-770.42</span>    <span class="neg">-605.96</span>    <span class="neg">-933.09</span>  <span class="neg">-1,038.88</span>
+▶ SALUD                 <span class="neg">-1,385.20</span>  <span class="neg">-8,057.10</span>    <span class="neg">-477.00</span>    <span class="neg">-306.60</span>
+▶ DEPORTE                 <span class="neg">-114.08</span>  <span class="neg">-1,347.40</span>    <span class="neg">-387.98</span>    <span class="neg">-461.98</span>
+▶ OTROS                 <span class="neg">-4,752.68</span>  <span class="pos">11,372.12</span>    <span class="neg">-649.00</span>   <span class="pos">1,751.09</span>
+▶ TRANSPORTE              <span class="neg">-328.00</span>    <span class="neg">-259.90</span>    <span class="neg">-136.70</span>     <span class="neg">-28.70</span>
+▶ HOGAR                 <span class="neg">-1,047.99</span>    <span class="neg">-860.69</span>  <span class="neg">-3,195.28</span>  <span class="neg">-1,041.96</span>
+▶ KORAKUEN              <span class="neg">-4,448.40</span>  <span class="neg">-3,529.46</span>  <span class="neg">-2,469.75</span>     <span class="pos">439.97</span>
+<span class="dim">inflow                </span>  <span class="pos">23,482.40</span>  <span class="pos">38,994.94</span>  <span class="pos">39,500.19</span> <span class="pos">467,189.17</span>
+<span class="dim">outflow               </span>  <span class="pos">25,518.59</span>  <span class="pos">47,259.84</span>  <span class="pos">38,629.06</span> <span class="pos">452,955.78</span>
+<span class="tot">net                   </span>  <span class="neg">-2,036.19</span>  <span class="neg">-8,264.90</span>     <span class="pos">871.13</span>  <span class="pos">14,233.39</span>
+
+<span class="dim">grid is home-currency · balances are each account&#x27;s own · — = no activity · unrated = no exchange rate</span></pre></div>
+
+<h2>5 &middot; Side by side</h2>
+<table class="cmp">
+  <tr><th>&nbsp;</th><th>A &mdash; natural</th><th>B &mdash; rail + spacer</th><th>C &mdash; capped screen</th></tr>
+  <tr><td><b>Numbers sit</b></td><td>right after labels</td><td>right after labels</td><td>right after labels, plus cap slack</td></tr>
+  <tr><td><b>Cursor bar</b></td><td><b>shrinks</b> to 59 cols</td><td><b>full width</b>, unchanged</td><td>spans the 66-col cap</td></tr>
+  <tr><td><b>Columns move when you expand a row</b></td><td>yes</td><td><b>no</b> &mdash; rail is fixed</td><td>yes</td></tr>
+  <tr><td><b>Narrow terminal</b></td><td>unchanged</td><td>unchanged</td><td>unchanged (cap never binds)</td></tr>
+  <tr><td><b>Change</b></td><td>2 keywords</td><td>2 columns + 2 keywords</td><td>2 containers + CSS</td></tr>
+  <tr><td><b>Long label</b></td><td>widens the table</td><td>truncates at the rail</td><td>widens within the cap</td></tr>
+</table>
+
+<h2>6 &middot; What I need from you</h2>
+<p class="sub">
+  <b>Pick A, B or C</b> &mdash; or say &ldquo;B but rail at 24&rdquo;, that kind of note is
+  the useful kind. Two details worth deciding with it:
+  <br>&middot; <b>Does the Accounts band follow the same rule as the grid?</b> Drawn that
+  way above, but the band is three columns and the grid is five, so they can differ.
+  <br>&middot; <b>The band goes full-width because you have no People.</b> The layout is a
+  left/right split and the right half is empty, so Accounts takes the whole row. Capping
+  the band fixes the symptom either way &mdash; worth knowing the cause is separate.
+</p>
+
+</body>
+</html>
