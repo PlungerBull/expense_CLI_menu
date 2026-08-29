@@ -19,6 +19,7 @@ from textual.widgets import Static
 
 from expense.commands import inbox_cmd
 from expense.commands._resource import (
+    ENGINE_PAGE_CAP,
     format_hashtag_cell,
     format_short_date,
     items_of,
@@ -89,7 +90,9 @@ def inbox_rows(
 
 class InboxScreen(LogTransactionMixin, PagedListMixin, SectionScreen):
     crumb = ("Capture & ledger", "Inbox")
-    CARD_WIDTH = 110  # matches Transactions since the Hashtags column landed (backlog 6.1)
+    # Fills the terminal, like Transactions — same table, same reason (2026-08-29).
+    CARD_WIDTH = None
+    PAGE_ROWS_CAP = ENGINE_PAGE_CAP
     BINDINGS = [
         *LogTransactionMixin.BINDINGS,
         ("f", "cycle_filter", "Filter"),

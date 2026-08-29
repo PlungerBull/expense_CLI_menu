@@ -292,7 +292,16 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
     _started: bool = False  # first load ran (it waits for the first layout pass)
 
     # ---- adaptive list sizing (2026-07-13, mockups/expense-world-adaptive-rows.html)
-    LIST_FRAME_LINES = 4  # panel border 2 + column header + header rule
+    # Lines a CursorList spends on chrome rather than rows: panel border 2,
+    # column header 1, header rule 1, plus the blank top and bottom edge lines
+    # Rich's `box.SIMPLE` draws inside the border (2). It read 4 until
+    # 2026-08-29, which overshot by exactly those two blanks: every list whose
+    # fitted size was below the 20 cap overflowed #content by 2 lines, clipping
+    # its own bottom border and the `rows … · page …` subtitle and growing the
+    # undraggable scrollbar the 2026-07-13 decision meant to delete. Invisible
+    # while the cap hid it on tall terminals; permanent once Transactions and
+    # Inbox started filling the window.
+    LIST_FRAME_LINES = 6
     # Lower bound on the page size we ASK for — not a clipping guard, despite what
     # this comment claimed until 2026-08-20. It cannot make the viewport show five
     # rows: below a ~18-line terminal the extra rows are fetched and then clipped
@@ -300,6 +309,12 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
     # boundaries and the decision not to guard them: docs/decisions.md "A terminal
     # too small is the user's to fix", docs/tui.md §5.
     PAGE_ROWS_FLOOR = 5
+    # Upper bound on the page size. DEFAULT_PAGE_ROWS (20) app-wide — pages stay
+    # stable across window sizes and short lists keep a tidy card. Transactions
+    # and Inbox override it to grow with the terminal (2026-08-29); their cap is
+    # the engine's own `limit` ceiling, so the fetch contract can't be broken by
+    # a tall window. See docs/decisions.md "the ledger fills the window".
+    PAGE_ROWS_CAP = DEFAULT_PAGE_ROWS
 
     def compose(self) -> ComposeResult:
         yield Breadcrumb(self.crumb, id="crumb")
@@ -332,8 +347,9 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
         return 0
 
     def measure_list_rows(self) -> int:
-        """Rows-per-page = min(20, what fits #content), floor PAGE_ROWS_FLOOR —
-        pick A + cap 20, 2026-07-13. Pre-layout / unmeasurable → the 20 default."""
+        """Rows-per-page = min(PAGE_ROWS_CAP, what fits #content), floor
+        PAGE_ROWS_FLOOR — pick A, 2026-07-13. Pre-layout / unmeasurable → the
+        20 default."""
         try:
             avail = self.query_one("#content", VerticalScroll).content_size.height
         except Exception:
@@ -341,7 +357,7 @@ class SectionScreen(HelpBindingMixin, EngineWriteMixin, ContentSwapLockMixin, Sc
         if avail <= 0:
             return DEFAULT_PAGE_ROWS
         rows = avail - self.LIST_FRAME_LINES - self.list_extra_lines()
-        return max(self.PAGE_ROWS_FLOOR, min(DEFAULT_PAGE_ROWS, rows))
+        return max(self.PAGE_ROWS_FLOOR, min(self.PAGE_ROWS_CAP, rows))
 
     async def action_reload(self) -> None:
         async with self._content_lock():

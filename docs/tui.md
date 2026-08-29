@@ -298,12 +298,16 @@ scrollback *above* the running app. Launch therefore wipes screen and scrollback
 
 ## 5. Pagination and terminal size
 
-Every `CursorList` / `CheckList` renders one window of **min(20, what fits the
-terminal)** rows — the page IS the screenful, so the panel border/subtitle/footer never
-clip and no dead scrollbar appears. A resize re-measures
+Every `CursorList` / `CheckList` renders one window of **min(`PAGE_ROWS_CAP`, what fits
+the terminal)** rows — the page IS the screenful, so the panel border/subtitle/footer
+never clip and no dead scrollbar appears. A resize re-measures
 (`SectionScreen.measure_list_rows`, floor 5) and keeps the first visible row.
-`DEFAULT_PAGE_ROWS` (20, one copy shared with the CLI) is the cap and the pre-layout
-fallback. Page keys: `pgdn` next, `pgup` previous — hidden when one page holds it all.
+`DEFAULT_PAGE_ROWS` (20, one copy shared with the CLI) is the app-wide cap and the
+pre-layout fallback everywhere except **Transactions and Inbox, which fill the window**
+(2026-08-29): they set `PAGE_ROWS_CAP = ENGINE_PAGE_CAP` (200, the engine's own `limit`
+ceiling) and `CARD_WIDTH = None`, so their card spans the full width too — the two
+screens you sit in take the terminal you gave them. Every other screen keeps its
+20-row cap and its tidy `CARD_WIDTH`. Page keys: `pgdn` next, `pgup` previous — hidden when one page holds it all.
 They carry the Monthly report's month window too (`pgdn` older, `pgup` newer): one
 meaning, "the next window of data", whether the window is rows or months.
 
@@ -333,7 +337,7 @@ sizes, both **measured**:
 | **w ≈ 75** | **truncation begins** — the first cells start eliding |
 | w ≈ 50 | title column is a bare `…`, amount `-…`; every row still drawn |
 | w ≤ 40 | date goes too — rows of pure ellipsis |
-| height | **the panel clips when content exceeds the viewport, so the threshold moves with the page size**: a 4-row page closes down to h=18, a full 8-row page already clips at h=20. Rows are cut off, never reflowed. |
+| height | **the panel clips when content exceeds the viewport, so the threshold moves with the page size**: a 4-row page closes down to h=18, a full 8-row page already clips at h=20. Rows are cut off, never reflowed. Above the floor the page is measured to fit exactly — `LIST_FRAME_LINES` counts 6 (border 2, header, rule, and the two blank edge lines `box.SIMPLE` draws); it read 4 until 2026-08-29, which overflowed every fitted list by those two lines. |
 | h ≤ 10 | no data rows at all, while the footer still offers to page through them |
 
 `PAGE_ROWS_FLOOR = 5` floors the *requested page size*, not the viewport — it cannot

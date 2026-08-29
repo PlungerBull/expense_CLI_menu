@@ -1,9 +1,10 @@
 """Pagination — widget window/indicator/keys + the shared helpers.
 
-Pages are min(20, what fits the terminal) since 2026-07-13 (adaptive rows,
-pick A + cap 20): the tier-E wire tests at the bottom pin `run_test(size=…)`
-so the expected rows-per-page is deterministic — a tall harness proves the
-20 cap, a 30-line one proves the shrink, a tiny one proves the floor.
+Pages are min(PAGE_ROWS_CAP, what fits the terminal) since 2026-07-13 (adaptive
+rows, pick A): the tier-E wire tests at the bottom pin `run_test(size=…)` so the
+expected rows-per-page is deterministic — a 30-line harness proves the shrink, a
+tiny one proves the floor. The cap is `DEFAULT_PAGE_ROWS` (20) app-wide but
+`ENGINE_PAGE_CAP` on Transactions/Inbox, which grow with the window (2026-08-29).
 
 Mostly pure tests in the style of the other widget suites: `_build()` renders
 through a Rich Console; action handlers run with `_refresh`/`post_message`
@@ -14,8 +15,9 @@ import asyncio
 import io
 
 from rich.console import Console
+from textual.containers import VerticalScroll
 
-from expense.commands._resource import DEFAULT_PAGE_ROWS, effective_limit
+from expense.commands._resource import DEFAULT_PAGE_ROWS, ENGINE_PAGE_CAP, effective_limit
 from expense.tui.app import ExpenseApp
 from expense.tui.screens._base import PagedListMixin
 from expense.tui.widgets.checklist import CheckList
@@ -373,48 +375,79 @@ def _drive_transactions(size: tuple[int, int], calls: list, checks) -> None:
 
 
 def test_transactions_screen_pages_on_the_wire(monkeypatch):
-    """A tall terminal caps at 20 (pick: cap 20, 2026-07-13): loads with
-    limit=20&offset=0; pgdn refetches offset=20 (picks A+B, 2026-07-11)."""
+    """A tall terminal keeps growing (2026-08-29: Transactions/Inbox lifted the
+    20 cap to the engine's own): 35 lines fit 22 rows, so it loads with
+    limit=22&offset=0 and pgdn refetches offset=22 (picks A+B, 2026-07-11)."""
     calls = _patch_transactions(monkeypatch)
 
     async def checks(pilot, screen):
-        assert calls == [(20, 0)]
-        assert screen.query(CursorList).first().page_status == "rows 1-20 of 133 · page 1 of 7"
+        assert calls == [(22, 0)]
+        assert screen.query(CursorList).first().page_status == "rows 1-22 of 133 · page 1 of 7"
         await pilot.press("pagedown")
         await wait_for(
             pilot,
             lambda: (
                 screen.query(CursorList)
                 and screen.query(CursorList).first().page_status
-                == "rows 21-40 of 133 · page 2 of 7"
+                == "rows 23-44 of 133 · page 2 of 7"
             ),
         )
-        assert calls[-1] == (20, 20)
+        assert calls[-1] == (22, 22)
 
-    # content 28 lines → 24 rows fit → capped at the 20 standard
+    # content 28 lines − 6 frame lines → 22 rows fit, and the ledger takes all 22
     _drive_transactions((120, 35), calls, checks)
 
 
-def test_transactions_screen_adapts_rows_to_short_terminal(monkeypatch):
-    """A 30-line terminal fits 19 rows (chrome takes 11): the page IS the
-    screenful — limit=19 on the wire, 19-row pages in the indicator (pick A,
-    2026-07-13). This is the 2026-07-12 clipped-panel screenshot, fixed."""
+def test_transactions_panel_fills_and_fits_the_viewport(monkeypatch):
+    """The ledger takes the window it is given and no more (2026-08-29): the
+    card spans #content's full width, and the panel's own height never exceeds
+    it — a clipped bottom border and the undraggable scrollbar are what an
+    overshooting LIST_FRAME_LINES looked like."""
     calls = _patch_transactions(monkeypatch)
 
     async def checks(pilot, screen):
-        assert calls == [(19, 0)]
-        assert screen.page_rows == 19
-        assert screen.query(CursorList).first().page_status == "rows 1-19 of 133 · page 1 of 7"
+        content = screen.query_one("#content", VerticalScroll)
+        assert screen.query_one("#card").size.width == content.content_size.width
+        assert screen.query(CursorList).first().outer_size.height <= content.content_size.height
+        assert not content.show_vertical_scrollbar
+
+    for size in ((120, 30), (180, 45), (200, 60)):
+        _drive_transactions(size, calls, checks)
+
+
+def test_transactions_page_stops_at_the_engine_cap(monkeypatch):
+    """The ledger grows with the window, but never past `limit`'s ceiling:
+    a 300-line terminal still asks for ENGINE_PAGE_CAP rows (2026-08-29)."""
+    calls = _patch_transactions(monkeypatch)
+
+    async def checks(pilot, screen):
+        assert screen.page_rows == ENGINE_PAGE_CAP
+        assert calls == [(ENGINE_PAGE_CAP, 0)]
+
+    _drive_transactions((120, 300), calls, checks)
+
+
+def test_transactions_screen_adapts_rows_to_short_terminal(monkeypatch):
+    """A 30-line terminal fits 17 rows (chrome takes 13): the page IS the
+    screenful — limit=17 on the wire, 17-row pages in the indicator (pick A,
+    2026-07-13). This is the 2026-07-12 clipped-panel screenshot, fixed — and
+    since 2026-08-29 the frame count is honest, so the panel really does fit."""
+    calls = _patch_transactions(monkeypatch)
+
+    async def checks(pilot, screen):
+        assert calls == [(17, 0)]
+        assert screen.page_rows == 17
+        assert screen.query(CursorList).first().page_status == "rows 1-17 of 133 · page 1 of 8"
         await pilot.press("pagedown")
         await wait_for(
             pilot,
             lambda: (
                 screen.query(CursorList)
                 and screen.query(CursorList).first().page_status
-                == "rows 20-38 of 133 · page 2 of 7"
+                == "rows 18-34 of 133 · page 2 of 8"
             ),
         )
-        assert calls[-1] == (19, 19)
+        assert calls[-1] == (17, 17)
 
     _drive_transactions((120, 30), calls, checks)
 
@@ -456,7 +489,8 @@ def test_inbox_filter_change_resets_page(monkeypatch):
             return [c for c in calls if c["offset"] is not None]
 
         app = ExpenseApp()
-        # 35 lines: inbox chrome + legend take 13, so the 20 cap still applies
+        # 35 lines: inbox chrome + legend take 15, so the page is 20 rows — the
+        # same number the lifted cap used to force (2026-08-29)
         async with app.run_test(size=(120, 35)) as pilot:
             screen = InboxScreen()
             await app.push_screen(screen)

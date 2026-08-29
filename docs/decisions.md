@@ -32,7 +32,8 @@ Rules for this file:
 | Archive is a prompt-free toggle (accounts-only since 2026-08-06); Manage record detail deleted | 2026-07-11 | full entry below |
 | Every data table pages at 20 rows (CLI human mode + TUI), two-tier design | 2026-07-11 | full entry below |
 | TUI is keyboard-only — mouse disabled via `run(mouse=False)` | 2026-07-12 | full entry below |
-| TUI rows-per-page adapt to the terminal — min(20, what fits) | 2026-07-13 | full entry below |
+| TUI rows-per-page adapt to the terminal — min(20, what fits) | 2026-07-13 | full entry below *(cap lifted on Transactions/Inbox 2026-08-29 — see below)* |
+| The ledger fills the window — Transactions/Inbox drop the 20-row and 110-column caps | 2026-08-29 | full entry below |
 | `expense world` clears the terminal scrollback at launch (`CSI 2J 3J H`) | 2026-07-13 | full entry below |
 | Opening balances are an engine concept (`@Opening` system category), not a CLI convention | 2026-07-20 | full entry below |
 | Local-first deployment — the one engine moves to the user's Mac; cloud mothballed until iOS | 2026-07-30 | full entry below |
@@ -212,6 +213,10 @@ The second call is the load-bearing one. The grammar is forgiving on purpose: `1
 > **Amended 2026-07-13:** the TUI tier's fixed 20 became **min(20, what fits
 > the terminal)** — see "TUI rows-per-page adapt to the terminal" below. The
 > CLI tier (human-mode `--limit 20` default) is unchanged.
+>
+> **Amended 2026-08-29:** the 20 is no longer universal in the TUI — Transactions
+> and Inbox page at what fits, up to the engine's `limit` ceiling. See "The ledger
+> fills the window" below. Every other screen, and the CLI tier, still page at 20.
 
 **Context.** User request: no table shows more than 20 rows; the rest paginates. Before this, the TUI drew whole payloads into one Rich table (a fixed first-50 for Transactions/Activity/Rates — pages 2+ unreachable — and *everything* for Manage/Reconciliations), and CLI `list` commands printed whatever the source returned (engine default 50, replica default 100). The engine/cache already shared the offset envelope `{items, total, limit, offset}` and the CLI already had `--limit`/`--offset` + `render_pagination_hint` — the standard mostly had to be wired, not built.
 
@@ -229,11 +234,25 @@ The second call is the load-bearing one. The grammar is forgiving on purpose: `1
 
 ## TUI rows-per-page adapt to the terminal — min(20, what fits) (2026-07-13)
 
+> **Amended 2026-08-29:** the 20 is now a per-screen knob (`PAGE_ROWS_CAP`) and
+> Transactions/Inbox raise it to the engine's ceiling, so "grow-to-fit on tall
+> terminals" — rejected below — is the behaviour on those two screens. The frame
+> arithmetic this entry relies on was also off by 2 lines. See "The ledger fills
+> the window" below.
+
 **Context.** In a 120×30 terminal the fixed 20-row page needed 31 lines (chrome takes 11: breadcrumb 4, content padding 2, panel frame 4, footer 1) — the panel's bottom border and the `rows … · page …` subtitle clipped off-screen, and Textual grew a scrollbar on `#content` that nothing could operate: the mouse is off (2026-07-12 decision) and arrows move the row cursor, not the container. The user asked for row counts that follow the window (2026-07-12 screenshots; mockup [expense-world-adaptive-rows.html](mockups/expense-world-adaptive-rows.html)).
 
 **Decision.** **The page IS the screenful, capped at 20** (mockup picks A + CAP 20, 2026-07-13 — the cap keeps the 2026-07-11 "no more than 20 rows" literal; on tall terminals the panel just ends). `SectionScreen.measure_list_rows` ([\_base.py](../expense/tui/screens/_base.py)) measures `#content`'s real height per screen (legends and split panes declare their extra lines), floor 5, `DEFAULT_PAGE_ROWS` as cap and pre-layout fallback; the first load waits for the first layout pass (`call_after_refresh`) so the measure is real. Fetch-paged screens (`PagedListMixin`) send `limit = what fits` — engine contract intact (`limit ∈ [1,200]`), the border subtitle stays truthful — and a resize refetches with the offset re-anchored so the old first visible row stays on screen; window-mode lists (`CursorList`/`CheckList.set_page_size`) re-slice around the cursor, the Reconciliations panes split the space equally, the recon checklist counts fit÷2 items. The dead scrollbar is gone structurally: the panel always fits, so `#content` never overflows. CLI human mode is untouched (stdout has no viewport — still `--limit 20`).
 
 **Rejected.** *Fixed 20-row fetch + a sliding render window inside the page* (mockup option B) — preserves the literal 20 but a "page" no longer matches a screenful: the subtitle needs a third clause (`↓7 below`) and `pgdn` jumps past rows never seen. *Grow-to-fit on tall terminals* (mockup STEP 3 alternative) — declined by the user; cap 20 keeps pages stable across windows. *Cursor-follow scrolling of `#content`* — keeps 20 rows rendered and scrolls the container; the panel title and column headers scroll off-screen and the undraggable scrollbar remains. *Re-enabling the mouse* — reverts the keyboard-only decision and kills native select-to-copy for one scrollbar.
+
+## The ledger fills the window — Transactions/Inbox drop the 20-row and 110-column caps (2026-08-29)
+
+**Context.** In a large terminal the two screens you actually sit in — Transactions and Inbox — held a 110×20 card in the corner of the window and left the rest blank; growing the terminal changed nothing. Two caps did it: `CARD_WIDTH = 110` on both screens, and the app-wide `min(20, what fits)` page size from the 2026-07-13 entry above, whose "grow-to-fit on tall terminals" alternative was declined *then* and asked for *now* by the user ("if i grow the terminal window, the window should grow with it"). Measuring the fix also exposed an old arithmetic bug: `LIST_FRAME_LINES = 4` counted the panel border, column header and header rule but **not** the blank top and bottom edge lines Rich's `box.SIMPLE` draws inside the border, so every list whose fitted size fell below the 20 cap overflowed `#content` by exactly 2 lines — the bottom border and the `rows … · page …` subtitle clipped off-screen and the undraggable scrollbar the 2026-07-13 decision set out to delete came back. It was invisible only because the cap hid it on tall terminals; measured at 120×30 and 180×45.
+
+**Decision.** The cap becomes a per-screen knob, `SectionScreen.PAGE_ROWS_CAP`, defaulting to `DEFAULT_PAGE_ROWS` (20) so **every other screen is untouched** — narrow cards and stable 20-row pages included, which is what keeps short lists tidy on a wide screen. Transactions and Inbox set `PAGE_ROWS_CAP = ENGINE_PAGE_CAP` (200, the engine's own `limit` ceiling, so the fetch contract cannot be broken by a tall window) and `CARD_WIDTH = None` (the card's `width: 1fr` then spans `#content`; the Rich table is `expand=True` and re-lays out on resize). The page still IS the screenful and a resize still refetches with the offset re-anchored — only the ceiling moved. `LIST_FRAME_LINES` is corrected to 6, which is a fix for every list, not just these two: panels now close, subtitles render, and `#content` genuinely never overflows. Guarded by `test_transactions_panel_fills_and_fits_the_viewport` (card spans the full width, panel height ≤ viewport, no scrollbar, at three sizes) and `test_transactions_page_stops_at_the_engine_cap`.
+
+**Rejected.** *Lift the caps app-wide* — offered and declined by the user: Hashtags at 48 columns and Categories at 60 are narrow **because** two short columns spread across 200 columns read worse, not better. *Rows only, keep the 110-column card* — leaves the blank right half the complaint was about. *Fix `LIST_FRAME_LINES` by adding a scrollbar-aware fudge* — the frame is knowable exactly; counting it wrong twice is not a strategy. *Raise the cap to a bigger number (50, 100)* — a second arbitrary literal to re-litigate later; the engine's own ceiling is the only non-arbitrary bound.
 
 ## `expense world` clears the terminal scrollback at launch — `CSI 2J 3J H` (2026-07-13)
 
@@ -595,3 +614,4 @@ that reasoning is unchanged. Note this entry is the mirror image of that day's
 *`[`/`]` as page keys* rejection: the objection then was "same key, different meaning",
 and it does not apply here — the report has no list, so `pgdn`/`pgup` acquire no second
 meaning, they acquire their **only** one.
+

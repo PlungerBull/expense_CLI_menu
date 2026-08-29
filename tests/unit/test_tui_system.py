@@ -300,8 +300,9 @@ def test_rates_screen_lists_history(monkeypatch):
     async def scenario():
         app = ExpenseApp()
         # tall harness: rows-per-page adapt to the terminal since 2026-07-13;
-        # 35 lines puts rates (chrome 11 + two legends 4) at the 20-row cap
-        async with app.run_test(size=(120, 35)) as pilot:
+        # 40 lines puts rates (chrome 13 + two legends 4) at the 20-row cap
+        # (35 sufficed until the frame count was corrected on 2026-08-29)
+        async with app.run_test(size=(120, 40)) as pilot:
             screen = RatesScreen()
             await app.push_screen(screen)
             from expense.tui.widgets.cursor_list import CursorList

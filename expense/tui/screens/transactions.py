@@ -12,6 +12,7 @@ from textual.widget import Widget
 
 from expense.commands import transactions_cmd
 from expense.commands._resource import (
+    ENGINE_PAGE_CAP,
     format_hashtag_cell,
     format_short_date,
     items_of,
@@ -65,7 +66,12 @@ def transaction_rows(
 class TransactionsScreen(LogTransactionMixin, PagedListMixin, SectionScreen):
     BINDINGS = [*LogTransactionMixin.BINDINGS]
     crumb = ("Capture & ledger", "Transactions")
-    CARD_WIDTH = 110
+    # None = the card fills the terminal width, and PAGE_ROWS_CAP lets the page
+    # fill its height: the ledger is the screen you sit in, so it takes the
+    # window you gave it instead of holding a 110x20 card in the corner of a
+    # large one (2026-08-29). The cap is the engine's own `limit` ceiling.
+    CARD_WIDTH = None
+    PAGE_ROWS_CAP = ENGINE_PAGE_CAP
 
     def __init__(self) -> None:
         super().__init__()
