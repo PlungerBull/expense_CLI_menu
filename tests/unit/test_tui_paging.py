@@ -407,6 +407,16 @@ def test_transactions_panel_fills_and_fits_the_viewport(monkeypatch):
 
     async def checks(pilot, screen):
         content = screen.query_one("#content", VerticalScroll)
+        # `list_ready` only proves the list mounted and the loader went away — it
+        # says nothing about a layout pass having run, so every `.size` below can
+        # still be 0. Locally the layout has always landed by this point; on CI it
+        # had not, and this asserted `0 == 116` (2026-08-29, surfaced when a file
+        # rename changed collection order and with it the preceding workload).
+        await wait_for(
+            pilot,
+            lambda: screen.query_one("#card").size.width > 0,
+            message="the card was never laid out",
+        )
         assert screen.query_one("#card").size.width == content.content_size.width
         assert screen.query(CursorList).first().outer_size.height <= content.content_size.height
         assert not content.show_vertical_scrollbar
