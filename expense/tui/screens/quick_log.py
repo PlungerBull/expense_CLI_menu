@@ -47,6 +47,7 @@ from expense.commands._resource import (
 from expense.dates import to_canonical_aware
 from expense.errors import format_error
 from expense.quickadd.money import amount_to_text, parse_amount
+from expense.quickadd.names import matches
 from expense.tui.screens._base import screen_fetch_kwargs
 from expense.tui.screens._form import FormScreen, form_bindings
 
@@ -201,15 +202,15 @@ class QuickAddLogScreen(FormScreen):
 
     def _recompute(self, text: str) -> None:
         key = self._key
-        needle = text.strip().lower()
+        needle = text.strip()
         if key == "account":
-            pool = [(i, n, c) for (i, n, c) in self._accounts if needle in n.lower()]
+            pool = [(i, n, c) for (i, n, c) in self._accounts if matches(needle, n)]
         elif key == "category":
-            pool = [(i, n) for (i, n) in self._categories if needle in n.lower()]
+            pool = [(i, n) for (i, n) in self._categories if matches(needle, n)]
         elif key == "hashtags":
             needle = needle.lstrip("#")
             chosen = set(self._values.get("hashtags", []))
-            pool = [(i, n) for (i, n) in self._hashtags if needle in n.lower() and i not in chosen]
+            pool = [(i, n) for (i, n) in self._hashtags if matches(needle, n) and i not in chosen]
         else:
             pool = []
         self._suggestions = pool

@@ -6,8 +6,8 @@ The routing table, not the grammar: `test_quickadd_parse.py` owns what a line
 
 from datetime import date
 
-from expense.quickadd.parse import parse
-from expense.quickadd.route import INBOX, LEDGER, route
+from expense.quickadd.parse import Span, Unresolved, parse
+from expense.quickadd.route import INBOX, LEDGER, describe, route
 
 ACCOUNTS = [
     ("a-pen", "BCP Signature PEN", "PEN"),
@@ -100,3 +100,14 @@ def test_several_problems_are_all_reported():
     result = _route("-3.50 $signature manana")
     assert result.target == INBOX
     assert len(result.reasons) == 4
+
+
+def test_a_bare_sigil_reads_as_unfinished_not_as_a_failed_match():
+    """One phrase for two readers: the picker header and the Inbox reason."""
+    token = Unresolved(
+        kind="hashtag",
+        text="",
+        span=Span("hashtag", 0, 1, "#", resolved=False),
+        candidates=(("h1", "TAXI"), ("h2", "CAJA")),
+    )
+    assert describe(token) == '"#" names no hashtag yet'

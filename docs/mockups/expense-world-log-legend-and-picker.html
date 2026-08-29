@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LOG bar — legend, picker, tags by category</title>
+<style>
+  :root{
+    --page:#050506; --pad:#000; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68;
+    --accent:#7fa6d6; --pos:#7fbf8f; --neg:#cf8d8d;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--page)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       padding:40px 20px 90px;font-family:var(--mono);color:var(--text);
+       -webkit-font-smoothing:antialiased}
+  .head{width:min(1080px,100%)}
+  .head h1{font-size:16px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px;font-weight:600}
+  .head p{color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 10px;max-width:84ch}
+  .head b{color:var(--text)} .head code{color:var(--text);font-size:12px}
+  .chg{width:min(1080px,100%);border:1px solid #23232a;border-radius:10px;padding:14px 18px;margin-top:14px}
+  .chg h2{margin:0 0 8px;font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;
+          color:var(--accent);font-weight:600}
+  .chg h2+ul{margin-bottom:14px}
+  .chg ul{margin:0;padding-left:18px;color:var(--muted);font-size:12.5px;line-height:1.75}
+  .chg b{color:var(--text)} .chg code{color:var(--text);font-size:12px}
+  .sec{width:min(1080px,100%);margin-top:46px;border-top:1px solid #23232a;padding-top:18px}
+  .sec h2{margin:0 0 6px;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+  .sec p{color:var(--muted);font-size:13px;line-height:1.7;margin:0;max-width:86ch}
+  .sec code{color:var(--text);font-size:12px} .sec b{color:var(--text)}
+  .pane{width:min(1080px,100%);margin-top:34px}
+  .lbl{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+  .lbl b{color:var(--text)}
+  .lbl span{color:var(--dim);letter-spacing:.03em;text-transform:none;font-size:12.5px}
+  .blurb{color:var(--muted);font-size:13px;line-height:1.65;margin:8px 0 12px;max-width:86ch}
+  .blurb b,.qa b{color:var(--text)} .blurb i{color:var(--muted)}
+  .blurb code,.qa code{color:var(--text);font-size:12px}
+  .term{border:1px solid #23232a;border-radius:12px;overflow:hidden;
+        box-shadow:0 22px 56px -34px #000;background:var(--pad)}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#000}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:6px;color:var(--dim);font-size:12px}
+  .app{padding:14px 18px 18px}
+  pre.scr{margin:0;font-family:var(--mono);font-size:13px;line-height:1.5;
+          color:var(--text);white-space:pre;overflow-x:auto}
+  .d{color:var(--dim)} .b{font-weight:700;color:#fff} .a{color:var(--accent)}
+  .n{color:var(--neg)} .p{color:var(--pos)} .e{color:var(--neg)}
+  .rev{background:var(--text);color:#0b0b0e}
+  .cur{background:var(--text);color:var(--text);animation:blink 1.05s steps(1) infinite}
+  @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+  table.gr{width:min(1080px,100%);border-collapse:collapse;margin-top:14px}
+  table.gr td{border-top:1px solid #1c1c22;padding:9px 10px;vertical-align:top;font-size:12.5px}
+  td.tk{color:var(--accent);white-space:nowrap;width:110px;font-weight:700}
+  td.ex{width:230px;color:var(--text)}
+  td.de{color:var(--muted);line-height:1.6}
+  .qs{margin-top:12px}
+  .q{border-top:1px solid #1c1c22;padding:14px 2px}
+  .qq{margin:0 0 6px;color:var(--text);font-size:13.5px}
+  .qa{margin:0;color:var(--muted);font-size:13px;line-height:1.7;max-width:88ch}
+</style>
+</head>
+<body>
+<div class="head">
+  <h1>LOG bar — legend, picker, tags by category</h1>
+  <p>Three things you raised on 2026-08-29, in the order you raised them. Two of them are
+     bugs I could reproduce against your real ledger; the third needs something the engine
+     does not have yet.</p>
+  <div class="chg">
+    <h2>What I found before drawing anything</h2>
+    <ul>
+      <li><b>The legend</b> exists already &mdash; it is just the wrong shape. The grammar line
+          shows <i>only while the bar is empty</i>, so it disappears the moment you type. Three
+          shapes below. <b>Notes are <code>//</code></b>, to the end of the line, and they are
+          saved as the row&rsquo;s <code>description</code>.</li>
+      <li><b>The picker fails in exactly two ways</b>, and neither is the one you might expect &mdash;
+          narrowing <i>does</i> work (<code>$BCP&nbsp;S</code> correctly cuts six accounts to two).
+          What fails: a <b>bare sigil</b> shows nothing at all, and an <b>accent</b> you did not
+          type hides the tag (<code>#banos</code> finds no <code>BAÑOS</code>).</li>
+      <li><b>Tags-by-category has no source of truth.</b> The engine has no link between a
+          hashtag and a category &mdash; tags are a flat list, joined only to transactions. The
+          only thing that could answer &ldquo;tags used with <code>@SALUD</code>&rdquo; is your own
+          history, and the engine is the only place that can read all of it. See the last section.</li>
+    </ul>
+  </div>
+</div>
+<div class="sec">
+  <h2>1 · The legend</h2>
+  <p>The complete grammar, which is what the legend has to stand for. Every one of these is
+     already live &mdash; nothing here is new behaviour, it is only being written down where you
+     can see it while typing.</p>
+  <table class="gr">
+    <tr><td class="tk">$name</td><td class="ex">$BCP Signature PEN</td><td class="de">bank account (or a person) &mdash; first one wins</td></tr>
+    <tr><td class="tk">@name</td><td class="ex">@KORAKUEN</td><td class="de">category &mdash; first one wins</td></tr>
+    <tr><td class="tk">#name</td><td class="ex">#CAJA CHICA #TAXI</td><td class="de">hashtag &mdash; the only token you may repeat</td></tr>
+    <tr><td class="tk">+ / &minus;</td><td class="ex">-38.60 &nbsp; +2450 &nbsp; -$1800</td><td class="de">amount. The sign is what makes a number money; without one it is words in the title. The <code>$</code> in <code>-$1800</code> is decoration</td></tr>
+    <tr><td class="tk">//</td><td class="ex">// paid in cash</td><td class="de">note, to the end of the line &rarr; saved as the row&rsquo;s description. Needs a space before it, so a pasted <code>https://…</code> stays in the title</td></tr>
+    <tr><td class="tk">when</td><td class="ex">hoy · ayer · mañana<br>18/8/26 · 2026-08-18</td><td class="de">the date. English words work too. No date = now</td></tr>
+    <tr><td class="tk">the rest</td><td class="ex">tottus porongoche</td><td class="de">everything left over, in order, is the title</td></tr>
+  </table>
+</div>
+<section class="pane">
+<div class="lbl"><b>1</b> <span>· today — the grammar shows only while the bar is empty</span></div>
+<p class="blurb">Type one character and the line is replaced by whatever the parser has to say — <code>↵ stages the line</code>, the resolved date, the amount echo. The key to the sigils is gone exactly when you are using them.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">tottus</span> <span class="n">-38.60</span> <span class="cur">█</span>                                                             <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  ↵ stages the line</span>
+</pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>A</b> <span>· the legend as a fixed line under the hint</span></div>
+<p class="blurb">One dim row, always there, never changes. Costs one row of the screen (and the account peek is the thing paying for it).</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">tottus</span> <span class="n">-38.60</span> <span class="cur">█</span>                                                             <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  ↵ stages the line</span>
+<span class="d">  $account · @category · #tag · ±amount · //note · when</span>
+</pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>B</b> <span>· the legend as a key block</span></div>
+<p class="blurb">Everything spelled out, including what each token becomes on the saved row. Four rows instead of one — read once, then in the way forever.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">tottus</span> <span class="n">-38.60</span> <span class="cur">█</span>                                                             <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  ↵ stages the line</span>
+
+<span class="a">  $</span><span class="d"> bank account      </span><span class="a">@</span><span class="d"> category         </span><span class="a">#</span><span class="d"> hashtag (repeatable)</span>
+<span class="a">  ±</span><span class="d"> amount — the sign is what makes a number money</span>
+<span class="a">  //</span><span class="d"> note to end of line → the row&#x27;s description</span>
+<span class="d">  when: </span><span class="d">hoy · ayer · mañana · 18/8/26 · 2026-08-18   ·   </span><span class="d">anything else is the title</span>
+</pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>C</b> <span>· the legend as a live checklist</span></div>
+<p class="blurb">The same one row as <b>A</b>, but each key lights up the moment the line has that token and stays dim while it does not. It stops being a reminder and starts being an answer to <i>what is still missing</i> — without a second line saying so.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">tottus</span> <span class="n">-38.60</span> <span class="a">$BCP PEN</span> <span class="a">@WANTS</span><span class="cur">█</span>                                              <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  ↵ stages the line</span>
+  <span class="a">$account</span><span class="d"> · </span><span class="a">@category</span><span class="d"> · </span><span class="d">#tag</span><span class="d"> · </span><span class="a">±amount</span><span class="d"> · </span><span class="d">//note</span><span class="d"> · </span><span class="d">when</span>
+
+<span class="d">  ↑ account, category and amount are in the line; tag, note and date are not.</span>
+</pre></div></div>
+</section>
+<div class="sec">
+  <h2>2 · The picker &mdash; the two things actually broken</h2>
+  <p>Reproduced against your ledger (6 accounts, 22 categories, 54 tags). Neither fix changes
+     how matching <i>ranks</i> anything &mdash; exact name still wins, the longest phrase still
+     wins, and typing more still narrows.</p>
+</div>
+<section class="pane">
+<div class="lbl"><b>2</b> <span>· today — a bare sigil offers nothing</span></div>
+<p class="blurb"><b>This is the bug.</b> <code>#</code> on its own is one character, so the parser reads it as a word of the title and the picker never opens. You have to guess a letter before the app will tell you what exists — which is backwards.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">tottus</span> <span class="n">-38.60</span> <span class="a">$BCP PEN</span> <span class="d">#</span><span class="cur">█</span>                                                   <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="d">  ↵ stages the line</span>
+
+<span class="d">  (nothing — and “#” is about to be saved as part of the title)</span>
+</pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>2·fix</b> <span>· a bare $ / @ / # opens the whole list</span></div>
+<p class="blurb">The sigil alone means <i>show me what there is</i>. Same picker, same <code>↑↓</code>, same <code>↵</code> — it just no longer requires you to have guessed a first letter. 54 tags scroll in the window that already scrolls.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">tottus</span> <span class="n">-38.60</span> <span class="a">$BCP PEN</span> <span class="a">#</span><span class="cur">█</span>                                                   <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+
+<span class="d">  # — every hashtag, ↑↓ moves, ↵ writes the full name into the line</span>
+
+<span class="rev">    AHORROS </span>
+<span class="d">    AI</span>
+<span class="d">    ALQUILER</span>
+<span class="d">    ASEO</span>
+<span class="d">    BARRANCO</span>
+<span class="d">    BAÑOS</span>
+<span class="d">    CAJA CHICA</span>
+<span class="d">    CELULAR</span>
+
+<span class="d">  ↓ 46 more</span></pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>3</b> <span>· today — an accent you did not type hides the tag</span></div>
+<p class="blurb"><b>This is the other one.</b> Matching is case-blind but not accent-blind, so <code>#banos</code> matches nothing at all while <code>BAÑOS</code> sits in the list. The row then routes to the Inbox for a missing tag you actually have.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">tottus</span> <span class="n">-38.60</span> <span class="e">#banos</span><span class="cur">█</span>                                                       <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+
+<span class="d">  no matches — pick something that exists</span>
+</pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>3·fix</b> <span>· accents fold, both ways</span></div>
+<p class="blurb"><code>banos</code> matches <code>BAÑOS</code> and <code>#BAÑOS</code> still matches itself. Nothing else about the matcher changes — the exact-name-wins rule and the longest-phrase rule are untouched.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">tottus</span> <span class="n">-38.60</span> <span class="a">#banos</span><span class="cur">█</span>                                                       <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+
+<span class="d">  ↵ completed the token in place — the line always says what will be saved</span>
+
+<span class="d">  ▸ </span><span class="b">TOTTUS</span>  <span class="n">-38.60</span>  <span class="d">BCP PEN</span>  <span class="a">#BAÑOS</span></pre></div></div>
+</section>
+<div class="sec">
+  <h2>3 · Only the tags that belong to the category</h2>
+  <p><b>The engine cannot answer this today.</b> A hashtag is a flat, global label joined to
+     transactions; there is no category link on it, and nothing in the API returns
+     &ldquo;tags used with category X&rdquo;. The only place that knowledge exists is your
+     history &mdash; every <code>@SALUD</code> row you ever wrote &mdash; and reading all of it is
+     the engine&rsquo;s job, not a client&rsquo;s: the CLI would have to page through thousands of
+     transactions and guess from a window of them, which is both slow and wrong, and the web
+     and iOS clients would each have to guess the same way.</p>
+  <p>So this is an <b>engine ask</b>: something like <code>GET /categories/{id}/hashtags</code>
+     &mdash; the tags that category has been used with, most-used first. Small, read-only, and
+     every client gets it for free. Below is what the CLI would do with it, so the ask can go
+     out with a picture attached. <b>Neither is buildable until the endpoint exists.</b></p>
+</div>
+<section class="pane">
+<div class="lbl"><b>D</b> <span>· tags the category has been used with, first — the rest still there</span></div>
+<p class="blurb">A dim divider, not a wall. <code>@SALUD</code> is in the line, so the four tags that have ever ridden a <code>@SALUD</code> row come first; everything else you own is one <code>↓</code> further down. Nothing becomes unreachable, and a tag you have never paired before is still one keystroke away.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">farmacia</span> <span class="n">-28.90</span> <span class="a">$BCP PEN</span> <span class="a">@SALUD</span> <span class="a">#</span><span class="cur">█</span>                                          <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+
+<span class="d">  # — 4 tags used with </span><span class="a">@SALUD</span><span class="d">, then the other 50</span>
+
+<span class="rev">    DERMA </span>
+<span class="d">    MEDICOS</span>
+<span class="d">    DIENTES</span>
+<span class="d">    NUTRICIONISTA</span>
+<span class="d">    ─────────────────────  every other tag  ─────────────────────</span>
+<span class="d">    AHORROS</span>
+<span class="d">    AI</span>
+<span class="d">    ALQUILER</span>
+
+<span class="d">  ↓ 47 more</span></pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>E</b> <span>· only the category's tags, and a way out</span></div>
+<p class="blurb">The literal reading of the ask. The picker holds four names and nothing else; <code>##</code> (or just typing a letter that matches nothing in the four) opens the full list. Fastest when your tagging is already consistent — and a small wall on the day you want a pairing you have never made before.</p>
+<div class="term"><div class="bar"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i><span class="ttl">expense&nbsp;world</span></div><div class="app"><pre class="scr"><span class="a">▍</span> Capture &amp; ledger <span class="d">›</span> <span class="b">Log</span>
+<span class="d">────────────────────────────────────────────────────────────────────────────────────────</span>
+
+<span class="d">╭──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="d">│</span> <span class="a">LOG     </span> <span class="b">farmacia</span> <span class="n">-28.90</span> <span class="a">$BCP PEN</span> <span class="a">@SALUD</span> <span class="a">#</span><span class="cur">█</span>                                          <span class="d">│</span>
+<span class="d">╰──────────────────────────────────────────────────────────────────────────────────────╯</span>
+
+<span class="d">  # — the 4 tags </span><span class="a">@SALUD</span><span class="d"> has been used with · ## for all 54</span>
+
+<span class="rev">    DERMA </span>
+<span class="d">    MEDICOS</span>
+<span class="d">    DIENTES</span>
+<span class="d">    NUTRICIONISTA</span></pre></div></div>
+</section>
+<section class="pane">
+<div class="lbl"><b>Q</b> <span>· what I need from you</span></div>
+<div class="qs">
+  <div class="q">
+    <p class="qq">1 &mdash; the legend: <b>A</b> fixed line, <b>B</b> key block, or <b>C</b> live checklist?</p>
+    <p class="qa"><b>C</b> is <b>A</b> plus one idea: the same single row, but each key is lit
+       while the line has that token. It costs the same one row and tells you what is still
+       missing without a second sentence. <b>B</b> is the only one that spells out what
+       <code>//</code> and the date words actually are &mdash; but it costs four rows, and those
+       rows come straight out of the account peek. <b>C</b>, and the full table above lives in
+       the <code>?</code> help card where there is room for it.</p>
+  </div>
+  <div class="q">
+    <p class="qq">2 &mdash; the two picker fixes: both, as drawn?</p>
+    <p class="qa">They are small and independent. The bare sigil is a one-line parser change;
+       the accent fold is one normalisation in the matcher, applied to both sides. Neither
+       touches the ranking rules. Say the word and both go in.</p>
+  </div>
+  <div class="q">
+    <p class="qq">3 &mdash; tags by category: raise the engine ask, and which shape &mdash; <b>D</b> ranked or <b>E</b> filtered?</p>
+    <p class="qa"><b>D</b> keeps every tag reachable and still puts the four you actually use at
+       the top &mdash; the gain you are after with none of the wall. <b>E</b> is what you asked for
+       literally, and it is the better one <i>if</i> your tagging is disciplined enough that a
+       new pairing is genuinely rare. I would send the ask with <b>D</b>, and it is trivial to
+       turn <b>D</b> into <b>E</b> later &mdash; the data is the same, only the cut changes.</p>
+  </div>
+</div>
+</section>
+</body>
+</html>

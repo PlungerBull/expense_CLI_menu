@@ -42,6 +42,7 @@ expense/tui/
     quick_log.py    # the transaction / draft EDIT form (`⏎` on a row). Its create
                     #   mode moved to the LOG bar 2026-08-25 — `record` is required now
     log_bar.py      # the LOG bar — what `+` opens. One typed line, a staged batch,
+                    #   the named account's ledger below it (AccountPeek, 2026-08-29),
                     #   one save. Parses through expense/quickadd/, routes each row to
                     #   the ledger or the Inbox at stage time; ctrl+s writes the ledger
                     #   rows in ONE POST /transactions/batch (via expense/batch_write.py)
@@ -242,6 +243,34 @@ is empty; `ctrl+s` writes everything not already written; `ctrl+x` drops the pic
 row; `esc` unpicks, then leaves (confirming if rows are staged and unwritten). The bar
 always holds focus, which is why no bare letter is a command there and why the screen
 has no `?` — a focused `Input` swallows printable keys.
+
+**The legend row** ([log_bar.py](../expense/tui/screens/log_bar.py), 2026-08-29). One
+fixed row under the bar carrying the whole grammar and what `↵` does:
+`$account · @category · #tag · ±amount · //note · when     ↵ stages the line`. It never
+changes — it describes the grammar, not the moment — so nothing below it moves; everything
+that *does* change (the amount echo, the resolved date in words, how many names a token
+matches, loading/writing) is the `#hint` row above it, which no longer repeats the grammar.
+Pick A of
+[mockups/expense-world-log-legend-and-picker.html](mockups/expense-world-log-legend-and-picker.html).
+
+**The account peek** ([log_bar.py](../expense/tui/screens/log_bar.py), 2026-08-29). The
+moment the typed line names an account, that account's posted ledger fills the room under
+the staged list — `AccountPeek`, a quiet-border panel with the same treatment as
+`CursorList`, five columns (date, title, amount, category, tags; no account column, every
+row names the same one). Three properties are the whole design, and each was a pick:
+
+* **Elastic.** `#peek` is `height: 1fr` and everything above it is `height: auto`, so the
+  panel gets exactly the rows the staged list leaves and draws that many; it re-renders on
+  its own `Resize`. The empty-state invitation stands down while it is up.
+* **The account is the bar's**, never a staged row's — the highlighted candidate while a
+  picker is open, nothing at all when the token resolves to nothing.
+* **It stays put.** `↵` clears the bar; the panel keeps the last account the bar named.
+
+Read-only: no cursor, no keys, `↑↓` stay with the staged list. One debounced
+`GET /transactions?account_id=…` per account, cached for the life of the screen, and a
+save invalidates what it wrote to. Mockup:
+[mockups/expense-world-log-account-peek.html](mockups/expense-world-log-account-peek.html);
+why, with the rejected shapes: [decisions.md](decisions.md).
 
 **The footer never advertises the arrow keys.** `Navigate` is declared `show=False` on
 `CursorList`, `CheckList`, `CategoriesView` and `MonthGridView` (user, 2026-08-20 —

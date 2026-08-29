@@ -16,7 +16,7 @@ import io
 from datetime import date
 
 from rich.console import Console
-from textual.widgets import Input, Label
+from textual.widgets import Input, Label, Static
 
 from expense.commands._resource import QuickAddRefs
 from expense.errors import EngineConnectionError, EngineError
@@ -24,9 +24,13 @@ from expense.quickadd.parse import parse
 from expense.quickadd.route import route
 from expense.tui.app import ExpenseApp
 from expense.tui.screens.log_bar import (
+    LEGEND_LINE,
+    AccountPeek,
     LogBarScreen,
     Staged,
     format_date_cell,
+    peek_rows,
+    peek_status,
     save_errors,
     save_receipt,
     span_style,
@@ -70,13 +74,59 @@ REFS = QuickAddRefs(
 TODAY = date(2026, 8, 20)
 
 
-def _patch(monkeypatch):
-    """Screen-specific patches; the client/config seams come from fake_client."""
+PEEK_ITEMS = [
+    {
+        "id": "t1",
+        "date": "2026-08-20T10:00:00-05:00",
+        "title": "WONG CAYMA",
+        "amount_cents": -15240,
+        "account_id": "acc1",
+        "category_id": "cat1",
+        "hashtag_ids": ["h1"],
+    },
+    {
+        "id": "t2",
+        "date": "2026-08-19T10:00:00-05:00",
+        "title": "NETFLIX",
+        "amount_cents": -4490,
+        "account_id": "acc1",
+        "category_id": "cat2",
+        "hashtag_ids": [],
+    },
+]
+PEEK_BODY = {"items": PEEK_ITEMS, "total": 214, "limit": 40, "offset": 0}
+
+
+class _PeekFetch:
+    """Stands in for `fetch_transactions`, recording the account of each call."""
+
+    def __init__(self, body=None, error: Exception | None = None) -> None:
+        self.body = PEEK_BODY if body is None else body
+        self.error = error
+        self.accounts: list[str] = []
+
+    def __call__(self, _cfg, **kw):
+        self.accounts.append(kw.get("account"))
+        if self.error is not None:
+            raise self.error
+        return self.body
+
+
+def _patch(monkeypatch, peek: "_PeekFetch | None" = None) -> "_PeekFetch":
+    """Screen-specific patches; the client/config seams come from fake_client.
+
+    The peek's own fetch is patched for **every** pilot test, not only the ones
+    that assert on it: the panel fires on any line that names an account, and
+    an unpatched fetch would be a real request out of a unit test.
+    """
     monkeypatch.setattr("expense.commands.accounts_cmd.fetch_accounts", lambda *a, **k: ACCOUNTS)
     monkeypatch.setattr(
         "expense.commands.categories_cmd.fetch_categories", lambda *a, **k: CATEGORIES
     )
     monkeypatch.setattr("expense.commands.hashtags_cmd.fetch_hashtags", lambda *a, **k: HASHTAGS)
+    peek = peek or _PeekFetch()
+    monkeypatch.setattr("expense.commands.transactions_cmd.fetch_transactions", peek)
+    return peek
 
 
 def _text(renderable, width: int = 120) -> str:
@@ -237,6 +287,10 @@ def _label(screen) -> str:
     return str(screen.query_one("#field", Label).content)
 
 
+def _legend(screen) -> str:
+    return str(screen.query_one("#legend", Static).content)
+
+
 def _type(screen, text, *, caret=None):
     """Drive the bar directly — a focused Input swallows key presses."""
     bar = _bar(screen)
@@ -254,7 +308,10 @@ def test_state1_opens_on_an_empty_bar_with_the_invitation(fake_client, monkeypat
             screen = await _open(app, pilot)
             assert _bar(screen).has_focus
             assert _label(screen) == "LOG"
-            assert "↵ stages the line" in screen._hint()
+            # the grammar moved to the legend row; the hint row is for what the
+            # parser reads in the line, and an empty bar says nothing
+            assert screen._hint() == ""
+            assert "↵ stages the line" in _legend(screen)
             assert "Nothing staged" in _text(screen._staged_renderable())
 
     asyncio.run(scenario())
@@ -867,3 +924,276 @@ def test_the_receipt_counts_what_landed_not_what_was_hoped_for():
     ledger.saved = draft.saved = True
     assert save_receipt([ledger, draft, failed]) == "1 logged · 1 draft in the Inbox"
     assert save_receipt([failed]) == ""
+
+
+# ---- the account peek -------------------------------------------------------
+# docs/mockups/expense-world-log-account-peek.html — picks A (elastic) and i
+# (the panel stays on the last account the bar named), 2026-08-29.
+def test_peek_rows_carry_the_five_columns_and_never_the_account():
+    rows = peek_rows(PEEK_ITEMS, REFS, palette=PALETTE, today=TODAY.isoformat())
+    (date, title, amount, category, tags) = rows[0]
+    assert "20 Aug" in str(date)
+    assert str(title) == "WONG CAYMA"
+    assert "152.40" in str(amount)
+    assert str(category) == "KORAKUEN"
+    assert str(tags) == "#CAJA CHICA"
+    # every row in the panel names the same account — the column would be noise
+    assert all("Signature" not in str(cell) for cell in (date, title, amount, category, tags))
+
+
+def test_peek_row_of_an_unnamed_category_still_renders():
+    rows = peek_rows([{"date": "2026-08-20T10:00:00-05:00", "amount_cents": -100}], REFS)
+    assert rows and str(rows[0][1]) == "—"
+
+
+def test_peek_status_says_how_much_of_the_account_you_are_seeing():
+    assert peek_status(6, 214) == "6 of 214 in this account · newest first"
+    assert peek_status(3, 3) == "3 in this account · newest first"
+    assert peek_status(0, 0) == "nothing in this account yet"
+    # squeezed out by a long staged list: say so, do not read as an empty account
+    assert peek_status(0, 214) == "214 in this account · no room to show them"
+
+
+async def _peeked(pilot, screen):
+    """Until the panel's fetch has landed (it is debounced, then threaded)."""
+    await wait_for(pilot, lambda: bool(screen._peek_cache), message="the peek never loaded")
+
+
+def _peek(screen) -> AccountPeek:
+    return screen.query_one("#peek", AccountPeek)
+
+
+def test_the_peek_opens_on_the_account_the_line_names(fake_client, monkeypatch):
+    fetch = _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            assert not _peek(screen).display  # nothing named yet, no panel
+            _type(screen, LEDGER_LINE)
+            await _peeked(pilot, screen)
+            assert fetch.accounts == ["acc1"]
+            panel = _peek(screen)
+            assert panel.display
+            assert panel.border_title == "BCP Signature PEN"
+            assert "of 214 in this account" in panel.border_subtitle
+            assert "WONG CAYMA" in _text(panel.content)
+
+    asyncio.run(scenario())
+
+
+def test_the_peek_draws_as_many_rows_as_it_was_given(fake_client, monkeypatch):
+    """Pick A: the panel is `1fr`, so it renders exactly what fits — no more."""
+    _patch(monkeypatch, _PeekFetch({"items": PEEK_ITEMS * 20, "total": 214}))
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 24)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, LEDGER_LINE)
+            await _peeked(pilot, screen)
+            await wait_for(pilot, lambda: _peek(screen).capacity > 0, message="no room")
+            panel = _peek(screen)
+            drawn = _text(panel.content).count("WONG CAYMA")
+            assert 0 < drawn <= panel.capacity < len(PEEK_ITEMS) * 20
+
+    asyncio.run(scenario())
+
+
+def test_the_peek_follows_the_picker_while_the_account_is_ambiguous(fake_client, monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, "tottus porongoche -38.60 $sig")
+            assert screen._peek_account == "acc1"  # the highlighted candidate
+            screen.action_move(1)
+            assert screen._peek_account == "acc2"  # …and it swaps as you arrow
+
+    asyncio.run(scenario())
+
+
+def test_the_peek_stays_on_the_last_account_the_bar_named(fake_client, monkeypatch):
+    """Pick i: `↵` clears the bar, and the panel does not blink off with it."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, LEDGER_LINE)
+            await _peeked(pilot, screen)
+            screen.on_input_submitted()  # stages it; the bar is empty again
+            assert _bar(screen).value == ""
+            assert screen._peek_account == "acc1"
+            assert _peek(screen).display
+
+    asyncio.run(scenario())
+
+
+def test_the_staged_rows_never_choose_the_peeks_account(fake_client, monkeypatch):
+    """The account is the bar's. A staged row for another one does not vote."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, LEDGER_LINE)  # $BCP Signature PEN → acc1
+            screen.on_input_submitted()
+            _type(screen, "tran.cel.bm. -6.60 $BCP PEN @TRANSPORTE")
+            assert screen._peek_account == "acc3"  # the line's, not the staged row's
+            assert _peek(screen).border_title == "BCP PEN"
+
+    asyncio.run(scenario())
+
+
+def test_an_account_token_that_resolves_to_nothing_closes_the_peek(fake_client, monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, LEDGER_LINE)
+            await _peeked(pilot, screen)
+            _type(screen, "apparka mall -3.50 $xyz")
+            assert screen._peek_account is None
+            assert not _peek(screen).display
+
+    asyncio.run(scenario())
+
+
+def test_each_account_is_fetched_once_however_often_it_is_named(fake_client, monkeypatch):
+    fetch = _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, LEDGER_LINE)
+            await _peeked(pilot, screen)
+            _type(screen, "")
+            _type(screen, LEDGER_LINE)
+            _type(screen, LEDGER_LINE + " ")
+            await pilot.pause()
+            assert fetch.accounts == ["acc1"]
+
+    asyncio.run(scenario())
+
+
+def test_a_peek_that_cannot_load_says_so_and_does_not_retry(fake_client, monkeypatch):
+    """A peek is a courtesy: it reports in its own panel and never interrupts."""
+    fetch = _patch(
+        monkeypatch, _PeekFetch(error=EngineError("BOOM", "engine is down", None, 500, {}))
+    )
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, LEDGER_LINE)
+            await wait_for(pilot, lambda: bool(screen._peek_note), message="no note")
+            assert "engine is down" in _text(_peek(screen).content)
+            _type(screen, LEDGER_LINE + " ")
+            await pilot.pause()
+            assert fetch.accounts == ["acc1"]
+
+    asyncio.run(scenario())
+
+
+def test_a_save_refetches_the_account_it_just_wrote_to(fake_client, monkeypatch):
+    fetch = _patch(monkeypatch)
+    fake_client.get_responses["/transactions/batch"] = {}
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, LEDGER_LINE)
+            await _peeked(pilot, screen)
+            screen.on_input_submitted()
+            screen.action_save()
+            await wait_for(pilot, lambda: not screen._saving, message="save never finished")
+            await wait_for(
+                pilot, lambda: fetch.accounts == ["acc1", "acc1"], message="the peek went stale"
+            )
+
+    asyncio.run(scenario())
+
+
+# ---- the legend row ---------------------------------------------------------
+# docs/mockups/expense-world-log-legend-and-picker.html, pick A with the ↵ hint
+# on the same line (2026-08-29).
+def test_the_legend_names_every_token_of_the_grammar():
+    for token in ("$account", "@category", "#tag", "±amount", "//note", "when"):
+        assert token in LEGEND_LINE
+    assert "↵ stages the line" in LEGEND_LINE  # the ↵ hint rides the same row
+
+
+def test_the_legend_never_changes_whatever_the_line_says(fake_client, monkeypatch):
+    """It describes the grammar, not the moment — so nothing below it moves."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            before = _legend(screen)
+            for line in ("", "tottus", LEDGER_LINE, "x -5 $sig", NO_ACCOUNT_LINE):
+                _type(screen, line)
+                assert _legend(screen) == before
+
+    asyncio.run(scenario())
+
+
+def test_the_hint_row_carries_what_changes_not_the_grammar(fake_client, monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, "tottus -38.60", caret=3)
+            assert screen._hint() == ""  # nothing to echo: the caret is in the title
+            _type(screen, "tottus -38.60")  # caret in the amount
+            assert "-38.60" in screen._hint() and "sign" in screen._hint()
+            _type(screen, "tottus -38.60 hoy")
+            assert "Aug" in screen._hint()  # the resolved date, in words
+            assert "$account" not in screen._hint()  # never the legend's job
+
+    asyncio.run(scenario())
+
+
+def test_a_bare_sigil_opens_the_full_list(fake_client, monkeypatch):
+    """Typing `#` alone means *show me what there is* (2026-08-29)."""
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, "tottus -38.60 #")
+            assert [n for _, n in screen._picker.candidates] == ["CAJA CHICA", "TAXI"]
+            screen.on_input_submitted()  # ↵ completes it in place, as always
+            assert _bar(screen).value == "tottus -38.60 #CAJA CHICA"
+
+    asyncio.run(scenario())
+
+
+def test_a_bare_dollar_offers_every_account(fake_client, monkeypatch):
+    _patch(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(110, 30)) as pilot:
+            screen = await _open(app, pilot)
+            _type(screen, "tottus -38.60 $")
+            assert len(screen._picker.candidates) == 3
+            # and the peek follows it like any other account token
+            assert screen._peek_account == "acc1"
+
+    asyncio.run(scenario())

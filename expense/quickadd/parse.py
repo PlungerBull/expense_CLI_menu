@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import date as date_cls
 
 from expense.quickadd.money import parse_amount
+from expense.quickadd.names import fold
 from expense.quickadd.when import parse_date
 
 # A sign only starts an amount at a token boundary, which is what keeps
@@ -105,7 +106,7 @@ def _entries(rows: Sequence[Sequence]) -> list[_Entry]:
         ident, name = row[0], row[1]
         if not isinstance(ident, str) or not isinstance(name, str):
             continue
-        key = " ".join(name.split()).casefold()
+        key = fold(" ".join(name.split()))
         if not key:
             continue
         out.append(_Entry(id=ident, name=name, key=key, words=len(key.split())))
@@ -143,7 +144,7 @@ def _resolve(
     phrases: list[tuple[int, str]] = []
     for k in range(extra, -1, -1):
         parts = [head] + [words[start + i][2] for i in range(1, k + 1)]
-        phrases.append((k + 1, " ".join(" ".join(parts).split()).casefold()))
+        phrases.append((k + 1, fold(" ".join(" ".join(parts).split()))))
 
     for count, phrase in phrases:
         hits = [e for e in entries if e.key == phrase]
@@ -195,16 +196,23 @@ def parse(
     while index < len(words):
         start, end, text = words[index]
         head = text[1:]
-        kind = sigil_kind.get(text[0]) if len(text) > 1 else None
+        kind = sigil_kind.get(text[0])
 
         # `$` splits on the next character: digits are money decoration the
         # account already settles, letters name an account. Safe because no
         # account name starts with a digit.
-        if kind == "account" and head[0].isdigit():
+        if kind == "account" and head[:1].isdigit():
             kind = None
 
         if kind is not None and (kind == "hashtag" or picked.get(kind) is None):
-            count, hits = _resolve(words, index, head, refs[kind])
+            if head:
+                count, hits = _resolve(words, index, head, refs[kind])
+            else:
+                # A bare sigil means *show me what there is* (2026-08-29). It
+                # names nothing, so it can never resolve — it stands unresolved
+                # carrying every candidate, which is exactly a picker's input.
+                # No lookahead: the token is the one character.
+                count, hits = 1, list(refs[kind])
             last = words[index + count - 1][1]
             typed = body[start:last]
             resolved = len(hits) == 1

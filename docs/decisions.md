@@ -55,6 +55,8 @@ Rules for this file:
 | Four calls for the LOG bar — the raw line comes back, tags stay, totals are per currency, one wording for why | 2026-08-25 | full entry below |
 | What a half-written batch means — the LOG bar's save, and `+` switching to it | 2026-08-25 | full entry below |
 | One key per job — `j k h l , .` deleted, and the month window moves to `pgdn`/`pgup` | 2026-08-27 | full entry below |
+| The LOG bar shows the named account's ledger — elastic, and it stays put | 2026-08-29 | full entry below |
+| The legend, the two picker gaps, and day+month dates | 2026-08-29 | full entry below |
 
 ## What a half-written batch means (2026-08-25)
 
@@ -615,3 +617,114 @@ that reasoning is unchanged. Note this entry is the mirror image of that day's
 and it does not apply here — the report has no list, so `pgdn`/`pgup` acquire no second
 meaning, they acquire their **only** one.
 
+## The LOG bar shows the named account's ledger — elastic, and it stays put (2026-08-29)
+
+**The ask.** *"Once i write a bank account, the lower part of the screen should show the
+transactions table filtered to that bank account, so i can see where we are there."*
+Sketched as [mockups/expense-world-log-account-peek.html](mockups/expense-world-log-account-peek.html);
+three calls came back from it, and they are the entry.
+
+**It is elastic (pick A), not a fixed strip.** `#peek` is `height: 1fr` and every widget
+above it is `height: auto`, so Textual hands the panel exactly the rows the staged list
+is not using and `AccountPeek` draws that many — a dozen or more while you type the first
+line, fewer as the batch grows, none once the list fills the terminal. The panel
+re-renders on its own `Resize`, which is what makes "as many as fit" a fact rather than
+an estimate. The empty-state invitation ("Nothing staged…" and the example line) stands
+down while the panel is up: the hint line already says what `↵` does, and those four rows
+are better spent on the ledger.
+
+**The account is the bar's, never a staged row's** — the user's own correction, and the
+reason `_peek_target()` is written as four explicit cases. A picker open on an account
+shows the *highlighted candidate*, so arrowing through `$sig` previews each account's
+ledger and the disambiguation answers itself. An account token that resolves to nothing
+shows no panel at all: that row is bound for the Inbox and there is no ledger to show.
+
+**And it stays put (pick i).** `↵` clears the bar, so mid-batch there is no active
+account — the panel keeps the last one the bar named until the bar names another. The
+strict reading (no account in the bar, no peek) was drawn and rejected: it blinks the
+panel off at every `↵`, which is exactly the moment you are typing a run of lines against
+one account.
+
+**No balance.** It was in the first draft — in the panel title, and again as a projected
+`→ S/ 12,345.75 after this batch` that counted the staged rows in. The user cut both
+("balance is not needed at all"), which also deleted the whole question of whether a
+screen whose premise is *nothing is written until `ctrl+s`* may show a number that is not
+true yet. The panel names the account and counts the rows; that is all.
+
+**Cost: one debounced `GET /transactions?account_id=…` per account named**, cached for
+the life of the screen, on the read the Transactions screen already makes. Names come
+from the `QuickAddRefs` the grammar already loaded, so there is no second fetch. A peek
+that cannot load says so in its own border and does not retry — it is a courtesy, and a
+courtesy never interrupts the typing. A save invalidates the accounts it wrote to, so
+the rows you just logged appear where they belong.
+
+**Rejected.** *A fixed window (pick B)* — twelve rows always, in the same place, so the
+eye learns one spot; it costs the staging list twelve rows even when it wants them, and
+the panel is least useful exactly when the batch is long. *A one-line summary (pick C)* —
+balance, month-so-far, last movement, no table at all; it died with the balance, and it
+answered "where do I stand" without answering "did I already log this?", which is the
+question you actually have while typing. *Making the panel navigable* — `↑↓` already
+belong to the staged list, and a second cursor on the screen would have to be won and
+released. It is a window, not a table you work in.
+
+## The legend, the two picker gaps, and day+month dates (2026-08-29)
+
+Three things the user raised while using the LOG bar. Drawn together in
+[mockups/expense-world-log-legend-and-picker.html](mockups/expense-world-log-legend-and-picker.html);
+a fourth ask in the same session (hashtags filtered to the category) is **not** built — see
+the end of this entry.
+
+**The legend is a fixed row, and `↵ stages the line` rides on it (pick A).** The grammar
+was already on screen — as the `#hint` fallback — but only while the bar was empty, so it
+vanished the moment you started typing, which is the moment you need it. It is now its own
+permanent row: `$account · @category · #tag · ±amount · //note · when     ↵ stages the
+line`. It **never changes**, which is the point: it describes the grammar, not the moment,
+so nothing below it ever moves. Everything that *does* change — the amount echo, the
+resolved date in words, how many names a token matches, loading/writing — stays on the
+`#hint` row above it, and that row no longer repeats the grammar. This is also the first
+place `//note` is written down anywhere the user can see it while typing.
+
+*Rejected:* **B**, the four-row key block that spells out what `//` and the date words are —
+it is the only shape that teaches rather than reminds, but four rows come straight out of
+the account peek below it. That table now lives in this mockup instead. **C**, the live
+checklist (each key lit while the line has that token) — a genuinely better idea and the
+one recommended, declined in favour of a row that is the same every time you look at it.
+
+**Two picker gaps, both real, both fixed.** Reproduced against the real ledger; note that
+what was *not* broken is narrowing — `$BCP S` correctly cuts six accounts to two.
+(1) **A bare sigil offered nothing.** `#` alone is one character, so the parser read it as
+a title word and no picker opened: you had to guess a first letter before the app would
+tell you what exists. A bare sigil now stands unresolved carrying *every* candidate, which
+is exactly a picker's input, and it gets its own phrase (`"#" names no hashtag yet`) —
+because that same string is the Inbox reason if the line is staged with the sigil still
+bare. Consequence accepted: a stray `$` in a line is no longer silent title text, it is a
+visible unfinished token. (2) **Accents hid names.** Matching was case-blind but not
+accent-blind, so `#banos` found no `BAÑOS` and the row went to the Inbox for a tag the
+user has. Folding is now one function, [quickadd/names.py](../expense/quickadd/names.py)
+`fold()`, applied to the typed side and the stored side alike — so `#baños` still matches
+itself — and it is shared by all three pickers that had their own `.lower()`: the grammar,
+the edit form and the create forms.
+
+**Day + month means this year.** `28Aug`, `28/Aug`, `28-Aug`, `28agosto`, `28ago`, `1set`,
+`15DEC` — the separator is optional, the month is any prefix of its name from three letters
+up in either language, and an explicit year still wins (`28Aug26`, `28/ago/2025`). Prefix
+matching needs no abbreviation table and is unambiguous by construction: no three-letter
+prefix reaches two different months (`mar` is March and marzo; `may` is may and mayo).
+
+*Rejected:* **a bare numeric `28/08`**, the obvious sibling — because `1/2` and `1/4` are
+things people write in a title, and a fraction silently becoming February is exactly the
+class of error the grammar is built to avoid. The month must be letters. *(Open, not
+decided: the spaced form `28 Aug`, which needs lookahead in the date branch rather than a
+regex.)* Note the consequence of "this year" in January: `28Dec` will resolve to *this*
+December, a future date, which routes the row to the Inbox as dated-ahead. That is visible
+— the resolved date is echoed in words before anything is staged — and the user asked for
+the current year explicitly.
+
+**Not built: hashtags filtered to the category.** The engine has no link between a hashtag
+and a category — tags are a flat global list joined only to transactions — so nothing in
+the API can answer "tags used with `@SALUD`". The only source is the user's own history,
+and reading all of it is the engine's job: a client would have to page thousands of rows
+and guess from a window of them, wrongly, and web and iOS would each have to guess the same
+way. It is on [todo.md](todo.md) as an engine ask (`GET /categories/{id}/hashtags`, most-used
+first) with two drawn shapes — ranked or filtered — in the mockup, so the ask can go out
+with a picture attached.

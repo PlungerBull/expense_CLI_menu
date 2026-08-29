@@ -136,6 +136,20 @@ engine, which is what this CLI exists to do — see CLAUDE.md "Product scope and
    `fields.items[i]…`, implying an `items` key, while every caller sends
    `{"transactions": [...]}` — worth confirming which is authoritative.
 
+9. **No way to ask which hashtags a category has been used with.** *(user, 2026-08-29:
+   "can we only suggest hashtags that exist on the category if a category exists?")* A
+   hashtag is a flat global label joined only to transactions — there is no category
+   link on it and no endpoint that answers this. The only source is the user's own
+   history, and reading all of it is the engine's job: a client would have to page
+   thousands of transactions and guess from a window of them, and web and iOS would each
+   have to guess the same way. **The ask:** something like
+   `GET /categories/{id}/hashtags` — the tags that category has been used with,
+   most-used first. Small, read-only, and every client gets it for free. What the CLI
+   would do with it is already drawn, both shapes (ranked, so every tag stays reachable;
+   or filtered, with a way out) — send the ask with
+   [mockups/expense-world-log-legend-and-picker.html](mockups/expense-world-log-legend-and-picker.html)
+   attached. Nothing is buildable here until the endpoint exists.
+
 ---
 
 ## Parked — no commitment

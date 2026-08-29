@@ -517,15 +517,21 @@ def parse_hashtag_ids(raw: str) -> list[str]:
     return [piece.strip() for piece in raw.split(",") if piece.strip()]
 
 
-def format_hashtag_cell(ids: object, name_map: dict[str, str], *, max_width: int) -> str:
+def format_hashtag_cell(
+    ids: object, name_map: dict[str, str], *, max_width: int, prefix: str = ""
+) -> str:
     """Joined hashtag names for one table cell; unresolved ids show `xxxxxxxx…`.
 
-    Empty / non-list → `—`. Shared by the CLI transactions table (width 24)
-    and the TUI Transactions screen (width 20) — widths stay per-surface.
+    Empty / non-list → `—`. Shared by the CLI transactions table (width 24),
+    the TUI Transactions screen (width 20) and the LOG bar's account peek —
+    widths stay per-surface, and so does `prefix`: the peek asks for `#` so its
+    rows read like the staged list directly above them.
     """
     if not isinstance(ids, list) or not ids:
         return "—"
-    names = [name_map.get(hid, hid[:8] + "…") if isinstance(hid, str) else "?" for hid in ids]
+    names = [
+        prefix + (name_map.get(hid, hid[:8] + "…")) if isinstance(hid, str) else "?" for hid in ids
+    ]
     return truncate(", ".join(names), max_width)
 
 

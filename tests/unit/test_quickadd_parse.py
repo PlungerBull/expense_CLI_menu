@@ -10,6 +10,7 @@ from datetime import date
 import pytest
 
 from expense.quickadd.money import amount_to_text, parse_amount
+from expense.quickadd.names import fold, matches
 from expense.quickadd.parse import parse
 from expense.quickadd.when import format_date_words, parse_date
 
@@ -187,6 +188,19 @@ def test_note_at_the_start_of_the_line():
         ("2026/08/18", "2026-08-18"),  # yyyy/mm/dd — 4-digit-first disambiguates
         ("2026-08-18", "2026-08-18"),  # the dashed form --date takes (2026-08-25)
         ("18/08/26", "2026-08-18"),  # yy -> 20yy
+        ("28Aug", "2026-08-28"),  # day + month name, this year (2026-08-29)
+        ("28/Aug", "2026-08-28"),  # the separator is optional
+        ("28-Aug", "2026-08-28"),  # …and may be a dash, unlike dd-mm-yyyy
+        ("28agosto", "2026-08-28"),  # Spanish, like every other date word
+        ("28ago", "2026-08-28"),  # any prefix from three letters up
+        ("1set", "2026-09-01"),  # setiembre, as it is written in Peru
+        ("15DEC", "2026-12-15"),  # case-blind, like the word forms
+        ("28Aug26", "2026-08-28"),  # an explicit year still wins
+        ("28/ago/2025", "2025-08-28"),
+        ("32Aug", None),  # date-shaped but impossible
+        ("28Xyz", None),  # not a month — an ordinary word
+        ("28/08", None),  # NOT a date: `1/2` and `1/4` are title text
+        ("1/2", None),
         ("32/13/2026", None),  # date-shaped but impossible
         ("18-08-2026", None),  # dashes are ISO-only, so this is not a date
         ("tottus", None),  # ordinary word
@@ -304,3 +318,59 @@ def test_format_date_words(iso, words):
 
 def test_format_date_words_passes_junk_through():
     assert format_date_words("not a date") == "not a date"
+
+
+# ---- day + month, this year (2026-08-29) ------------------------------------
+def test_day_and_month_take_the_current_year_not_a_fixed_one():
+    """`28Aug` is August 2026 today and August 2027 next year."""
+    assert parse_date("28Aug", date(2027, 1, 5))[0] == "2027-08-28"
+
+
+def test_a_month_name_that_reaches_two_months_is_not_a_date():
+    """Two letters is not enough to name a month, so it stays title text."""
+    assert parse_date("28ju", TODAY) == (None, False)
+
+
+def test_a_bare_month_number_pair_is_not_a_date_because_fractions_exist():
+    """`1/2 kilo` must not log a February row."""
+    result = _p("medio pollo 1/2 -18")
+    assert result.date_given is False
+    assert "1/2" in result.title
+
+
+# ---- the picker's two gaps (2026-08-29) -------------------------------------
+def test_a_bare_sigil_stands_unresolved_carrying_every_candidate():
+    """Typing `#` alone means *show me what there is* — the picker's input."""
+    for sigil, kind, count in (("$", "account", 5), ("@", "category", 3), ("#", "hashtag", 4)):
+        result = _p(f"tottus -5 {sigil}")
+        assert [(u.kind, len(u.candidates)) for u in result.unresolved] == [(kind, count)]
+        assert result.title == "tottus"  # the sigil is not swallowed as a word
+
+
+def test_a_bare_dollar_is_still_not_an_amounts_decoration():
+    """`-$1800` stays one amount — the `$` there is decoration, not a sigil."""
+    result = _p("alquiler -$1800")
+    assert result.amount_cents == -180000
+    assert result.unresolved == ()
+
+
+def test_names_match_through_accents_both_ways():
+    """`#banos` finds `BAÑOS`, and `#baños` still finds itself."""
+    tags = [("h9", "BAÑOS")]
+    for typed in ("#banos", "#baños", "#BAÑOS"):
+        result = parse(
+            f"gasfitero -50 {typed}",
+            accounts=ACCOUNTS,
+            categories=CATEGORIES,
+            hashtags=tags,
+            today=TODAY,
+        )
+        assert result.hashtag_ids == ("h9",), typed
+
+
+def test_fold_is_the_one_copy_every_picker_matches_through():
+    """The TUI form pickers import this too — one rule, three call sites."""
+    assert fold("BAÑOS") == fold("banos") == "banos"
+    assert fold("Café") == "cafe"
+    assert matches("nut", "NUTRICIONISTA") and matches("SALUD", "salud")
+    assert not matches("xyz", "SALUD")

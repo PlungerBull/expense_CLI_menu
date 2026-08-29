@@ -20,6 +20,13 @@ batch means": the screen stays and the ticks are the receipt, a retry re-sends
 only the rows without one, an unstaged line in the bar is never written, and
 the discard card's `ctrl+s save first` leaves only if the save succeeds.
 
+**The account peek** (2026-08-29, docs/mockups/expense-world-log-account-peek.html):
+the moment the line names an account, that account's posted ledger fills the
+room under the staged list — `AccountPeek`, elastic, read-only. The account is
+always the **bar's**, never a staged row's, and it is sticky: `↵` clears the bar
+but the panel stays on the last account named, so a run of lines against one
+account keeps its window open (picks A and i).
+
 The grammar is not here. Every line goes through `expense/quickadd/` — the same
 module the flat `expense log "…"` calls — so the two surfaces read a line
 identically and neither owns a second copy:
@@ -54,12 +61,17 @@ from textual.screen import Screen
 from textual.widgets import Footer, Input, Label, Static
 
 from expense.batch_write import BatchOutcome, RowResult, post_transaction_batch
+from expense.commands import transactions_cmd
 from expense.commands._resource import (
     QuickAddRefs,
     currency_of,
     format_cents,
+    format_hashtag_cell,
+    format_short_date,
+    items_of,
     load_quickadd_refs,
     resolve_name,
+    truncate,
 )
 from expense.dates import now_local_iso, to_canonical_aware, today_local
 from expense.errors import EngineConnectionError, EngineError, format_error
@@ -93,12 +105,34 @@ EMPTY_LINES = (
     "until you press ctrl+s.",
 )
 
+#: The peek's columns. No account column — every row in it names the same one —
+#: and no description: the panel is narrow and the ledger screen has both.
+PEEK_HEADERS = ("date", "title", "amount", "category", "tags")
+
+#: How many of the account's rows are fetched. The panel draws as many as fit
+#: (it is `1fr`); this is the ceiling on a very tall terminal, one page.
+PEEK_LIMIT = 40
+
+#: Seconds between the account resolving and the fetch. Arrowing through the
+#: picker resolves a different account per keystroke, and each one would
+#: otherwise be a request; only the account you stop on is worth fetching.
+PEEK_DEBOUNCE = 0.25
+
+PEEK_LOADING = "loading…"
+
 #: The marker a written row carries. A saved row is done — it is never re-sent.
 SAVED_GLYPH = "✓"
 EXAMPLE = "e.g.  tottus -38.60 $signature @korakuen #caja hoy"
 
-GRAMMAR_HINT = "what · ±amount · $account · @category · #tag · when"
 STAGE_HINT = "↵ stages the line"
+
+#: The legend — the whole grammar in one fixed row under the bar, with what
+#: `↵` does on the same line (pick A, 2026-08-29,
+#: docs/mockups/expense-world-log-legend-and-picker.html). It never changes:
+#: it describes the grammar, not the moment, and the moment is the `#hint` row
+#: above it. Constant width, so nothing below it ever moves.
+LEGEND = "$account · @category · #tag · ±amount · //note · when"
+LEGEND_LINE = f"{LEGEND}     {STAGE_HINT}"
 STAGED_HINT = "↵ stages · ctrl+s saves all · ↑↓ picks a staged row when the bar is empty"
 SAVING_HINT = "writing…"
 PICKER_HINT = "↑↓ moves, ↵ writes the full name into the line"
@@ -431,6 +465,123 @@ def save_errors(entries: list[Staged], *, palette: Palette | None = None) -> Ren
 
 
 # ---------------------------------------------------------------------------
+# the account peek — the ledger of the account the line names
+# ---------------------------------------------------------------------------
+def peek_rows(
+    items: list[dict], refs: QuickAddRefs, *, palette: Palette | None = None, today: str = ""
+) -> list[tuple]:
+    """One cell tuple per posted row, in `PEEK_HEADERS` order.
+
+    The same shape `transactions.py` builds, minus the two columns the panel
+    has no room for — pure and `palette`-parameterised like every other row
+    builder here, so it renders through a Rich console with no app.
+
+    Names come from `refs`, which the screen has already loaded for the
+    grammar: the peek costs one transactions fetch, never a second name fetch.
+
+    Dates read as the staged list's do — `20 Aug`, with the year the moment it
+    is not this one — because the two tables sit one above the other and a row
+    should not change shape as it crosses from one to the other.
+    """
+    today = today or today_local().isoformat()
+    rows: list[tuple] = []
+    for item in items:
+        rows.append(
+            (
+                Text(format_date_cell(format_short_date(item.get("date")), today), style="dim"),
+                Text(truncate(item.get("title") or "—", 28), style="bold"),
+                amount_cell(item.get("amount_cents"), palette, AMOUNT_RULE),
+                Text(resolve_name(item.get("category_id"), refs.category_names), style="dim"),
+                Text(
+                    format_hashtag_cell(
+                        item.get("hashtag_ids"), refs.hashtag_names, max_width=18, prefix="#"
+                    ),
+                    style=ACCENT if palette else "",
+                ),
+            )
+        )
+    return rows
+
+
+def peek_status(shown: int, total: int) -> str:
+    """The panel's border subtitle — how much of the account you are seeing.
+
+    `shown` is what the panel had room for, so on a screen with a long staged
+    list it can be nothing at all: the panel says so rather than pretending the
+    account is empty.
+    """
+    if not total:
+        return "nothing in this account yet"
+    if not shown:
+        return f"{total} in this account · no room to show them"
+    if shown >= total:
+        return f"{total} in this account · newest first"
+    return f"{shown} of {total} in this account · newest first"
+
+
+class AccountPeek(Static):
+    """The named account's posted ledger, under the staged list.
+
+    **Elastic** (mockup pick A, 2026-08-29, docs/mockups/expense-world-log-account-peek.html):
+    the widget is `1fr`, so Textual hands it whatever rows the staged list is
+    not using and it draws exactly that many — twelve on an empty screen,
+    fewer as the batch grows, none at all once the list fills the terminal. It
+    re-renders on its own `Resize`, which is what makes "as many as fit" a fact
+    rather than an estimate.
+
+    **Read-only.** No cursor, no keys: `↑↓` belong to the staged list and the
+    panel is a window, not a table you work in.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("", id="peek")
+        self._rows: list[tuple] = []
+        self._total = 0
+        self._note = ""
+        self._content: RenderableType = Text("")
+
+    def show(self, account: str, rows: list[tuple], total: int, *, note: str = "") -> None:
+        self.border_title = account
+        self._rows, self._total, self._note = rows, total, note
+        self._rebuild()
+
+    def on_resize(self) -> None:
+        self._rebuild()
+
+    @property
+    def capacity(self) -> int:
+        """Rows this panel can draw right now: its height, less the header."""
+        return max(0, self.content_size.height - 1)
+
+    @property
+    def content(self) -> RenderableType:
+        """What the panel is drawing right now — the table, or a note."""
+        return self._content
+
+    def _rebuild(self) -> None:
+        self._content = self._build()
+        self.update(self._content)
+
+    def _build(self) -> RenderableType:
+        if self._note:
+            self.border_subtitle = ""
+            return Text("  " + self._note, style="dim")
+        shown = min(len(self._rows), self.capacity)
+        self.border_subtitle = peek_status(shown, self._total)
+        # `expand=False`, like the staged table above it: the columns pack to
+        # their content instead of spreading to the panel edge, so a row reads
+        # the same in both tables.
+        table = Table(box=None, pad_edge=False, expand=False, show_header=True)
+        for index, header in enumerate(PEEK_HEADERS):
+            table.add_column(
+                Text(header, style="dim"), justify="right" if index == 2 else "left", no_wrap=True
+            )
+        for cells in self._rows[:shown]:
+            table.add_row(*cells)
+        return table
+
+
+# ---------------------------------------------------------------------------
 # the screen
 # ---------------------------------------------------------------------------
 @dataclass
@@ -482,6 +633,12 @@ class LogBarScreen(Screen):
         self._hl = LineHighlighter()
         self._saving = False
         self._last_save = ""  # the receipt left behind once saved rows clear
+        # the peek: which account it shows, and one cached page per account
+        self._peek_account: str | None = None
+        self._peek_cache: dict[str, tuple[list[dict], int]] = {}
+        self._peek_note: dict[str, str] = {}
+        self._peek_wanted: str | None = None
+        self._peek_timer = None
 
     # ---- layout ------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -490,8 +647,10 @@ class LogBarScreen(Screen):
             Label("LOG", id="field"), Input(id="bar", highlighter=self._hl), id="inputbar"
         )
         yield Static("", id="hint")
+        yield Static(Text(LEGEND_LINE, style="dim"), id="legend")
         yield Static("", id="suggest")
         yield Static("", id="staged")
+        yield AccountPeek()
         yield Footer()
 
     def on_mount(self) -> None:
@@ -732,6 +891,7 @@ class LogBarScreen(Screen):
 
     def _save_finished(self, leave_after: bool) -> None:
         self._saving = False
+        self._invalidate_peek([e for e in self._staged if e.saved])
         written = save_receipt(self._staged)
         if written:
             self._last_save = written
@@ -825,9 +985,127 @@ class LogBarScreen(Screen):
         self.query_one("#bar", Input).refresh()
         self.query_one("#hint", Static).update(Text(self._hint(), style="dim"))
         self.query_one("#suggest", Static).update(self._suggest_renderable())
-        self.query_one("#staged", Static).update(self._staged_renderable())
+        staged = self.query_one("#staged", Static)
+        content = self._staged_renderable()
+        # `None` = nothing to draw: the widget goes away rather than holding
+        # empty rows the peek below it could be using (mockup pane A).
+        staged.display = content is not None
+        if content is not None:
+            staged.update(content)
+        self._sync_peek()
+
+    # ---- the account peek --------------------------------------------------
+    def _peek_target(self) -> str | None:
+        """Which account the peek shows — always the bar's, never a staged row's.
+
+        Four cases, decided 2026-08-29 with the mockup:
+
+        * a **picker open on an account** — the highlighted candidate, so the
+          peek swaps as you arrow and the disambiguation answers itself;
+        * a **resolved `$account`** — that one;
+        * an **account token that resolves to nothing** — none: the row is
+          bound for the Inbox and there is no ledger to show;
+        * **no account token at all**, including the empty bar `↵` leaves
+          behind — the last one the bar named (pick i). Staging a line must not
+          blink the panel off between the lines of a run against one account.
+        """
+        picker = self._picker
+        if picker is not None and picker.kind == "account" and picker.candidates:
+            index = min(self._suggest_idx, len(picker.candidates) - 1)
+            return picker.candidates[index][0]
+        parsed = self._parsed
+        if parsed is None:
+            return self._peek_account
+        if parsed.account_id:
+            return str(parsed.account_id)
+        if any(token.kind == "account" for token in parsed.unresolved):
+            return None
+        return self._peek_account
+
+    def _sync_peek(self) -> None:
+        """Point the panel at that account, fetching its page once."""
+        peek = self.query_one("#peek", AccountPeek)
+        refs = self._refs
+        target = self._peek_target()
+        self._peek_account = target
+        if target is None or refs is None:
+            peek.display = False
+            return
+        peek.display = True
+        name = resolve_name(target, refs.account_names)
+        note = self._peek_note.get(target)
+        cached = self._peek_cache.get(target)
+        if cached is not None:
+            items, total = cached
+            peek.show(name, peek_rows(items, refs, palette=PALETTE), total)
+            return
+        peek.show(name, [], 0, note=note or PEEK_LOADING)
+        if note is None:
+            self._request_peek(target)
+
+    def _request_peek(self, account_id: str) -> None:
+        """Fetch after `PEEK_DEBOUNCE`, and only what you stopped on.
+
+        One slot, one timer: retargeting replaces both, so arrowing through
+        five candidates costs one request, not five. An account already
+        cached — or already refused — never asks again.
+        """
+        self._peek_wanted = account_id
+        if self._peek_timer is not None:
+            self._peek_timer.stop()
+        self._peek_timer = self.set_timer(PEEK_DEBOUNCE, self._fire_peek)
+
+    def _fire_peek(self) -> None:
+        self._peek_timer = None
+        account_id = self._peek_wanted
+        if account_id and account_id == self._peek_account and account_id not in self._peek_cache:
+            self._load_peek(account_id)
+
+    @work(thread=True, group="peek")
+    def _load_peek(self, account_id: str) -> None:
+        """`GET /transactions?account_id=…` — the read the ledger screen makes."""
+        from expense import config as config_module
+
+        try:
+            cfg = config_module.ensure_loaded()
+            body = transactions_cmd.fetch_transactions(
+                cfg, account=account_id, limit=PEEK_LIMIT, **screen_fetch_kwargs(self.app)
+            )
+        except Exception as exc:  # a peek is a courtesy: it reports, never raises
+            self.app.call_from_thread(self._peek_failed, account_id, format_error(exc))
+            return
+        self.app.call_from_thread(self._peek_loaded, account_id, body)
+
+    def _peek_loaded(self, account_id: str, body: object) -> None:
+        items = items_of(body)
+        total = body.get("total") if isinstance(body, dict) else None
+        self._peek_cache[account_id] = (items, total if isinstance(total, int) else len(items))
+        self._peek_note.pop(account_id, None)
+        self._refresh_view()
+
+    def _peek_failed(self, account_id: str, message: str) -> None:
+        self._peek_note[account_id] = message
+        self._refresh_view()
+
+    def _invalidate_peek(self, entries: list[Staged]) -> None:
+        """Drop the cached page of every account a save just wrote to.
+
+        The rows you just logged belong in the panel — it is the same ledger.
+        """
+        for entry in entries:
+            account_id = entry.parsed.account_id
+            if isinstance(account_id, str):
+                self._peek_cache.pop(account_id, None)
+        if self._peek_account and self._peek_account not in self._peek_cache:
+            self._request_peek(self._peek_account)
 
     def _hint(self) -> str:
+        """What the parser makes of the line *right now* — never the grammar.
+
+        The grammar is the legend row below this one, permanently; this row
+        carries only what changes: the amount echo, the resolved date, how
+        many names a token matches, and the three modal states.
+        """
         if self._saving:
             return SAVING_HINT
         if self._refs is None:
@@ -845,11 +1123,11 @@ class LogBarScreen(Screen):
                 if span.kind == "amount" and span.start <= caret <= span.end:
                     return f"{format_cents(parsed.amount_cents)} — {SIGN_HINT}."
             if parsed.date_given:
-                return f"{format_date_words(parsed.date)} · {STAGE_HINT}"
-            return STAGE_HINT
+                return format_date_words(parsed.date)
+            return ""
         if self._staged:
             return STAGED_HINT
-        return f"{GRAMMAR_HINT}     {STAGE_HINT}"
+        return ""
 
     def _suggest_renderable(self) -> RenderableType:
         picker = self._picker
@@ -877,10 +1155,20 @@ class LogBarScreen(Screen):
             rows.append(Text(f"  ↓ {remaining} more", style="dim"))
         return Group(*rows)
 
-    def _staged_renderable(self) -> RenderableType:
+    def _staged_renderable(self) -> RenderableType | None:
+        """The staged list, or `None` when there is nothing to show.
+
+        The invitation ("Nothing staged…", and the example line) is what an
+        empty screen says — but the moment the line names an account, the peek
+        is the better use of those rows and the invitation stands down, exactly
+        as pane A of the mockup drew it. The hint line above still says what
+        `↵` does, so nothing is lost but the repetition.
+        """
         refs = self._refs
         if refs is None:
-            return Text("")
+            return None
+        if not self._staged and not self._last_save and self._peek_target() is not None:
+            return None
         parts: list[RenderableType] = [
             staged_table(
                 self._staged,

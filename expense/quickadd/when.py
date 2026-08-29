@@ -11,6 +11,10 @@ Accepted (decided 2026-08-25, docs/decisions.md):
   yyyy/mm/dd                 · 4-digit-first disambiguates, so it cannot
                                collide with dd/mm/yyyy
   yyyy-mm-dd                 · the form `--date` takes everywhere else
+  28Aug / 28/Aug / 28-Aug    · day + month name, this year (2026-08-29). Both
+                               languages, any prefix of the month from three
+                               letters up (`ago`, `agosto`, `sept`, `set`), and
+                               an optional year: `28Aug26`, `28-ago-2025`.
 """
 
 import re
@@ -30,6 +34,43 @@ _OFFSETS = {
 _YEAR_FIRST = re.compile(r"^(\d{4})([/-])(\d{1,2})\2(\d{1,2})$")
 # Day first, slashes only — a dashed dd-mm-yyyy is not a shape we accept.
 _DAY_FIRST = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$")
+# Day + month *name*: `28Aug`, `28/Aug`, `28-ago-2025`. The separators are
+# optional because that is how it gets typed; the month is letters, which is
+# what keeps this shape away from `dd/mm` — a bare `28/08` is deliberately NOT
+# a date (2026-08-29), because `1/2` and `1/4` are things people write in a
+# title and a fraction must not silently become February.
+_DAY_MONTH = re.compile(r"^(\d{1,2})[/-]?([^\W\d_]{3,})(?:[/-]?(\d{2}|\d{4}))?$", re.UNICODE)
+
+#: Month names in both languages, longest spelling first. Matching is by
+#: **prefix from three letters up**, which covers every abbreviation anyone
+#: types (`aug`, `agos`, `sept`, `set`, `dic`) without a table of them — and is
+#: unambiguous by construction: no three-letter prefix reaches two different
+#: months in either language (`mar` is March and marzo; `may` is may and mayo).
+_MONTH_NAMES: dict[int, tuple[str, ...]] = {
+    1: ("january", "enero"),
+    2: ("february", "febrero"),
+    3: ("march", "marzo"),
+    4: ("april", "abril"),
+    5: ("may", "mayo"),
+    6: ("june", "junio"),
+    7: ("july", "julio"),
+    8: ("august", "agosto"),
+    9: ("september", "septiembre", "setiembre"),
+    10: ("october", "octubre"),
+    11: ("november", "noviembre"),
+    12: ("december", "diciembre"),
+}
+
+
+def month_from_word(word: str) -> int | None:
+    """`'aug'`/`'agosto'`/`'Sept'` → the month number; None for anything else."""
+    key = word.casefold()
+    hits = {
+        number
+        for number, names in _MONTH_NAMES.items()
+        if any(name.startswith(key) for name in names)
+    }
+    return hits.pop() if len(hits) == 1 else None
 
 
 def parse_date(word: str, today: date) -> tuple[str | None, bool]:
@@ -47,6 +88,20 @@ def parse_date(word: str, today: date) -> tuple[str | None, bool]:
     if match:
         year, _, month, day = match.groups()
         return _build(int(year), int(month), int(day))
+
+    match = _DAY_MONTH.match(word)
+    if match:
+        day, name, year = match.groups()
+        month = month_from_word(name)
+        if month is not None:
+            # No year means *this* year — the ledger you are typing into is
+            # the current one, and the resolved date is echoed in words before
+            # the row is staged, so a wrong guess is visible (2026-08-29).
+            if year is None:
+                resolved = today.year
+            else:
+                resolved = 2000 + int(year) if len(year) == 2 else int(year)
+            return _build(resolved, month, int(day))
 
     match = _DAY_FIRST.match(word)
     if match:

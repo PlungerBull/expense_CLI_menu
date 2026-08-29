@@ -73,13 +73,20 @@ def describe(token: Unresolved) -> str:
     """One unresolved token as a phrase: `"$sig" matches 2 accounts`.
 
     Zero candidates and several read differently on purpose — one is a typo,
-    the other is a name that needs more of itself typed.
+    the other is a name that needs more of itself typed. A **bare sigil** names
+    nothing, so it gets its own phrase — it is not a failed match, it is a
+    token you have not finished (2026-08-29). One wording has to serve both
+    readers: the picker header above the list, and the Inbox reason if the line
+    is staged with the sigil still bare.
     """
     if token.kind == "date":
         return f'"{token.text}" is not a real date'
 
-    typed = f"{_SIGIL[token.kind]}{token.text}"
     plural = f"{token.kind}s" if token.kind != "category" else "categories"
+    if not token.text:
+        return f'"{_SIGIL[token.kind]}" names no {token.kind} yet'
+
+    typed = f"{_SIGIL[token.kind]}{token.text}"
     if not token.candidates:
         return f'"{typed}" matches no {plural}'
     return f'"{typed}" matches {len(token.candidates)} {plural}'

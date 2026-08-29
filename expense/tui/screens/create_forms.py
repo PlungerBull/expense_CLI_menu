@@ -19,6 +19,7 @@ from rich.text import Text
 from textual.widgets import Input
 
 from expense.currencies import SUPPORTED_CURRENCIES
+from expense.quickadd.names import matches
 from expense.tui.screens._form import FormScreen
 
 _PALETTE = [
@@ -80,10 +81,10 @@ class BarFormScreen(FormScreen):
 
     def _recompute(self, text: str) -> None:
         f = self._f
-        needle = text.strip().lower()
+        needle = text.strip()
         if f.kind in ("choice", "color"):
             self._suggestions = [
-                (v, d) for (v, d) in f.choices if needle in d.lower() or needle in v.lower()
+                (v, d) for (v, d) in f.choices if matches(needle, d) or matches(needle, v)
             ]
         else:
             self._suggestions = []
