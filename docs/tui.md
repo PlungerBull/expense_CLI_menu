@@ -34,8 +34,9 @@ expense/tui/
     _form.py        # FormScreen base — fields, validation, bar-cycle plumbing
     help.py         # HelpModal — the `?` card, derived from BINDINGS (§4)
     home.py         # banner + stat cluster + section menu
-    outstanding.py  # balances + people ▼/▶ fold + category ▼/▶ tree + totals
-    reports.py      # Monthly report — sliding 4-month grid, ▼/▶ hashtag rows
+    overview.py     # Overview — the Accounts | People band (5 drawn rows each,
+                    #   people keep their ▼/▶ settled fold) over the sliding
+                    #   4-month grid, ▼/▶ hashtag rows, inflow/outflow/net
     inbox.py        transactions.py  accounts.py  categories.py  hashtags.py
     reconciliations.py               # full lifecycle
     system.py       # Config / Auth / Activity / Rates screens
@@ -115,7 +116,7 @@ Every home-menu entry is wired — no stubs. `_SCREENS` in
 | Group | Entries |
 |---|---|
 | **Capture & ledger** | Inbox · Transactions · Reconciliations |
-| **Reports** | Outstanding Amounts · Monthly report |
+| **Reports** | Overview |
 | **Manage** | Accounts · Categories · Hashtags |
 | **System** | Config · Auth & profile · Activity · Rates |
 
@@ -130,11 +131,26 @@ Opening balances are excluded engine-side — an `@Opening` seed is where tracki
 starts, not money that moved.
 Aggregates are **nullable** — a group holding an unconvertible row reports `3 unrated`
 rather than a partial total ([decisions.md](decisions.md)). Rows with nothing spent are
-hidden, on the dashboard, the monthly report and the Outstanding tree alike.
+hidden, on the dashboard and in the Overview grid alike.
 
-The Monthly report is a sliding **4-month grid** (categories × months, `▼/▶` hashtag
-rows, `pgdn`/`pgup` slide the window) — deliberately not a single-month view, which would
-have duplicated Outstanding Amounts.
+**Overview** is one screen (2026-08-29). A two-panel band — **Accounts** left, **People**
+right, each drawing at most `PANEL_ROWS` (5) rows — sits above a sliding **4-month grid**
+(categories × months, `▼/▶` hashtag rows, `pgdn`/`pgup` slide the window), which closes
+with `inflow` / `outflow` / `net` from the same `build_range_grid` the flat range table
+renders. It absorbed Outstanding Amounts: that screen's category tree *was* this grid's
+newest column, so the merge deleted the duplicate rather than moving it, and what
+Outstanding uniquely held — the balances — became the band.
+
+Three things about the band are deliberate and measured, not stylistic. It is **always
+today's balances**, whatever month the window shows — there is no balances-as-of-date
+endpoint, and the permanent `balances today` in the title is the whole mitigation. The
+panels are drawn **lean** (`box=None`, no header row): boxed they cost 12 lines instead
+of 8 and push `net` below the fold at 120×34. And the 5-row cap truncates **drawing
+only** — the fetch is untouched, `expense dashboard` still prints every row, and the
+Accounts screen is where "all of them" lives. Fits whole at 120×34; **100×31** is the
+minimum for the entire report at once. Because `#content` scrolls, the screen's
+`pgdn`/`pgup` are `priority=True` — without that the scroll container eats them on any
+terminal short enough for the card to overflow.
 
 **Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before
 code** — every time, including screens approved before (CLAUDE.md "Mock every screen").
@@ -273,7 +289,7 @@ save invalidates what it wrote to. Mockup:
 why, with the rejected shapes: [decisions.md](decisions.md).
 
 **The footer never advertises the arrow keys.** `Navigate` is declared `show=False` on
-`CursorList`, `CheckList`, `CategoriesView` and `MonthGridView` (user, 2026-08-20 —
+`CursorList`, `CheckList` and `MonthGridView` (user, 2026-08-20 —
 *"its obvious and it just occupies space unnecessarily"*). The keys work unchanged and
 the `?` card still lists them. `pgdn`/`pgup` paging and `→ ←` expand/collapse **stay** in
 the footer: they are not obvious. New bindings inherit this rule — if a key only says
@@ -337,7 +353,7 @@ pre-layout fallback everywhere except **Transactions and Inbox, which fill the w
 ceiling) and `CARD_WIDTH = None`, so their card spans the full width too — the two
 screens you sit in take the terminal you gave them. Every other screen keeps its
 20-row cap and its tidy `CARD_WIDTH`. Page keys: `pgdn` next, `pgup` previous — hidden when one page holds it all.
-They carry the Monthly report's month window too (`pgdn` older, `pgup` newer): one
+They carry the Overview's month window too (`pgdn` older, `pgup` newer): one
 meaning, "the next window of data", whether the window is rows or months.
 
 Transactions / Inbox / Activity / Rates fetch real `limit`/`offset` pages sized to the
@@ -346,8 +362,8 @@ the offset re-anchored). Full-data screens window locally — Manage, the two
 Reconciliations panes splitting the space equally, the recon checklist at fit÷2 items —
 where `↑`/`↓` walk through and cursor-restore lands on its page. Lists are quiet-border
 panels: border title carries the screen title, border subtitle the page status
-(`rows 21-40 of 133 · page 2 of 7`). Exempt: the Outstanding tree, static tables, the
-Monthly grid, System kv-tables. Picks:
+(`rows 21-40 of 133 · page 2 of 7`). Exempt: the Overview band, static tables, the
+month grid, System kv-tables. Picks:
 [mockups/expense-world-pagination.html](mockups/expense-world-pagination.html),
 [mockups/expense-world-adaptive-rows.html](mockups/expense-world-adaptive-rows.html).
 

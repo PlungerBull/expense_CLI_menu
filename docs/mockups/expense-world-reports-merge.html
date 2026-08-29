@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>expense world — Outstanding Amounts + Monthly report, merged (2026-08-29)</title>
+<style>
+  /* ----------------------------------------------------------------------
+     THE ASK, 2026-08-29, verbatim:
+       "can we mix the amount outstanding with the monthly report into a
+        single one? maybe we do an upper pannel with outstanding amounts..
+        one for accounts one for people, but how would it look? make a
+        couple of sketches as options"
+
+     WHAT THIS PAGE IS
+       Four sketches of one merged Reports screen (§2-§5), plus the inventory
+       that says WHY a merge is even on the table (§1: the two screens already
+       overlap on their biggest block).
+
+     SECOND PASS, same day, verbatim:
+       "Option C seems the best, can you render an option where we have a
+        single line with the bank amounts, then below a single line with
+        people amounts?"
+       ...then, on the drawn version:
+       "no home converted. Just BCP PEN (PEN) XXXX i know its PEN. for
+        each account"
+     That is §8 — Option E, C's content as a two-line header band, native
+     amounts with the currency in brackets. §9 compares C and E. A-D stay
+     below as the record of what was rejected and why.
+
+     Nothing is built.
+
+     PROVENANCE
+       · REAL — every figure in every pane was read out of the live local
+         engine on 2026-08-29 (`expense dashboard --json`, `expense reports
+         monthly --from 2026-05 --to 2026-08 --json`, `expense accounts
+         list --json`). Category names, hashtag names, account names and
+         balances are yours.
+       · INVENTED — the People rows only. Your ledger has ZERO person
+         accounts today (`is_person` is false on all six). They are drawn
+         so the panel can be judged; they are marked <i>invented</i>
+         wherever they appear.
+       · DRAWN — the terminal frames are schematic shapes, not character-
+         exact captures. Footer strings are the real Binding descriptions
+         from source.
+     ---------------------------------------------------------------------- */
+  :root{
+    --bg:#0e0e11; --text:#d6d6da; --muted:#878b94; --dim:#5b5f68; --line:#2a2a30;
+    --mono:"Berkeley Mono","JetBrains Mono","SF Mono","Menlo","Consolas",monospace;
+    --key:#4fc1ff; --pos:#6a9955; --neg:#c75450; --warn:#d7ba7d; --off:#3a3d44;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:20px;
+       padding:38px 20px 90px;font-family:var(--mono);color:var(--text);-webkit-font-smoothing:antialiased}
+  h1{width:min(1180px,100%);font-size:17px;font-weight:600;letter-spacing:.02em;margin:0}
+  h2{width:min(1180px,100%);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+     color:var(--muted);margin:30px 0 -4px;padding-top:18px;border-top:1px solid var(--line)}
+  h3{width:min(1180px,100%);font-size:12.5px;font-weight:600;letter-spacing:.06em;color:var(--text);margin:14px 0 -4px}
+  .sub{width:min(1180px,100%);color:var(--dim);font-size:12.5px;line-height:1.8;margin:0}
+  .sub b{color:var(--muted)} .sub i{color:var(--warn);font-style:normal} .sub code{color:#9aa3b2}
+  .note{width:min(1180px,100%);border-left:2px solid var(--line);padding:2px 0 2px 14px;
+        color:var(--dim);font-size:12px;line-height:1.8}
+  .note b{color:var(--muted)} .note.warn{border-left-color:var(--warn)}
+  .note.warn b{color:var(--warn)}
+  .cap{width:min(1180px,100%);font-size:11.5px;color:var(--dim);letter-spacing:.02em;line-height:1.75;margin:0}
+  .cap b{color:var(--muted)} .cap i{color:var(--warn);font-style:normal}
+
+  /* the drawn terminal */
+  .pad{width:min(1180px,100%)}
+  .app{background:#1e1e1e;color:#cccccc;font-size:11.5px;line-height:1.55;
+       padding:12px 14px;border-radius:5px;border:1px solid var(--line);overflow-x:auto}
+  .crumb{color:#9aa3b2;font-size:11.5px;letter-spacing:.04em;display:flex;align-items:center}
+  .crumb .glyph{color:var(--key)} .crumb .sep{color:#4a4d55;padding:0 7px}
+  .crumb b{color:#e6e6ea;font-weight:600}
+  .crumb .bang{margin-left:auto;color:var(--warn)}
+  .title{color:#e6e6ea;margin:12px 0 2px;font-size:11.5px}
+  .title small{color:#666}
+  .sect{color:#9aa3b2;margin:12px 0 2px;font-size:11.5px}
+  .strip{margin:12px 0 4px;font-size:11.5px;color:#cccccc}
+  .strip .lbl{color:#666} .strip .sep{color:#4a4d55;padding:0 8px}
+  table.tbl{border-collapse:collapse;width:100%;font-size:11.5px}
+  table.tbl th{color:#666;font-weight:400;text-align:left;padding:1px 8px 3px 0;
+       border-bottom:1px solid #33333a}
+  table.tbl th.rt{text-align:right;padding-right:0}
+  table.tbl td{padding:1px 8px 1px 0;white-space:nowrap}
+  table.tbl td.rt{text-align:right;padding-right:0}
+  table.tbl tr.cur td{background:#cccccc;color:#1e1e1e}
+  table.tbl tr.sec td{border-top:1px solid #33333a;padding-top:4px}
+  .pos{color:var(--pos)} .neg{color:var(--neg)} .dim{color:#666} .warn{color:var(--warn)}
+  .kid td{color:#7a7a82}
+  .two{display:flex;gap:26px} .two>div{flex:1;min-width:0}
+  .rail{display:flex;gap:22px} .rail .side{width:270px;flex:none} .rail .main{flex:1;min-width:0}
+  .foot{display:flex;justify-content:space-between;margin-top:12px;color:#666;font-size:11px}
+  .k{color:var(--key)}
+  .legend{color:#5b5f68;font-size:11px;margin-top:8px}
+  .pre{white-space:pre;overflow-x:auto;font-size:11.5px;line-height:1.7;color:#cccccc}
+  .cap.warn-cap{border-left:2px solid var(--warn);padding-left:12px}
+  .shot{width:min(1180px,100%);border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#0c0c0c}
+  .shot img{display:block;width:100%}
+  .shotlbl{width:min(1180px,100%);font-size:11px;letter-spacing:.10em;text-transform:uppercase;color:var(--muted);margin:16px 0 -8px}
+  .shotlbl .ok{color:var(--pos)} .shotlbl .bad{color:var(--neg)}
+
+  /* comparison */
+  table.cmp{width:min(1180px,100%);border-collapse:collapse;font-size:12px}
+  table.cmp th,table.cmp td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  table.cmp th{color:var(--muted);font-weight:600;font-size:10.5px;letter-spacing:.10em;text-transform:uppercase;
+     border-bottom:1px solid #3a3a42}
+  table.cmp td.c{text-align:center}
+  table.cmp td b{color:var(--text)}
+  table.cmp td{color:var(--dim)}
+  .yes{color:var(--pos)} .no{color:var(--neg)} .mid{color:var(--warn)}
+  .badge{display:inline-block;font-size:10.5px;letter-spacing:.10em;text-transform:uppercase;
+       padding:2px 7px;border-radius:3px;border:1px solid currentColor;color:var(--muted)}
+  .badge.new{color:var(--warn)} .badge.free{color:var(--pos)} .badge.eng{color:var(--neg)}
+  ol.q{width:min(1180px,100%);color:var(--dim);font-size:12.5px;line-height:1.85;padding-left:20px;margin:0}
+  ol.q b{color:var(--text)} ol.q code{color:#9aa3b2} ol.q i{color:var(--warn);font-style:normal}
+</style>
+</head>
+<body>
+
+<h1>expense world — <span class="k">Outstanding Amounts</span> + <span class="k">Monthly report</span>, merged into one screen</h1>
+<p class="sub">
+  2026-08-29 · nothing built. Every number below is <b>real</b>, read out of your local engine
+  today; the only invented rows are the <i>People</i> ones — your ledger has no person accounts yet, so the
+  panel is drawn with two made-up names so it can be judged at all.
+</p>
+<p class="note warn">
+  <b>Second pass, same day →</b> you picked <b>C</b> and asked for the balances as one line of banks over one
+  line of people, <b>native amounts, no home conversion</b>. That is <b><a href="#e" style="color:inherit">§8 ·
+  Option E</a></b>, with §9 weighing it against C. §2–§5 (A–D) stay below as the record.
+</p>
+<p class="note warn">
+  <b>FIFTH PASS — DECIDED, 2026-08-29 →</b> <i>"Option A is the best, lets cap it at 5 rows for bank account
+  and 5 for people. that should be the max for now."</i> <b><a href="#picked" style="color:inherit">§12</a> is
+  the picked design</b>, running, with the cap on. Everything above (§2-§11) is now the record of how it got
+  here. §12 carries the three things the cap forces a decision about.
+</p>
+<p class="note">
+  <b>Fourth pass, same day →</b> <i>"this design is better suited for a proper app.
+  Lets forget about this now, i think its gonna have to be 2 panels one above the other."</i>
+  <b>C is retired</b> (see <a href="#f" style="color:inherit">§11</a>) and the shape is now
+  <b>accounts panel over people panel over the grid</b>. §11 has it running, and the one measurement that
+  decides whether it works: <b>drawn lean it costs 12 lines, drawn boxed it costs 20</b> — and 8 lines is the
+  difference between seeing your whole report and seeing two rows of it.
+</p>
+<p class="note">
+  <b>Third pass, same day →</b> <i>"option C is the best so far. I only have doubts about if its possible."</i>
+  <b><a href="#feasible" style="color:inherit">§10</a> answers that with a working prototype, not an opinion</b> —
+  Textual really renders it, and the five screenshots there are real captures, not drawings. Short version:
+  <b>yes, and it needs a 38-column rail</b>; the one thing that genuinely breaks is fixable and the fix is
+  screenshotted too.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════ §1 -->
+<h2>§1 · Why the merge is on the table — the two screens already overlap</h2>
+<p class="sub">
+  Read out of source today: <code>outstanding.py:279–315</code> and <code>reports.py:170–206</code>.
+  Four blocks live on Outstanding. <b>Two of them are already on the Monthly report</b> — as its
+  <i>last column</i>.
+</p>
+
+<table class="cmp">
+  <tr><th>block on Outstanding Amounts</th><th>what it is</th><th>on Monthly report?</th><th>verdict for a merge</th></tr>
+  <tr>
+    <td><b>Bank accounts</b> — name · cur · balance</td>
+    <td><b>STOCK</b> — what you have <i>right now</i></td>
+    <td class="c"><span class="no">no</span></td>
+    <td>the merge's real payload. Nothing else in the app shows it.</td>
+  </tr>
+  <tr>
+    <td><b>People</b> — same 3 columns, <code>▶ n settled</code> fold</td>
+    <td><b>STOCK</b> — who owes whom right now</td>
+    <td class="c"><span class="no">no</span></td>
+    <td>same. Keep the widget as-is (<code>PeopleView</code>).</td>
+  </tr>
+  <tr>
+    <td><b>Categories — spent this month</b> (▼ hashtag rows)</td>
+    <td><b>FLOW</b> — one month of spend</td>
+    <td class="c"><span class="yes">yes — it IS column 4</span></td>
+    <td><b>pure duplicate.</b> The grid's newest column is this table, with three
+        months of context attached. Deleting it loses nothing.</td>
+  </tr>
+  <tr>
+    <td><b>Totals</b> — inflow / outflow / net</td>
+    <td><b>FLOW</b> — one month</td>
+    <td class="c"><span class="mid">half — net only</span></td>
+    <td>the grid draws <code>Totals (net)</code>. inflow/outflow exist per month in the
+        <i>same</i> range response already fetched — three rows instead of one, no engine work.</td>
+  </tr>
+</table>
+
+<p class="note">
+  <b>So the merge is not "cram two screens together".</b> It is: <b>stock on top, flow below</b> —
+  and the duplicated middle block gets deleted. The four sketches differ only in
+  <b>how much vertical room the stock band is allowed to cost</b>.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════ §2 -->
+<h2>§2 · Option A — two panels over the grid <span class="badge free">no engine work</span></h2>
+<p class="sub">
+  Literally the ask. Accounts left, People right, side by side; the four-month grid underneath.
+  Card widens to <b>~96 cols</b> (Outstanding is 64 today, the grid 92).
+</p>
+
+<div class="pad"><div class="app">
+
+  <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Reports<span class="sep">▸</span><b>Overview</b><span class="bang">!</span></div>
+
+  <div class="title">Overview &nbsp;·&nbsp; balances as of today &nbsp;·&nbsp; flow 2026-05 → 2026-08 &nbsp;<small>(home currency)</small></div>
+
+  <div class="two" style="margin-top:12px">
+    <div>
+      <div class="sect">Accounts</div>
+      <table class="tbl">
+        <tr><th>Name</th><th>Cur</th><th class="rt">Balance</th></tr>
+        <tr><td>BCP PEN</td><td class="dim">PEN</td><td class="rt pos">5,018.93</td></tr>
+        <tr><td>BCP Oro PEN</td><td class="dim">PEN</td><td class="rt neg">-691.64</td></tr>
+        <tr><td>BCP USD</td><td class="dim">USD</td><td class="rt pos">1.30</td></tr>
+        <tr><td>BCP Oro USD</td><td class="dim">USD</td><td class="rt neg">-88.82</td></tr>
+        <tr><td>BCP Signature USD</td><td class="dim">USD</td><td class="rt neg">-532.84</td></tr>
+        <tr><td>BCP Signature PEN</td><td class="dim">PEN</td><td class="rt neg">-39.70</td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="sect">People <span class="dim">— invented rows</span></div>
+      <table class="tbl">
+        <tr><th>Name</th><th>Cur</th><th class="rt">Balance</th></tr>
+        <tr><td>Majo</td><td class="dim">PEN</td><td class="rt pos">340.00</td></tr>
+        <tr><td>Diego</td><td class="dim">USD</td><td class="rt neg">-85.00</td></tr>
+        <tr class="dim"><td>▶ 2 settled</td><td></td><td class="rt"></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="sect" style="margin-top:14px">Spend by category</div>
+  <table class="tbl">
+    <tr><th>Category</th><th class="rt">2026-05</th><th class="rt">2026-06</th><th class="rt">2026-07</th><th class="rt">2026-08</th></tr>
+    <tr class="cur"><td>▶ INGRESOS</td><td class="rt">13,917.21</td><td class="rt">0.00</td><td class="rt">13,743.55</td><td class="rt">16,641.28</td></tr>
+    <tr><td>▼ WANTS</td><td class="rt neg">-1,843.03</td><td class="rt neg">-2,460.51</td><td class="rt neg">-1,216.92</td><td class="rt neg">-1,608.43</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;ROPA</td><td class="rt">-79.90</td><td class="rt dim">—</td><td class="rt dim">—</td><td class="rt">-89.90</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;FINANCIEROS</td><td class="rt">-9.77</td><td class="rt">-21.87</td><td class="rt">-20.50</td><td class="rt">-36.04</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;SALIDAS</td><td class="rt">-930.00</td><td class="rt">-804.20</td><td class="rt">-685.30</td><td class="rt">-648.50</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;OTROS</td><td class="rt">-823.36</td><td class="rt">-1,634.44</td><td class="rt">-511.12</td><td class="rt">-833.99</td></tr>
+    <tr><td>▶ PERROS</td><td class="rt neg">-1,263.60</td><td class="rt neg">-2,516.00</td><td class="rt neg">-3,406.70</td><td class="rt neg">-112.40</td></tr>
+    <tr><td>▶ SUSCRIPCIONES</td><td class="rt neg">-770.42</td><td class="rt neg">-605.96</td><td class="rt neg">-933.09</td><td class="rt neg">-1,038.88</td></tr>
+    <tr><td>▶ SALUD</td><td class="rt neg">-1,385.20</td><td class="rt neg">-8,057.10</td><td class="rt neg">-477.00</td><td class="rt neg">-306.60</td></tr>
+    <tr><td>▶ DEPORTE</td><td class="rt neg">-114.08</td><td class="rt neg">-1,347.40</td><td class="rt neg">-387.98</td><td class="rt neg">-461.98</td></tr>
+    <tr><td>▶ OTROS</td><td class="rt neg">-4,752.68</td><td class="rt pos">11,372.12</td><td class="rt neg">-649.00</td><td class="rt pos">1,751.09</td></tr>
+    <tr><td>▶ TRANSPORTE</td><td class="rt neg">-328.00</td><td class="rt neg">-259.90</td><td class="rt neg">-136.70</td><td class="rt neg">-28.70</td></tr>
+    <tr><td>▶ HOGAR</td><td class="rt neg">-1,047.99</td><td class="rt neg">-860.69</td><td class="rt neg">-3,195.28</td><td class="rt neg">-1,041.96</td></tr>
+    <tr><td>▶ KORAKUEN</td><td class="rt neg">-4,448.40</td><td class="rt neg">-3,529.46</td><td class="rt neg">-2,469.75</td><td class="rt pos">439.97</td></tr>
+    <tr class="sec"><td class="dim">inflow</td><td class="rt dim">23,482.40</td><td class="rt dim">38,994.94</td><td class="rt dim">39,500.19</td><td class="rt dim">467,189.17</td></tr>
+    <tr><td class="dim">outflow</td><td class="rt dim">25,518.59</td><td class="rt dim">47,259.84</td><td class="rt dim">38,629.06</td><td class="rt dim">452,955.78</td></tr>
+    <tr><td><b>net</b></td><td class="rt neg">-2,036.19</td><td class="rt neg">-8,264.90</td><td class="rt pos">871.13</td><td class="rt pos">14,233.39</td></tr>
+  </table>
+
+  <div class="legend">amounts are home-currency · — = no activity · unrated = no exchange rate</div>
+
+  <div class="foot">
+    <span><span class="k">→/←</span> Expand &nbsp;&nbsp; <span class="k">pgdn/pgup</span> Older/Newer &nbsp;&nbsp; <span class="k">tab</span> Panel &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back &nbsp;&nbsp; <span class="k">?</span> Keys</span>
+    <span><span class="k">+</span> Log</span>
+  </div>
+
+</div></div>
+
+<p class="cap">
+  <b>Costs</b> ~11 lines of the window, always, before the grid starts — on a 40-line terminal the grid
+  shows ~13 category rows before scrolling, which is enough for your 10 categories <i>collapsed</i> but not
+  with two expanded. <b>Wins</b> the whole picture with zero keystrokes, and the inflow/outflow rows you
+  lose from Outstanding come back <i>across four months</i>, which they never were before.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════ §3 -->
+<h2>§3 · Option B — the balances collapse to one strip <span class="badge free">no engine work</span></h2>
+<p class="sub">
+  Same content, but the stock band starts folded to a <b>single line</b> and opens with <code>→</code> on it,
+  exactly the <code>▼/▶</code> idiom the two trees already use. The grid keeps the window.
+</p>
+
+<div class="pad"><div class="app">
+
+  <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Reports<span class="sep">▸</span><b>Overview</b><span class="bang">!</span></div>
+
+  <div class="title">Overview &nbsp;·&nbsp; 2026-05 → 2026-08 &nbsp;<small>(home currency)</small></div>
+
+  <div class="strip">
+    <span class="dim">▶</span> <span class="lbl">accounts</span> <span class="pos">6</span><span class="dim">, holding</span> <span class="pos">2,208.79</span><span class="sep">·</span><span class="lbl">people</span> <span class="dim">2 open,</span> <span class="pos">owed 255.00</span><span class="sep">·</span><span class="lbl">august net</span> <span class="pos">14,233.39</span>
+  </div>
+
+  <table class="tbl" style="margin-top:10px">
+    <tr><th>Category</th><th class="rt">2026-05</th><th class="rt">2026-06</th><th class="rt">2026-07</th><th class="rt">2026-08</th></tr>
+    <tr class="cur"><td>▶ INGRESOS</td><td class="rt">13,917.21</td><td class="rt">0.00</td><td class="rt">13,743.55</td><td class="rt">16,641.28</td></tr>
+    <tr><td>▶ WANTS</td><td class="rt neg">-1,843.03</td><td class="rt neg">-2,460.51</td><td class="rt neg">-1,216.92</td><td class="rt neg">-1,608.43</td></tr>
+    <tr><td>▼ PERROS</td><td class="rt neg">-1,263.60</td><td class="rt neg">-2,516.00</td><td class="rt neg">-3,406.70</td><td class="rt neg">-112.40</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;CUIDADO</td><td class="rt">-20.00</td><td class="rt">-220.00</td><td class="rt">-200.00</td><td class="rt dim">—</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;BAÑOS</td><td class="rt">-26.00</td><td class="rt">-25.00</td><td class="rt dim">—</td><td class="rt dim">—</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;MEDICOS</td><td class="rt">-1,217.60</td><td class="rt">-757.40</td><td class="rt">-2,766.80</td><td class="rt">-112.40</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;COMIDA</td><td class="rt dim">—</td><td class="rt">-1,513.60</td><td class="rt dim">—</td><td class="rt dim">—</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;OTROS</td><td class="rt dim">—</td><td class="rt dim">—</td><td class="rt">-439.90</td><td class="rt dim">—</td></tr>
+    <tr><td>▶ SUSCRIPCIONES</td><td class="rt neg">-770.42</td><td class="rt neg">-605.96</td><td class="rt neg">-933.09</td><td class="rt neg">-1,038.88</td></tr>
+    <tr><td>▶ SALUD</td><td class="rt neg">-1,385.20</td><td class="rt neg">-8,057.10</td><td class="rt neg">-477.00</td><td class="rt neg">-306.60</td></tr>
+    <tr><td>▶ DEPORTE</td><td class="rt neg">-114.08</td><td class="rt neg">-1,347.40</td><td class="rt neg">-387.98</td><td class="rt neg">-461.98</td></tr>
+    <tr><td>▶ OTROS</td><td class="rt neg">-4,752.68</td><td class="rt pos">11,372.12</td><td class="rt neg">-649.00</td><td class="rt pos">1,751.09</td></tr>
+    <tr><td>▶ TRANSPORTE</td><td class="rt neg">-328.00</td><td class="rt neg">-259.90</td><td class="rt neg">-136.70</td><td class="rt neg">-28.70</td></tr>
+    <tr><td>▶ HOGAR</td><td class="rt neg">-1,047.99</td><td class="rt neg">-860.69</td><td class="rt neg">-3,195.28</td><td class="rt neg">-1,041.96</td></tr>
+    <tr><td>▶ KORAKUEN</td><td class="rt neg">-4,448.40</td><td class="rt neg">-3,529.46</td><td class="rt neg">-2,469.75</td><td class="rt pos">439.97</td></tr>
+    <tr class="sec"><td><b>Totals (net)</b></td><td class="rt neg">-2,036.19</td><td class="rt neg">-8,264.90</td><td class="rt pos">871.13</td><td class="rt pos">14,233.39</td></tr>
+  </table>
+
+  <div class="foot">
+    <span><span class="k">→/←</span> Expand &nbsp;&nbsp; <span class="k">pgdn/pgup</span> Older/Newer &nbsp;&nbsp; <span class="k">tab</span> Panel &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+    <span><span class="k">+</span> Log</span>
+  </div>
+
+</div></div>
+
+<h3>…and the same screen with the strip opened (<code>tab</code> then <code>→</code>)</h3>
+
+<div class="pad"><div class="app">
+  <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Reports<span class="sep">▸</span><b>Overview</b><span class="bang">!</span></div>
+  <div class="title">Overview &nbsp;·&nbsp; 2026-05 → 2026-08 &nbsp;<small>(home currency)</small></div>
+  <div class="strip"><span class="k">▼</span> <span class="lbl">accounts &amp; people</span> <span class="dim">— balances as of today</span></div>
+  <div class="two" style="margin-top:8px">
+    <div>
+      <table class="tbl">
+        <tr><th>Account</th><th>Cur</th><th class="rt">Balance</th></tr>
+        <tr><td>BCP PEN</td><td class="dim">PEN</td><td class="rt pos">5,018.93</td></tr>
+        <tr><td>BCP Oro PEN</td><td class="dim">PEN</td><td class="rt neg">-691.64</td></tr>
+        <tr><td>BCP USD</td><td class="dim">USD</td><td class="rt pos">1.30</td></tr>
+        <tr><td>BCP Oro USD</td><td class="dim">USD</td><td class="rt neg">-88.82</td></tr>
+        <tr><td>BCP Signature USD</td><td class="dim">USD</td><td class="rt neg">-532.84</td></tr>
+        <tr><td>BCP Signature PEN</td><td class="dim">PEN</td><td class="rt neg">-39.70</td></tr>
+      </table>
+    </div>
+    <div>
+      <table class="tbl">
+        <tr><th>Person <span class="dim">— invented</span></th><th>Cur</th><th class="rt">Balance</th></tr>
+        <tr><td>Majo</td><td class="dim">PEN</td><td class="rt pos">340.00</td></tr>
+        <tr><td>Diego</td><td class="dim">USD</td><td class="rt neg">-85.00</td></tr>
+        <tr class="dim"><td>▶ 2 settled</td><td></td><td class="rt"></td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="legend" style="margin-top:10px">…grid continues below, scrolled off</div>
+</div></div>
+
+<p class="cap">
+  <b>Costs</b> one line when closed — the grid gets the whole window, which is what it was designed for.
+  <b>Costs</b> a keystroke to see the balances, and <b>costs a decision</b>: the closed strip has to summarise
+  6 accounts in one number, and <i>the engine does not return that number</i> (see §7 Q3). <b>Wins</b> the
+  cheapest merge by far, and the strip doubles as the answer to "am I ok right now".
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════ §4 -->
+<h2>§4 · Option C — balances as a left rail <span class="badge free">no engine work</span> <span class="badge new">needs ≥120 cols</span></h2>
+<p class="sub">
+  Spend <b>horizontal</b> room instead of vertical: a narrow left column carries Accounts over People, the
+  grid takes the rest. Nothing folds, nothing scrolls off.
+</p>
+
+<div class="pad"><div class="app">
+  <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Reports<span class="sep">▸</span><b>Overview</b><span class="bang">!</span></div>
+  <div class="title">Overview &nbsp;·&nbsp; 2026-05 → 2026-08 &nbsp;<small>(home currency)</small></div>
+  <div class="rail" style="margin-top:12px">
+    <div class="side">
+      <div class="sect" style="margin-top:0">Accounts</div>
+      <table class="tbl">
+        <tr><td>BCP PEN</td><td class="rt pos">5,018.93</td></tr>
+        <tr><td>BCP Oro PEN</td><td class="rt neg">-691.64</td></tr>
+        <tr><td>BCP USD <span class="dim">$</span></td><td class="rt pos">1.30</td></tr>
+        <tr><td>BCP Oro USD <span class="dim">$</span></td><td class="rt neg">-88.82</td></tr>
+        <tr><td>BCP Sig USD <span class="dim">$</span></td><td class="rt neg">-532.84</td></tr>
+        <tr><td>BCP Sig PEN</td><td class="rt neg">-39.70</td></tr>
+      </table>
+      <div class="sect">People <span class="dim">— invented</span></div>
+      <table class="tbl">
+        <tr><td>Majo</td><td class="rt pos">340.00</td></tr>
+        <tr><td>Diego <span class="dim">$</span></td><td class="rt neg">-85.00</td></tr>
+        <tr class="dim"><td>▶ 2 settled</td><td class="rt"></td></tr>
+      </table>
+      <div class="legend" style="margin-top:12px">$ = shown in its own<br>currency, not home</div>
+    </div>
+    <div class="main">
+      <table class="tbl">
+        <tr><th>Category</th><th class="rt">2026-05</th><th class="rt">2026-06</th><th class="rt">2026-07</th><th class="rt">2026-08</th></tr>
+        <tr class="cur"><td>▶ INGRESOS</td><td class="rt">13,917.21</td><td class="rt">0.00</td><td class="rt">13,743.55</td><td class="rt">16,641.28</td></tr>
+        <tr><td>▶ WANTS</td><td class="rt neg">-1,843.03</td><td class="rt neg">-2,460.51</td><td class="rt neg">-1,216.92</td><td class="rt neg">-1,608.43</td></tr>
+        <tr><td>▶ PERROS</td><td class="rt neg">-1,263.60</td><td class="rt neg">-2,516.00</td><td class="rt neg">-3,406.70</td><td class="rt neg">-112.40</td></tr>
+        <tr><td>▶ SUSCRIPCIONES</td><td class="rt neg">-770.42</td><td class="rt neg">-605.96</td><td class="rt neg">-933.09</td><td class="rt neg">-1,038.88</td></tr>
+        <tr><td>▶ SALUD</td><td class="rt neg">-1,385.20</td><td class="rt neg">-8,057.10</td><td class="rt neg">-477.00</td><td class="rt neg">-306.60</td></tr>
+        <tr><td>▶ DEPORTE</td><td class="rt neg">-114.08</td><td class="rt neg">-1,347.40</td><td class="rt neg">-387.98</td><td class="rt neg">-461.98</td></tr>
+        <tr><td>▶ OTROS</td><td class="rt neg">-4,752.68</td><td class="rt pos">11,372.12</td><td class="rt neg">-649.00</td><td class="rt pos">1,751.09</td></tr>
+        <tr><td>▶ TRANSPORTE</td><td class="rt neg">-328.00</td><td class="rt neg">-259.90</td><td class="rt neg">-136.70</td><td class="rt neg">-28.70</td></tr>
+        <tr><td>▶ HOGAR</td><td class="rt neg">-1,047.99</td><td class="rt neg">-860.69</td><td class="rt neg">-3,195.28</td><td class="rt neg">-1,041.96</td></tr>
+        <tr><td>▶ KORAKUEN</td><td class="rt neg">-4,448.40</td><td class="rt neg">-3,529.46</td><td class="rt neg">-2,469.75</td><td class="rt pos">439.97</td></tr>
+        <tr class="sec"><td class="dim">inflow</td><td class="rt dim">23,482.40</td><td class="rt dim">38,994.94</td><td class="rt dim">39,500.19</td><td class="rt dim">467,189.17</td></tr>
+        <tr><td class="dim">outflow</td><td class="rt dim">25,518.59</td><td class="rt dim">47,259.84</td><td class="rt dim">38,629.06</td><td class="rt dim">452,955.78</td></tr>
+        <tr><td><b>net</b></td><td class="rt neg">-2,036.19</td><td class="rt neg">-8,264.90</td><td class="rt pos">871.13</td><td class="rt pos">14,233.39</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="foot">
+    <span><span class="k">→/←</span> Expand &nbsp;&nbsp; <span class="k">pgdn/pgup</span> Older/Newer &nbsp;&nbsp; <span class="k">tab</span> Panel &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+    <span><span class="k">+</span> Log</span>
+  </div>
+</div></div>
+
+<p class="cap">
+  <b>Costs</b> width the grid wants: the rail eats ~28 cols, so on a 100-col terminal the four month columns
+  get squeezed and <code>467,189.17</code> is the figure that breaks first. It also drops the <code>Cur</code>
+  column (a <code>$</code> marker instead) to fit. <b>Wins</b> zero vertical cost and the two things you glance
+  at — "what do I have" and "where did it go" — sit on one line of sight.
+  <b>Note:</b> we decided on 2026-08-20 not to guard small terminals ("a terminal too small is the user's to
+  fix") — this option is the first screen that would actually depend on that.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════ §5 -->
+<h2>§5 · Option D — one table, one cursor, a <code>now</code> column <span class="badge free">no engine work</span></h2>
+<p class="sub">
+  No panels at all. Accounts and People become <b>sections of the same table</b> as the categories, and a
+  fifth column — <code>now</code> — carries the balance. Month cells stay blank for the stock rows; the
+  <code>now</code> cell stays blank for the flow rows. One focus ring, one scroll, one set of keys.
+</p>
+
+<div class="pad"><div class="app">
+  <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Reports<span class="sep">▸</span><b>Overview</b><span class="bang">!</span></div>
+  <div class="title">Overview &nbsp;·&nbsp; 2026-05 → 2026-08 &nbsp;<small>(home currency · </small><span class="k">now</span><small> = balance today, not a month)</small></div>
+  <table class="tbl" style="margin-top:12px">
+    <tr><th></th><th class="rt">2026-05</th><th class="rt">2026-06</th><th class="rt">2026-07</th><th class="rt">2026-08</th><th class="rt">now</th></tr>
+    <tr><td class="dim">ACCOUNTS</td><td colspan="4"></td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;BCP PEN <span class="dim">PEN</span></td><td colspan="4" class="dim"></td><td class="rt pos">5,018.93</td></tr>
+    <tr><td>&nbsp;&nbsp;BCP Oro PEN <span class="dim">PEN</span></td><td colspan="4"></td><td class="rt neg">-691.64</td></tr>
+    <tr><td>&nbsp;&nbsp;BCP USD <span class="dim">USD</span></td><td colspan="4"></td><td class="rt pos">1.30</td></tr>
+    <tr><td>&nbsp;&nbsp;BCP Oro USD <span class="dim">USD</span></td><td colspan="4"></td><td class="rt neg">-88.82</td></tr>
+    <tr><td>&nbsp;&nbsp;BCP Signature USD <span class="dim">USD</span></td><td colspan="4"></td><td class="rt neg">-532.84</td></tr>
+    <tr><td>&nbsp;&nbsp;BCP Signature PEN <span class="dim">PEN</span></td><td colspan="4"></td><td class="rt neg">-39.70</td></tr>
+    <tr class="sec"><td class="dim">PEOPLE <span class="dim">— invented</span></td><td colspan="4"></td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;Majo <span class="dim">PEN</span></td><td colspan="4"></td><td class="rt pos">340.00</td></tr>
+    <tr><td>&nbsp;&nbsp;Diego <span class="dim">USD</span></td><td colspan="4"></td><td class="rt neg">-85.00</td></tr>
+    <tr class="dim"><td>&nbsp;&nbsp;▶ 2 settled</td><td colspan="4"></td><td class="rt"></td></tr>
+    <tr class="sec"><td class="dim">SPENT</td><td colspan="4"></td><td class="rt"></td></tr>
+    <tr class="cur"><td>&nbsp;&nbsp;▶ INGRESOS</td><td class="rt">13,917.21</td><td class="rt">0.00</td><td class="rt">13,743.55</td><td class="rt">16,641.28</td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ WANTS</td><td class="rt neg">-1,843.03</td><td class="rt neg">-2,460.51</td><td class="rt neg">-1,216.92</td><td class="rt neg">-1,608.43</td><td class="rt dim"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ PERROS</td><td class="rt neg">-1,263.60</td><td class="rt neg">-2,516.00</td><td class="rt neg">-3,406.70</td><td class="rt neg">-112.40</td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ SUSCRIPCIONES</td><td class="rt neg">-770.42</td><td class="rt neg">-605.96</td><td class="rt neg">-933.09</td><td class="rt neg">-1,038.88</td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ SALUD</td><td class="rt neg">-1,385.20</td><td class="rt neg">-8,057.10</td><td class="rt neg">-477.00</td><td class="rt neg">-306.60</td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ DEPORTE</td><td class="rt neg">-114.08</td><td class="rt neg">-1,347.40</td><td class="rt neg">-387.98</td><td class="rt neg">-461.98</td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ OTROS</td><td class="rt neg">-4,752.68</td><td class="rt pos">11,372.12</td><td class="rt neg">-649.00</td><td class="rt pos">1,751.09</td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ TRANSPORTE</td><td class="rt neg">-328.00</td><td class="rt neg">-259.90</td><td class="rt neg">-136.70</td><td class="rt neg">-28.70</td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ HOGAR</td><td class="rt neg">-1,047.99</td><td class="rt neg">-860.69</td><td class="rt neg">-3,195.28</td><td class="rt neg">-1,041.96</td><td class="rt"></td></tr>
+    <tr><td>&nbsp;&nbsp;▶ KORAKUEN</td><td class="rt neg">-4,448.40</td><td class="rt neg">-3,529.46</td><td class="rt neg">-2,469.75</td><td class="rt pos">439.97</td><td class="rt"></td></tr>
+    <tr class="sec"><td><b>net</b></td><td class="rt neg">-2,036.19</td><td class="rt neg">-8,264.90</td><td class="rt pos">871.13</td><td class="rt pos">14,233.39</td><td class="rt"></td></tr>
+  </table>
+  <div class="foot">
+    <span><span class="k">↑↓</span> Move &nbsp;&nbsp; <span class="k">→/←</span> Expand &nbsp;&nbsp; <span class="k">pgdn/pgup</span> Older/Newer &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+    <span><span class="k">+</span> Log</span>
+  </div>
+</div></div>
+
+<p class="cap">
+  <b>Costs</b> a lot of white: 10 stock rows × 4 empty month cells. And it invites the reading the merge must
+  <i>not</i> encourage — that <code>now</code> is the same kind of number as <code>2026-08</code>. It is not:
+  one is a balance, the other is a month's flow. <b>Wins</b> one cursor over everything (no <code>tab</code>,
+  no second focusable widget), one scroll, and the narrowest card of the four.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════ §6 -->
+<h2>§6 · Side by side</h2>
+<table class="cmp">
+  <tr>
+    <th></th>
+    <th>A · two panels</th>
+    <th>B · folding strip</th>
+    <th>C · left rail</th>
+    <th>D · one table</th>
+  </tr>
+  <tr><td><b>lines the balances cost</b></td><td>~11, always</td><td><b>1</b> closed / ~10 open</td><td class="yes"><b>0</b></td><td>~11, always</td></tr>
+  <tr><td><b>cols needed</b></td><td>~96</td><td>~92</td><td class="no">~120</td><td class="yes">~86</td></tr>
+  <tr><td><b>focusable widgets</b></td><td>2 (People fold, grid)</td><td>3 (strip, People fold, grid)</td><td>2</td><td class="yes">1</td></tr>
+  <tr><td><b>keystrokes to see a balance</b></td><td class="yes">0</td><td class="mid">2 (<code>tab</code>, <code>→</code>)</td><td class="yes">0</td><td class="yes">0</td></tr>
+  <tr><td><b>needs a number the engine doesn't return</b></td><td class="yes">no</td><td class="no">yes — the strip's totals</td><td class="yes">no</td><td class="yes">no</td></tr>
+  <tr><td><b>keeps stock and flow visually separate</b></td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td><td class="no">weakest — one grid</td></tr>
+  <tr><td><b>new widget code</b></td><td>none — both exist</td><td>a foldable summary strip</td><td>none — a layout change</td><td>section rows in <code>MonthGridView</code></td></tr>
+</table>
+
+<p class="note warn">
+  <b>My read, for what it's worth:</b> <b>A</b> is the ask, and it is the honest one — stock on top, flow
+  below, no new number invented, no new widget. <b>B</b> is what A turns into once the grid starts feeling
+  cramped, and it can be added later <i>on top of</i> A (fold the band A already draws) without redrawing
+  anything. So A now, with the band built foldable, gets both.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════ §7 -->
+<h2>§7 · What the merge decides no matter which option wins</h2>
+<ol class="q">
+  <li>
+    <b>The balances are always "today", even when you page back.</b> <code>pgdn</code> slides the grid to
+    2026-01 → 2026-04; the top band still shows today's 5,018.93. There is <i>no historical-balance
+    endpoint</i> — <code>GET /dashboard</code> is current-month only. Options: (a) label the band
+    <i>"as of today"</i> and leave it fixed (drawn above), (b) dim the band while the window is not the
+    current month, (c) ask the engine for balances-as-of-date <span class="badge eng">engine work</span>.
+  </li>
+  <li>
+    <b>Two fetches, one screen.</b> <code>fetch()</code> would call <code>fetch_dashboard</code> <i>and</i>
+    <code>fetch_range</code> in the same worker — the first screen in the app to do that. Fine
+    (both are already shared <code>fetch_*</code> helpers, and <code>ActivityScreen</code> already opens one
+    client for a whole page), but it doubles first-paint latency, and it raises: if the dashboard call fails
+    and the range call succeeds, does the screen error out or draw half?
+  </li>
+  <li>
+    <b>Option B's strip needs a number nobody returns.</b> <code>GET /dashboard</code> gives per-account
+    home cents and a <code>totals</code> block that is <i>flow</i> (inflow/outflow/net), not stock — there is
+    no "sum of your accounts". Home's <code>owed</code> already sums people client-side
+    (<code>home.py:112</code>), so the precedent exists, but that same code silently shrinks when a person is
+    unpriced. Repeating it for accounts is a call to make deliberately, not by accident.
+  </li>
+  <li>
+    <b>The menu loses a row.</b> Reports goes from two entries to one. Name? <i>Overview</i> (drawn),
+    <i>Report</i>, <i>Money</i>, or keep <i>Monthly report</i> and just grow it. <code>_SCREENS</code> in
+    <code>home.py</code> and its lockstep test move with it.
+  </li>
+  <li>
+    <b>Outstanding's category tree gets deleted, not moved.</b> <code>CategoriesView</code> in
+    <code>outstanding.py</code> becomes dead code the moment the grid's 4th column is on the same screen —
+    along with <code>_cat_is_shown</code> / <code>_shown_breakdown</code>, which
+    <code>MonthGridView</code> already has equivalents of. Roughly 120 lines out.
+  </li>
+  <li>
+    <b>Archived accounts stay invisible.</b> <code>GET /dashboard</code> returns
+    <code>archived_accounts</code> / <code>archived_people</code> and neither screen draws them today. The
+    merge does not change that — flagging it only so the choice stays deliberate.
+  </li>
+  <li>
+    <b>Your ledger has no people.</b> All six accounts are <code>is_person: false</code>. The People panel
+    will render <code>(none)</code> on your machine until you add one — which is an argument for B (the
+    strip just says <i>people —</i>) or for A drawing the People panel only when there are people, the way
+    <code>outstanding.py:301</code> already does.
+  </li>
+</ol>
+
+
+<!-- ═══════════════════════════════════════════════════════════ §8 -->
+<h2 id="e">§8 · Option E — C's layout, but the balances are two single lines <span class="badge free">no engine work</span></h2>
+<p class="sub">
+  2026-08-29, second pass. You picked <b>C</b> and asked for <b>one line of bank amounts, one line of people
+  amounts underneath</b> — <i>native amounts with the currency in brackets, no home conversion</i>
+  ("I know it's PEN"). That turns C's vertical left rail on its side: the balances become a two-line
+  <b>header band</b>, and the grid gets the full card width back — the ~28 columns the rail was eating.
+</p>
+
+<p class="note">
+  <b>Native kills the total, and that is the right answer.</b> C's rail and A's panels could each have carried
+  a "net" line; a mixed-currency line cannot, and shouldn't — the engine deleted its own native totals column
+  on 2026-08-05 for exactly this reason (<code>outstanding.py:71–77</code>: <i>"a sum across accounts in
+  different currencies is a number in no currency"</i>). So <b>§7 Q3 is now closed</b>: no client-side sum,
+  no invented figure, nothing new from the engine. The band is a pure readout.
+</p>
+
+<h3>E — drawn at ~174 cols (a maximized terminal)</h3>
+
+<div class="pad"><div class="app">
+  <div class="crumb"><span class="glyph">◈</span> EXPENSE WORLD<span class="sep">▸</span>Reports<span class="sep">▸</span><b>Overview</b><span class="bang">!</span></div>
+  <div class="title">Overview &nbsp;·&nbsp; balances as of today &nbsp;·&nbsp; flow 2026-05 → 2026-08 &nbsp;<small>(grid in home currency)</small></div>
+
+<div class="pre" style="margin-top:12px"><span class="dim"> banks  </span> <span>BCP PEN <span class="dim">(PEN)</span> <span class="pos">5,018.93</span> <span class="dim">·</span> BCP Oro PEN <span class="dim">(PEN)</span> <span class="neg">-691.64</span> <span class="dim">·</span> BCP USD <span class="dim">(USD)</span> <span class="pos">1.30</span> <span class="dim">·</span> BCP Oro USD <span class="dim">(USD)</span> <span class="neg">-88.82</span> <span class="dim">·</span> BCP Signature USD <span class="dim">(USD)</span> <span class="neg">-532.84</span> <span class="dim">·</span> BCP Signature PEN <span class="dim">(PEN)</span> <span class="neg">-39.70</span></span>
+<span class="dim"> people </span> <span>Majo <span class="dim">(PEN)</span> <span class="pos">340.00</span> <span class="dim">·</span> Diego <span class="dim">(USD)</span> <span class="neg">-85.00</span> <span class="dim">·</span> <span class="dim">▶ 2 settled</span></span> <span class="dim">— invented rows</span></div>
+
+  <table class="tbl" style="margin-top:14px">
+    <tr><th>Category</th><th class="rt">2026-05</th><th class="rt">2026-06</th><th class="rt">2026-07</th><th class="rt">2026-08</th></tr>
+    <tr class="cur"><td>▶ INGRESOS</td><td class="rt">13,917.21</td><td class="rt">0.00</td><td class="rt">13,743.55</td><td class="rt">16,641.28</td></tr>
+    <tr><td>▼ WANTS</td><td class="rt neg">-1,843.03</td><td class="rt neg">-2,460.51</td><td class="rt neg">-1,216.92</td><td class="rt neg">-1,608.43</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;ROPA</td><td class="rt">-79.90</td><td class="rt dim">—</td><td class="rt dim">—</td><td class="rt">-89.90</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;FINANCIEROS</td><td class="rt">-9.77</td><td class="rt">-21.87</td><td class="rt">-20.50</td><td class="rt">-36.04</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;SALIDAS</td><td class="rt">-930.00</td><td class="rt">-804.20</td><td class="rt">-685.30</td><td class="rt">-648.50</td></tr>
+    <tr class="kid"><td>&nbsp;&nbsp;&nbsp;&nbsp;OTROS</td><td class="rt">-823.36</td><td class="rt">-1,634.44</td><td class="rt">-511.12</td><td class="rt">-833.99</td></tr>
+    <tr><td>▶ PERROS</td><td class="rt neg">-1,263.60</td><td class="rt neg">-2,516.00</td><td class="rt neg">-3,406.70</td><td class="rt neg">-112.40</td></tr>
+    <tr><td>▶ SUSCRIPCIONES</td><td class="rt neg">-770.42</td><td class="rt neg">-605.96</td><td class="rt neg">-933.09</td><td class="rt neg">-1,038.88</td></tr>
+    <tr><td>▶ SALUD</td><td class="rt neg">-1,385.20</td><td class="rt neg">-8,057.10</td><td class="rt neg">-477.00</td><td class="rt neg">-306.60</td></tr>
+    <tr><td>▶ DEPORTE</td><td class="rt neg">-114.08</td><td class="rt neg">-1,347.40</td><td class="rt neg">-387.98</td><td class="rt neg">-461.98</td></tr>
+    <tr><td>▶ OTROS</td><td class="rt neg">-4,752.68</td><td class="rt pos">11,372.12</td><td class="rt neg">-649.00</td><td class="rt pos">1,751.09</td></tr>
+    <tr><td>▶ TRANSPORTE</td><td class="rt neg">-328.00</td><td class="rt neg">-259.90</td><td class="rt neg">-136.70</td><td class="rt neg">-28.70</td></tr>
+    <tr><td>▶ HOGAR</td><td class="rt neg">-1,047.99</td><td class="rt neg">-860.69</td><td class="rt neg">-3,195.28</td><td class="rt neg">-1,041.96</td></tr>
+    <tr><td>▶ KORAKUEN</td><td class="rt neg">-4,448.40</td><td class="rt neg">-3,529.46</td><td class="rt neg">-2,469.75</td><td class="rt pos">439.97</td></tr>
+    <tr class="sec"><td class="dim">inflow</td><td class="rt dim">23,482.40</td><td class="rt dim">38,994.94</td><td class="rt dim">39,500.19</td><td class="rt dim">467,189.17</td></tr>
+    <tr><td class="dim">outflow</td><td class="rt dim">25,518.59</td><td class="rt dim">47,259.84</td><td class="rt dim">38,629.06</td><td class="rt dim">452,955.78</td></tr>
+    <tr><td><b>net</b></td><td class="rt neg">-2,036.19</td><td class="rt neg">-8,264.90</td><td class="rt pos">871.13</td><td class="rt pos">14,233.39</td></tr>
+  </table>
+  <div class="legend">balances are each account's own currency · grid is home-currency · — = no activity</div>
+  <div class="foot">
+    <span><span class="k">→/←</span> Expand &nbsp;&nbsp; <span class="k">pgdn/pgup</span> Older/Newer &nbsp;&nbsp; <span class="k">tab</span> Panel &nbsp;&nbsp; <span class="k">r</span> Refresh &nbsp;&nbsp; <span class="k">esc</span> Back</span>
+    <span><span class="k">+</span> Log</span>
+  </div>
+</div></div>
+
+<p class="cap">
+  <b>Costs 2 lines</b> (3 with the blank) instead of C's 28 columns — and the grid stops being squeezed, so
+  <code>467,189.17</code> stops being the figure that breaks. <b>The catch is the measured width:</b> your six
+  account names plus <code>(CUR)</code> plus amounts plus separators is <b>165 characters — 174 with the
+  <code>banks</code> label</b>. Below that the line has to give something up — three ways to do that, next.
+</p>
+
+<h3>The width problem, measured</h3>
+<table class="cmp">
+  <tr><th>line</th><th>cols (label included)</th><th>fits at 92?</th><th>at 120?</th><th>at 140?</th><th>at 174?</th></tr>
+  <tr><td><b>banks</b> — 6 accounts, full names + <code>(CUR)</code></td><td><b>174</b></td><td class="c"><span class="no">no</span></td><td class="c"><span class="no">no</span></td><td class="c"><span class="no">no</span></td><td class="c"><span class="yes">yes</span></td></tr>
+  <tr><td><b>banks</b> — common <code>BCP&nbsp;</code> prefix dropped</td><td>138</td><td class="c"><span class="no">no</span></td><td class="c"><span class="no">no</span></td><td class="c"><span class="yes">yes</span></td><td class="c"><span class="yes">yes</span></td></tr>
+  <tr><td><b>people</b> — 2 open + the settled fold</td><td class="yes">61</td><td class="c"><span class="yes">yes</span></td><td class="c"><span class="yes">yes</span></td><td class="c"><span class="yes">yes</span></td><td class="c"><span class="yes">yes</span></td></tr>
+</table>
+<p class="cap">
+  A maximized terminal on a 16" screen is comfortably 200+ columns, so <b>174 is not exotic</b> — but the app
+  has to do <i>something</i> sane in a half-width window, and we decided on 2026-08-20 not to police terminal
+  size. Three candidates:
+</p>
+
+<h3>E · i — elide the tail, <code>→</code> unfolds it</h3>
+<div class="pad"><div class="app" style="max-width:760px">
+<div class="pre"><span class="dim"> banks  </span> BCP PEN <span class="dim">(PEN)</span> <span class="pos">5,018.93</span> <span class="dim">·</span> BCP Oro PEN <span class="dim">(PEN)</span> <span class="neg">-691.64</span> <span class="dim">·</span> BCP USD <span class="dim">(USD)</span> <span class="pos">1.30</span> <span class="dim">·</span> <span class="k">+3 more →</span>
+<span class="dim"> people </span> Majo <span class="dim">(PEN)</span> <span class="pos">340.00</span> <span class="dim">·</span> Diego <span class="dim">(USD)</span> <span class="neg">-85.00</span> <span class="dim">·</span> <span class="dim">▶ 2 settled</span></div>
+</div></div>
+<p class="cap">
+  Always exactly two lines, whatever the width. <code>→</code> on the band unfolds it into <b>C's rail</b> —
+  which means E and C are the same screen at two widths, not two designs. <b>Cost:</b> accounts fall off the
+  right edge silently, and which three you see depends on your window.
+</p>
+
+<h3>E · ii — wrap: one <i>band</i> per kind, not one line</h3>
+<div class="pad"><div class="app" style="max-width:760px">
+<div class="pre"><span class="dim"> banks  </span> BCP PEN <span class="dim">(PEN)</span> <span class="pos">5,018.93</span> <span class="dim">·</span> BCP Oro PEN <span class="dim">(PEN)</span> <span class="neg">-691.64</span> <span class="dim">·</span> BCP USD <span class="dim">(USD)</span> <span class="pos">1.30</span>
+<span class="dim">        </span> BCP Oro USD <span class="dim">(USD)</span> <span class="neg">-88.82</span> <span class="dim">·</span> BCP Signature USD <span class="dim">(USD)</span> <span class="neg">-532.84</span> <span class="dim">·</span> BCP Signature PEN <span class="dim">(PEN)</span> <span class="neg">-39.70</span>
+<span class="dim"> people </span> Majo <span class="dim">(PEN)</span> <span class="pos">340.00</span> <span class="dim">·</span> Diego <span class="dim">(USD)</span> <span class="neg">-85.00</span> <span class="dim">·</span> <span class="dim">▶ 2 settled</span></div>
+</div></div>
+<p class="cap">
+  Nothing hidden, ever. <b>Cost:</b> the band's height now depends on the window — 2 lines wide, 3 here,
+  4 on a narrow one — so the grid's first row moves around as you resize. Every account is still reachable
+  without a keypress, which is the whole point of the band.
+</p>
+
+<h3>E · iii — shorten the names to fit</h3>
+<div class="pad"><div class="app" style="max-width:900px">
+<div class="pre"><span class="dim"> banks  </span> PEN <span class="dim">(PEN)</span> <span class="pos">5,018.93</span> <span class="dim">·</span> Oro PEN <span class="dim">(PEN)</span> <span class="neg">-691.64</span> <span class="dim">·</span> USD <span class="dim">(USD)</span> <span class="pos">1.30</span> <span class="dim">·</span> Oro USD <span class="dim">(USD)</span> <span class="neg">-88.82</span> <span class="dim">·</span> Sig USD <span class="dim">(USD)</span> <span class="neg">-532.84</span> <span class="dim">·</span> Sig PEN <span class="dim">(PEN)</span> <span class="neg">-39.70</span>
+<span class="dim"> people </span> Majo <span class="dim">(PEN)</span> <span class="pos">340.00</span> <span class="dim">·</span> Diego <span class="dim">(USD)</span> <span class="neg">-85.00</span> <span class="dim">·</span> <span class="dim">▶ 2 settled</span></div>
+</div></div>
+<p class="cap warn-cap">
+  138 cols — buys you about 36, so it needs ~140, not 120. <b>And I'd argue against it anyway:</b> it only works
+  because <i>all six of your accounts start with "BCP"</i> and end in their currency. The moment you add
+  "Interbank Soles" the rule either mangles it or stops helping, and <b>the app would be showing you a name
+  you never typed</b> — the ledger's account is called <code>BCP Signature USD</code>, not <code>Sig USD</code>.
+  A truncation rule is a naming decision in disguise.
+</p>
+
+<h3>And on your ledger today — no people at all</h3>
+<div class="pad"><div class="app" style="max-width:760px">
+<div class="pre"><span class="dim"> banks  </span> BCP PEN <span class="dim">(PEN)</span> <span class="pos">5,018.93</span> <span class="dim">·</span> BCP Oro PEN <span class="dim">(PEN)</span> <span class="neg">-691.64</span> <span class="dim">·</span> BCP USD <span class="dim">(USD)</span> <span class="pos">1.30</span> <span class="dim">·</span> <span class="k">+3 more →</span></div>
+</div></div>
+<p class="cap">
+  All six of your accounts are <code>is_person: false</code>, so the <b>people line simply isn't drawn</b> —
+  the same rule <code>outstanding.py:301</code> already applies (<code>if people:</code>). One line today,
+  two the day you lend someone money. The alternative — a permanent <code>people (none)</code> line — spends
+  a row on nothing.
+</p>
+
+<h2>§9 · C or E</h2>
+<table class="cmp">
+  <tr><th></th><th>C · left rail</th><th>E · two header lines</th></tr>
+  <tr><td><b>balances cost</b></td><td>~28 columns</td><td class="yes">2–3 lines</td></tr>
+  <tr><td><b>grid width</b></td><td class="no">squeezed — 4 month cols in what's left</td><td class="yes">full card</td></tr>
+  <tr><td><b>every account visible</b></td><td class="yes">yes, stacked</td><td class="mid">yes at 174 cols; elided / wrapped below that</td></tr>
+  <tr><td><b>native amounts + <code>(CUR)</code></b></td><td class="mid">needs a <code>$</code> marker to fit</td><td class="yes">yes, as asked</td></tr>
+  <tr><td><b>a total is possible</b></td><td>yes, but mixed-currency → shouldn't</td><td class="yes">no, and correctly so</td></tr>
+  <tr><td><b>reads as</b></td><td>a sidebar you consult</td><td class="yes">a status line you glance at</td></tr>
+  <tr><td><b>behaves on resize</b></td><td class="yes">stable</td><td class="mid">depends which of i / ii / iii</td></tr>
+</table>
+
+<p class="note warn">
+  <b>My read:</b> <b>E with treatment (i)</b> — two fixed lines, tail elided, <code>→</code> unfolds into
+  C's rail. You get the glanceable status line at any width, C survives as the expanded state rather than a
+  rejected option, and nothing is invented: no totals, no home conversion, no renamed accounts.
+</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════ §10 -->
+<h2 id="feasible">§10 · Is C actually possible? — built, run, and screenshotted</h2>
+<p class="sub">
+  2026-08-29, third pass. <b>Yes.</b> Everything below is a <b>real Textual capture</b> of a throwaway
+  prototype fed your real ledger JSON — not a drawing. The probe lived outside the repo
+  (<code>$CLAUDE_JOB_DIR/tmp/proto_c.py</code>) and is gone; <b>no screen code was written.</b>
+</p>
+
+<p class="note">
+  <b>The layout needs no new machinery.</b> <code>SectionScreen._show</code> mounts whatever
+  <code>build()</code> returns into <code>Vertical(#card)</code> — and a <code>Horizontal</code> holding a
+  fixed-width <code>#rail</code> plus a <code>width: 1fr</code> <code>#main</code> is just another widget in
+  that list. <code>height: auto</code> on the split resolves correctly, the Rich grid takes the leftover width
+  and re-flows its columns on its own. The only screen-level change is <code>CARD_WIDTH</code>: it must become
+  <code>None</code> (fill) instead of 64 / 92.
+</p>
+
+<h3>The doubt was well placed — but it's a number, not a blocker</h3>
+<div class="shotlbl"><span class="bad">rail = 30 cols</span> · terminal 120 — what I first drew, and it does not fit</div>
+<div class="shot"><img src="reports-merge-c1-rail30.svg" alt="Option C prototype with a 30-column rail: account names and balances truncate" /></div>
+<p class="cap">
+  Your account names are long. At 30 columns <code>BCP Signature USD</code> becomes
+  <code>BCP&nbsp;Signature&nbsp;…</code>, the <code>Cur</code> column collapses to a single <code>…</code>, and
+  — worst — <b>the balance itself truncates</b>: <code>5,018…</code>. A rail that hides money is not a rail.
+  <b>This is exactly the thing you were right to doubt</b>, and it is why the sketch in §4 had to invent a
+  <code>$</code> marker to fit.
+</p>
+
+<div class="shotlbl"><span class="ok">rail = 38 cols</span> · terminal 120 — everything fits, nothing invented</div>
+<div class="shot"><img src="reports-merge-c2-rail38-at-120.svg" alt="Option C prototype with a 38-column rail at 120 columns: full names, Cur column and balances all fit beside the four-month grid" /></div>
+<p class="cap">
+  <b>38 columns is the answer.</b> Full account names, the real <code>Cur</code> column, untruncated balances —
+  and the grid still carries all four months <i>including</i> <code>467,189.17</code>, the figure §4 predicted
+  would break first. No <code>$</code> marker, no shortened names, no home conversion. §4's caption said C
+  "drops the <code>Cur</code> column to fit" — <b>that was wrong; it only had to at 30.</b>
+</p>
+
+<div class="shotlbl">rail = 38 · terminal <b>100</b> — the squeeze, and it degrades the right way</div>
+<div class="shot"><img src="reports-merge-c3-rail38-at-100.svg" alt="Option C prototype at 100 columns: category names truncate but every amount stays whole" /></div>
+<p class="cap">
+  Twenty columns narrower, the rail is untouched (it is fixed) and <b>the grid gives up category names first</b>
+  — <code>SUSCRIPCIO…</code> — while <b>every amount stays whole</b>. That is the best failure mode available:
+  a truncated label is a guess you can make, a truncated number is a lie. Rich does this on its own; we do not
+  have to write it.
+</p>
+
+<h3>The one thing that genuinely breaks — and the fix</h3>
+<div class="shotlbl"><span class="bad">defect</span> — expand every category, scroll down: the rail leaves</div>
+<div class="shot"><img src="reports-merge-c4-rail-scrolls-away.svg" alt="Option C prototype scrolled down: the rail has scrolled off, leaving 38 columns of empty space" /></div>
+<p class="cap">
+  <code>#content</code> is a <code>VerticalScroll</code> and the rail is <i>inside</i> it, so paging down
+  scrolls the balances away too — leaving <b>38 columns of dead space</b> for as long as you are scrolled.
+  With every category expanded (drawn here) the grid is ~55 rows, so this is not an edge case, it is Tuesday.
+  It would have shipped invisible: nobody notices it until the ledger is big enough to scroll, which yours is.
+</p>
+
+<div class="shotlbl"><span class="ok">fixed</span> — same scroll position, rail pinned</div>
+<div class="shot"><img src="reports-merge-c5-rail-pinned.svg" alt="Option C prototype with the rail pinned: scrolled two pages into the grid, the balances are still visible on the left" /></div>
+<p class="cap">
+  Two pages into a fully-expanded grid and the balances are still there. The fix is structural, not clever:
+  the split moves <b>out</b> of <code>#content</code> and up to screen level, the rail gets
+  <code>height: 1fr</code>, and <b>only <code>#main</code> scrolls</b>. Cost: this screen is the first to
+  override <code>SectionScreen.compose()</code> rather than just <code>build()</code> — so its loading and
+  error states need re-checking against the base class, which is real work but not novel work.
+</p>
+
+<h3>What §10 settles, and what it doesn't</h3>
+<table class="cmp">
+  <tr><th>question</th><th>answer</th><th>evidence</th></tr>
+  <tr><td>Can Textual put a rail beside the grid?</td><td class="yes"><b>yes</b> — <code>Horizontal</code> + <code>1fr</code>, no new machinery</td><td>all five captures</td></tr>
+  <tr><td>How wide must the rail be?</td><td class="yes"><b>38 columns</b></td><td>30 truncates balances; 38 fits</td></tr>
+  <tr><td>Does the grid survive it?</td><td class="yes">yes at 120 · at 100 it truncates <i>names</i>, never amounts</td><td>captures 2 and 3</td></tr>
+  <tr><td>Does the rail stay put when you scroll?</td><td class="no"><b>no — not by default</b></td><td>capture 4</td></tr>
+  <tr><td>Can that be fixed?</td><td class="yes">yes — split at screen level, only <code>#main</code> scrolls</td><td>capture 5</td></tr>
+  <tr><td>What does it cost?</td><td><code>CARD_WIDTH = None</code> + this screen overriding <code>compose()</code>, so its loading / error / reload states need re-checking</td><td>not yet built</td></tr>
+  <tr><td>Below ~92 columns?</td><td class="mid">not tested — and per 2026-08-20 we do not police terminal size</td><td>—</td></tr>
+</table>
+
+<p class="note warn">
+  <b>So: C is possible, at 38 columns, with the rail pinned.</b> The remaining unknowns are the ordinary ones
+  in §7 — the screen's name, two fetches in one worker, balances always reading "today", and deleting
+  <code>CategoriesView</code>. None of them is about whether the layout works, because it does.
+</p>
+
+
+<!-- ═══════════════════════════════════════════════════════════ §11 -->
+<h2 id="f">§11 · Option F — two panels, one above the other <span class="badge free">no engine work</span> <span class="badge new">current direction</span></h2>
+<p class="sub">
+  2026-08-29, fourth pass. <b>C is retired</b> — correctly: a fixed rail beside a table assumes horizontal
+  room a terminal does not reliably have, and it is a shape that belongs to the web dashboard and the iOS
+  client, where width is cheap and the window is yours. In a TUI, <b>vertical is the axis you can spend</b>,
+  because the terminal scrolls down and never sideways.
+</p>
+<p class="sub">
+  So: <b>Accounts panel, People panel under it, the four-month grid under that.</b> All three full width, all
+  three inside the normal <code>Vertical(#card)</code> — which means <b>no <code>compose()</code> override</b>,
+  no pinning, none of §10's structural work. Captures below are real Textual runs on your ledger.
+</p>
+
+<h3>The one thing that decides whether it fits</h3>
+<div class="shotlbl"><span class="bad">boxed panels</span> · 120 × 30 — the band eats the screen</div>
+<div class="shot"><img src="reports-merge-f1-boxed-panels.svg" alt="Stacked panels drawn with box.SIMPLE at 120x30: the balances band consumes the window, only two category rows are visible" /></div>
+<p class="cap">
+  Drawn the way Outstanding draws them today — <code>box.SIMPLE</code> with a column header — the band costs
+  <b>20 lines</b>: each panel spends a blank pad line top <i>and</i> bottom, plus a header row and its rule.
+  At 30 lines you get <b>two category rows</b>. At <b>40</b> lines (not shown) it still clips <code>net</code>
+  — the single most important number on the screen. This is the version that would have shipped if nobody
+  measured.
+</p>
+
+<div class="shotlbl"><span class="ok">lean panels</span> · 120 × 30 — same window, all ten categories</div>
+<div class="shot"><img src="reports-merge-f2-lean-panels.svg" alt="Stacked panels drawn lean at 120x30: all ten categories visible" /></div>
+<p class="cap">
+  <code>box=None</code>, <code>show_header=False</code>. The band drops to <b>12 lines</b> and the same terminal
+  now shows <b>every category</b>. Nothing was removed that carries meaning: a name, a three-letter currency
+  code and a right-aligned amount do not need a header row to be read — and the section labels
+  (<i>Accounts</i>, <i>People</i>) already say what each block is. <b>8 lines recovered for free.</b>
+  This is the same trap as the <code>LIST_FRAME_LINES</code> fix on 2026-08-29: Rich's
+  <code>box.SIMPLE</code> costs two invisible lines per table, and they add up.
+</p>
+
+<div class="shotlbl"><span class="ok">lean</span> · 120 × 34 — the whole report, no scrolling</div>
+<div class="shot"><img src="reports-merge-f3-lean-fits.svg" alt="Stacked lean panels at 120x34: accounts, people, all ten categories and the inflow/outflow/net rows all visible at once" /></div>
+<p class="cap">
+  <b>34 lines is the whole thing</b> — six accounts, two people, ten categories, and
+  <code>inflow / outflow / net</code>, with nothing below the fold. That is the merge doing what it was for:
+  what you have, and where it went, in one screen and no keystrokes.
+</p>
+
+<h3>What F costs, honestly</h3>
+<table class="cmp">
+  <tr><th></th><th>F · stacked panels</th><th>C · left rail <span class="badge">retired</span></th><th>A · side-by-side band</th></tr>
+  <tr><td><b>band height</b></td><td class="yes">12 lines (lean) · 20 boxed</td><td class="yes">0</td><td>~9 lines (lean)</td></tr>
+  <tr><td><b>width needed</b></td><td class="yes">~92 — the panels only use ~52</td><td class="no">~120, rail fixed at 38</td><td class="yes">~96</td></tr>
+  <tr><td><b>structural work</b></td><td class="yes">none — <code>build()</code> only</td><td class="no">must override <code>compose()</code> + pin</td><td class="yes">none</td></tr>
+  <tr><td><b>scroll behaviour</b></td><td class="yes">band scrolls off like a header, which is fine</td><td class="no">rail scrolls away leaving 38 dead cols</td><td class="yes">same as F</td></tr>
+  <tr><td><b>grows with the data</b></td><td class="yes">each panel is exactly as tall as it needs</td><td>rail grows down, no cost</td><td class="mid">the taller panel sets the height; the shorter one pads</td></tr>
+  <tr><td><b>wasted space</b></td><td class="mid">~68 empty columns to the right of the panels</td><td class="mid">38 dead columns when scrolled</td><td class="yes">least — both halves used</td></tr>
+</table>
+<p class="cap">
+  F's one real cost is that <b>right half</b>: a 3-column panel stretched under a 120-column window leaves a
+  lot of nothing. That empty space is precisely what A filled by putting People beside Accounts — so if the
+  blank bothers you when you see it running, <b>A is the same screen with the band folded in half</b>, and
+  going F → A later is a layout change, not a redesign. Stacked wins on the thing that actually bites,
+  though: with side-by-side, the taller panel sets the height and the shorter one pads, so the day you have
+  nine people and six accounts, A wastes lines and F does not.
+</p>
+
+<p class="note warn">
+  <b>Recommendation for F, so the measurement is not lost:</b> draw the two panels <b>lean</b>
+  (<code>box=None</code>, no column header). It is the difference between a screen that fits in a normal
+  terminal and one that does not, and it costs nothing to decide now — but it is a change from how
+  <code>outstanding.py</code> draws these tables today, so it needs your yes.
+</p>
+
+<h3>Still open, whichever way F is drawn</h3>
+<ol class="q">
+  <li><b>The screen's name.</b> Reports goes two entries → one. <i>Overview</i> is drawn throughout; the
+      alternatives were <i>Report</i>, <i>Money</i>, or keeping <i>Monthly report</i>.</li>
+  <li><b>Balances always read "today"</b>, even paged back to April — there is no historical-balance
+      endpoint. Label it, dim it while off-current-month, or ask the engine. (§7 Q1.)</li>
+  <li><b>Two fetches in one worker</b> — dashboard + range. What happens if one fails and the other
+      succeeds? (§7 Q2.)</li>
+  <li><b>Lean or boxed panels</b> — the recommendation above.</li>
+  <li><code>CategoriesView</code> in <code>outstanding.py</code> gets deleted, not moved (~120 lines). (§7 Q5.)</li>
+</ol>
+
+
+<!-- ═══════════════════════════════════════════════════════════ §12 -->
+<h2 id="picked">§12 · PICKED — Option A, capped at 5 + 5 <span class="badge free">no engine work</span></h2>
+<p class="sub">
+  2026-08-29, fifth pass, <b>decided</b>: Accounts and People side by side above the four-month grid, each
+  panel <b>capped at 5 rows</b>. Captures are real Textual runs on your ledger; People is invented (six of
+  them, so the cap fires on both sides).
+</p>
+
+<div class="shotlbl"><span class="ok">the picked screen</span> · 120 × 34 · lean panels</div>
+<div class="shot"><img src="reports-merge-a1-capped-lean.svg" alt="Option A with 5-row caps at 120x34: accounts and people side by side above the grid, everything visible including net" /></div>
+<p class="cap">
+  Band is <b>8 lines</b>. Six accounts, two people-panel folds, ten categories and
+  <code>inflow / outflow / net</code> — the whole report, no scrolling, nothing truncated.
+</p>
+
+<h3>Three things the cap forces us to decide</h3>
+<ol class="q">
+  <li>
+    <b>The cap bites today — you have six accounts.</b> Drawn here as <code>▶ 1 more</code>: the sixth is
+    <b>folded, never dropped</b>, reusing the exact idiom <code>▸ n settled</code> already uses
+    (<code>_resource.py:493</code>) and the same <code>→</code> to open it. <b>Silently hiding an account
+    would be the one thing this repo refuses</b> — "she paid me back" and "I never recorded it" must not look
+    alike, and the same argument applies to money in an account you cannot see.
+    <i>Alternative if you prefer: no fold row at all, and the cap is a hard truncation.</i> I would not.
+  </li>
+  <li>
+    <b>Which five?</b> Drawn in the engine's own order, which today folds away
+    <b><code>BCP Signature PEN</code> (−39.70)</b> — harmless by luck, not by design. The alternative is
+    ordering by size so the cap always hides the least money. That is a sort, not a computation, so it stays
+    inside the thin-wrapper rule either way.
+  </li>
+  <li>
+    <b>The People panel can show two fold rows at once</b> — <code>▶ 1 more</code> over
+    <code>▶ 2 settled</code> (both drawn above). They mean different things (capped vs settled), so two rows
+    is honest; one merged row would be shorter but would lie about which is which.
+  </li>
+</ol>
+
+<h3>Two things the prototype caught that a drawing would not have</h3>
+<div class="shotlbl"><span class="bad">boxed panels</span> · same 120 × 34 — <code>net</code> falls off</div>
+<div class="shot"><img src="reports-merge-a2-capped-boxed.svg" alt="Option A capped but with boxed panels at 120x34: net is pushed below the fold" /></div>
+<p class="cap">
+  <b>1 · Lean, not boxed.</b> Drawn the way <code>outstanding.py</code> draws these tables today
+  (<code>box.SIMPLE</code> + column header), the band costs <b>12 lines instead of 8</b> and
+  <b><code>net</code> drops below the fold</b> at the same terminal size — you see inflow and outflow and not
+  the number they add up to. Same trap as the <code>LIST_FRAME_LINES</code> fix earlier today: two invisible
+  pad lines per table. <b>The cap alone does not save it; lean does.</b>
+</p>
+<p class="cap">
+  <b>2 · The two panels need a gutter.</b> The first run had none and rendered
+  <code>5,018.93Majo</code> — the left panel's amount column butted straight into the right panel's names,
+  because both halves are <code>1fr</code> and both tables <code>expand</code>. Four columns of
+  <code>padding-right</code> on the left half fixes it; every capture here has it.
+</p>
+
+<div class="shotlbl">narrow · 100 × 30 — still clean</div>
+<div class="shot"><img src="reports-merge-a3-capped-narrow.svg" alt="Option A capped and lean at 100x30: no truncation, only net below the fold" /></div>
+<p class="cap">
+  At 100 × 30 <b>nothing truncates</b> — not an account name, not a category, not an amount. Only
+  <code>net</code> sits one line below the fold, so <b>100 × 31 is the true minimum</b> for the whole report
+  at once. Below that it scrolls like any other screen, which is fine.
+</p>
+
+<h3>What building it involves</h3>
+<table class="cmp">
+  <tr><th>piece</th><th>work</th></tr>
+  <tr><td>Layout</td><td class="yes"><code>Horizontal</code> of two <code>1fr</code> halves + the grid, all returned from <code>build()</code>. No <code>compose()</code> override, no pinning — none of §10's structural work.</td></tr>
+  <tr><td><code>CARD_WIDTH</code></td><td>64 → <code>None</code> (fill) or ~120</td></tr>
+  <tr><td>Panels</td><td>lean tables + the <code>▶ n more</code> fold, next to the existing <code>PeopleView</code> fold</td></tr>
+  <tr><td>Fetch</td><td><code>fetch_dashboard</code> + <code>fetch_range</code> in one worker — first screen to do two (§7 Q2: what if one fails?)</td></tr>
+  <tr><td>Deleted</td><td><code>CategoriesView</code> + <code>_cat_is_shown</code> + <code>_shown_breakdown</code> in <code>outstanding.py</code>, ~120 lines — the grid's newest column already is that table</td></tr>
+  <tr><td>Still open</td><td>the screen's name (<i>Overview</i> drawn) · balances always reading "today" when paged back (§7 Q1)</td></tr>
+</table>
+
+<p class="note warn">
+  <b>Nothing is implemented</b> — this is still the mockup gate. Confirm the three decisions above (fold vs
+  truncate · which five · lean) and the screen name, and it is ready to build.
+</p>
+
+<p class="sub" style="margin-top:26px" id="tail">
+  <i>(§8-§10 superseded — see §11.)</i> §7's other six questions
+  (screen name, two fetches in one worker, balances-are-always-today, deleting
+  <code>CategoriesView</code>, archived accounts) are still open whichever way this goes.
+</p>
+
+</body>
+</html>

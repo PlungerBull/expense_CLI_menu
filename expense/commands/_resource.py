@@ -479,7 +479,7 @@ def split_settled(people: list[dict]) -> tuple[list[dict], list[dict]]:
       the flow-report rule and it is the opposite of this one.
 
     Consumers: `expense dashboard` (`dashboard_cmd._render_people`) and the TUI
-    Outstanding screen (`outstanding.PeopleView`).
+    Overview screen (`overview.PeopleView`).
     """
     outstanding: list[dict] = []
     settled: list[dict] = []

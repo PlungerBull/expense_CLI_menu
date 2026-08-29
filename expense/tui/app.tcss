@@ -187,6 +187,32 @@ ConfirmModal #modal, PromptModal #modal {
     text-style: bold;
 }
 
+/* ---- Overview: the stock band (Accounts | People) ----
+   Two 1fr halves above the four-month grid (mockup
+   expense-world-reports-merge.html §12, picked 2026-08-29).
+
+   `height: auto` on all three is load-bearing, not tidiness: #card is
+   `height: auto` and Textual's Horizontal/Vertical default to `1fr`, so a
+   1fr child inside an auto-height parent collapses to nothing — the same
+   trap as the `width: auto` note further down this file.
+
+   The 4-column gutter is not cosmetic either. It fixes an observed defect:
+   without it both halves are 1fr and both Rich tables `expand`, so the left
+   panel's right-aligned amount butts straight into the right panel's names
+   and the row renders as `5,018.93Majo`. */
+#band {
+    height: auto;
+}
+#band-left {
+    width: 1fr;
+    height: auto;
+    padding-right: 4;
+}
+#band-right {
+    width: 1fr;
+    height: auto;
+}
+
 /* ---- list panels ----
    Every CursorList/CheckList is its own quiet-border panel (dossier option L2
    + treatment A, picked 2026-07-11): dim round border, accent title (absorbs

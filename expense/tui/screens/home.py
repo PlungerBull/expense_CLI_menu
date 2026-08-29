@@ -8,7 +8,7 @@ config, or engine-down leaves the cluster empty and the menu fully usable. The
 cluster paints after first paint, so the menu never waits on the network.
 
 The section list is the top-level entry point into every TUI screen; every
-entry is wired (the last "soon" stub, Monthly report, shipped 2026-07-08).
+entry is wired (the last "soon" stub, the month grid, shipped 2026-07-08).
 
 `Log a transaction` was a menu row until 2026-08-20; it is now `+`
 (`LogTransactionMixin`), because logging is the most frequent thing you do here
@@ -31,7 +31,6 @@ from expense.tui.screens.categories import CategoriesScreen
 from expense.tui.screens.hashtags import HashtagsScreen
 from expense.tui.screens.help import HelpBindingMixin
 from expense.tui.screens.inbox import InboxScreen
-from expense.tui.screens.outstanding import OutstandingScreen
 from expense.tui.screens.overview import OverviewScreen
 from expense.tui.screens.reconciliations import ReconciliationsScreen
 from expense.tui.screens.system import (
@@ -54,8 +53,7 @@ _MENU: list[tuple[str | None, str]] = [
     ("transactions", "Transactions"),
     ("reconciliations", "Reconciliations"),
     (None, "Reports"),
-    ("outstanding", "Outstanding Amounts"),
-    ("report", "Monthly report"),
+    ("overview", "Overview"),
     (None, "Manage"),
     ("accounts", "Accounts"),
     ("categories", "Categories"),
@@ -74,8 +72,7 @@ _SCREENS: dict[str, type[Screen]] = {
     "inbox": InboxScreen,
     "transactions": TransactionsScreen,
     "reconciliations": ReconciliationsScreen,
-    "outstanding": OutstandingScreen,
-    "report": OverviewScreen,
+    "overview": OverviewScreen,
     "accounts": AccountsScreen,
     "categories": CategoriesScreen,
     "hashtags": HashtagsScreen,

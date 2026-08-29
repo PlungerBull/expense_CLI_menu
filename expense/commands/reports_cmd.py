@@ -104,6 +104,31 @@ def _grid_cell_value(payload: dict) -> dict:
     }
 
 
+#: The month-totals rows the grid carries under the categories, in draw order.
+#: They arrived with the Overview merge (2026-08-29): Outstanding Amounts had an
+#: inflow/outflow/net block and the grid had a net-only footer, so the merged
+#: screen would have lost two figures that were already in this same payload.
+#:
+#: `inflow`/`outflow` come back from the engine **positive** — outflow is not a
+#: negative number — so only `net` is signed. Renderers must colour accordingly
+#: or a month's spending reads as income.
+TOTALS_KEYS = ("inflow", "outflow", "net")
+
+
+def _totals_cell(totals: dict, key: str) -> dict:
+    """One totals cell, same shape as `_grid_cell_value`.
+
+    All three figures share the month's single `unconverted_count`, so they fail
+    together: an unpriceable month reports `3 unrated` on every row rather than a
+    partial total on some — the rule `_totals_table` used to enforce on the
+    Outstanding screen before the merge deleted it.
+    """
+    return {
+        "cents": totals.get(f"{key}_home_cents"),
+        "unconverted": unconverted_of(totals),
+    }
+
+
 def cell_is_empty(cell: object) -> bool:
     """True for a cell with no activity — nothing spent, and nothing unpriced."""
     if not isinstance(cell, dict):
@@ -133,8 +158,15 @@ def build_range_grid(months: list[dict]) -> dict:
           "rows": [{"id", "name",
                     "cells": {label: {"cents": int|None, "unconverted": int}},
                     "breakdown": [{"hashtag_ids": [...], "cells": {...}}]}],
-          "net": {label: {"cents": int|None, "unconverted": int}},
+          "totals": {"inflow":  {label: {"cents": int|None, "unconverted": int}},
+                     "outflow": {label: ...},
+                     "net":     {label: ...}},
         }
+
+    `totals` carries all three `TOTALS_KEYS` (it was `net`-only until the Overview
+    merge on 2026-08-29 — the flat range table drew one footer row and had no
+    reason to want more; Outstanding Amounts owned inflow/outflow, and when that
+    screen was folded in, the figures had to come from here or be computed twice).
     """
     labels = [format_month(m.get("month")) for m in months]
 
@@ -167,13 +199,11 @@ def build_range_grid(months: list[dict]) -> dict:
                     row["breakdown"].append(combo)
                 combo["cells"][label] = _grid_cell_value(sub)
 
-    net: dict[str, dict] = {}
+    totals_rows: dict[str, dict[str, dict]] = {key: {} for key in TOTALS_KEYS}
     for label, month_payload in zip(labels, months, strict=True):
         totals = month_payload.get("totals") or {}
-        net[label] = {
-            "cents": totals.get("net_home_cents"),
-            "unconverted": unconverted_of(totals),
-        }
+        for key in TOTALS_KEYS:
+            totals_rows[key][label] = _totals_cell(totals, key)
 
     rows = []
     for cid in order:
@@ -187,7 +217,7 @@ def build_range_grid(months: list[dict]) -> dict:
         ]
         rows.append(row)
 
-    return {"labels": labels, "rows": rows, "net": net}
+    return {"labels": labels, "rows": rows, "totals": totals_rows}
 
 
 def format_grid_cell(cell: object) -> str:
@@ -216,14 +246,18 @@ def _render_range_table(body: dict, *, json_mode: bool) -> None:
     grid = build_range_grid(months)
     month_labels: list[str] = grid["labels"]
     grid_rows: list[dict] = grid["rows"]
-    totals_row: dict[str, dict] = grid["net"]
+    totals: dict[str, dict] = grid["totals"]
 
     def month_cells(source: dict) -> dict[str, str]:
         return {label: format_grid_cell(source.get(label)) for label in month_labels}
 
     headers = {"name": "Category", **{label: label for label in month_labels}}
     rows = [{"name": row["name"], **month_cells(row["cells"])} for row in grid_rows]
-    footer = {"name": "Totals (net)", **month_cells(totals_row)}
+    # inflow and outflow ride as ordinary rows and `net` stays the footer: the
+    # footer is the one line `render_table` rules off, and net is the figure that
+    # earns the rule.
+    rows += [{"name": key, **month_cells(totals[key])} for key in TOTALS_KEYS if key != "net"]
+    footer = {"name": "Totals (net)", **month_cells(totals["net"])}
     render_table(headers, rows, align_right=set(month_labels), footer=footer)
 
 

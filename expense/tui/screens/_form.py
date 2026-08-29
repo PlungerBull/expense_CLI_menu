@@ -29,8 +29,8 @@ def form_bindings(submit_desc: str) -> list[Binding | tuple[str, str, str]]:
 
     · `↑` / `↓` walk the suggestion list — the same plain-arrow navigation the
       list, tree and checklist widgets already stopped advertising (the 2026-08-20
-      footer trim; `cursor_list.py`, `checklist.py`, `outstanding.py`,
-      `reports.py`). The forms were simply missed by that pass.
+      footer trim; `cursor_list.py`, `checklist.py`, `overview.py`).
+      The forms were simply missed by that pass.
     · `^↑` / `^↓` move between fields — and on macOS they never could, because
       the OS claims `⌃↑` for Mission Control and `⌃↓` for Application Windows
       before the terminal sees them. The form was advertising two dead keys.

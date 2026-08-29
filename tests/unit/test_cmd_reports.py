@@ -256,6 +256,11 @@ def test_monthly_range_happy(configured):
     assert "Totals (net)" in result.output
     assert "-2,100.00" in result.output
     assert "-1,150.00" in result.output
+    # inflow/outflow joined the range table with the Overview merge (2026-08-29):
+    # they were already in this payload, and the screen that used to draw them
+    # (Outstanding Amounts) no longer exists.
+    assert "inflow" in result.output
+    assert "outflow" in result.output
 
     request = route.calls.last.request
     assert request.url.params.get("from_year") == "2025"
@@ -263,6 +268,41 @@ def test_monthly_range_happy(configured):
     assert request.url.params.get("to_year") == "2025"
     assert request.url.params.get("to_month") == "12"
     assert "year" not in request.url.params
+
+
+@respx.mock
+def test_monthly_range_draws_inflow_and_outflow_from_the_same_payload(configured):
+    """The three totals rows come from `month["totals"]`, no second call.
+
+    Guards the sign convention the merge inherited: the engine returns inflow
+    AND outflow **positive** (outflow is not a negative number), so `9,000.00`
+    is the outflow of a month whose net is `-1,000.00`. A renderer that assumed
+    outflow was signed would print `-9,000.00` here and the row would stop
+    reconciling with net.
+    """
+    body = {
+        "months": [
+            {
+                "month": {"year": 2025, "month": 11},
+                "categories": [_cat("cat-rent", "Rent", -100000)],
+                "totals": {
+                    "inflow_home_cents": 800000,
+                    "outflow_home_cents": 900000,
+                    "net_home_cents": -100000,
+                    "unconverted_count": 0,
+                },
+            }
+        ]
+    }
+    respx.get("https://api.example.com/v1/reports/monthly").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    result = runner.invoke(cli_app, ["reports", "monthly", "--from", "2025-11", "--to", "2025-11"])
+    assert result.exit_code == 0, result.output
+    assert "8,000.00" in result.output
+    assert "9,000.00" in result.output
+    assert "-9,000.00" not in result.output
+    assert "-1,000.00" in result.output
 
 
 @respx.mock

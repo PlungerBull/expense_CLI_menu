@@ -24,7 +24,8 @@ Rules for this file:
 | Mockup-first, and showing ≠ approval | 2026-05-24 (hardened) | full entry below |
 | The open-work list holds only open work (the workpad is `todo.md`) | 2026-07-06 | full entry below |
 | Manage detail: system categories are editable, not immutable *(archive half moot since 2026-08-06)* | 2026-07-07 | full entry below |
-| Monthly report TUI is a sliding 4-month grid, not a single-month view | 2026-07-08 | full entry below |
+| Monthly report TUI is a sliding 4-month grid, not a single-month view *(the grid absorbed Outstanding Amounts 2026-08-29 — see "Overview")* | 2026-07-08 | full entry below |
+| Overview — one screen for stock and flow, a band capped at 5 that always reads today | 2026-08-29 | full entry below |
 | ~~`SyncContractError` + exit code 5 for /sync contract violations~~ *(**moot since 2026-08-06** — the error class went with the replica)* | 2026-07-08 | full entry below |
 | TUI writes: FIFO queue in EngineWriteMixin, error drops the queue | 2026-07-08 | full entry below |
 | Connection errors → exit code 6, off the click-usage collision on 2 | 2026-07-10 | full entry below |
@@ -153,6 +154,10 @@ The second call is the load-bearing one. The grammar is forgiving on purpose: `1
 **Rejected.** (1) **Hide `e` on system categories** (make them TUI-immutable) — rejected as client-invented business logic: the engine permits the rename, so a client silently forbidding it is exactly the split-brain the thin-wrapper rule exists to prevent. (2) **Ask the engine to `403` `PUT` on system categories** "for consistency" with archive/delete — rejected: that's a *false* consistency (existence vs. presentation are different axes) and would throw away the deliberately-engineered rename/localization capability. The engine is internally consistent as-is; only the CLI's `_SYSTEM_HINT` copy ("cannot be modified") was imprecise and was corrected. Distinction credited to the user's review of the first recommendation.
 
 ## Monthly report TUI is a sliding 4-month grid, not a single-month view (2026-07-08)
+
+> *2026-08-29: Outstanding Amounts was merged into this screen — see "Overview" below.
+> The rejection of a single-month view **stands**; what changed is that the duplicate this
+> entry named out loud was deleted, instead of being left one navigation step away.*
 
 **Context.** The Monthly report screen was the last unwired home-menu entry ([tui.md](tui.md)). The first mockup proposed a single-month view (categories + hashtag breakdown + totals, `[`/`]` to change month) — a natural mirror of the flat `reports monthly --date`. The user rejected it on review: a single month of category spend is what **Outstanding Amounts already shows**; a second screen rendering the same shape one navigation-step away adds no information, just a month picker.
 
@@ -728,3 +733,71 @@ and guess from a window of them, wrongly, and web and iOS would each have to gue
 way. It is on [todo.md](todo.md) as an engine ask (`GET /categories/{id}/hashtags`, most-used
 first) with two drawn shapes — ranked or filtered — in the mockup, so the ask can go out
 with a picture attached.
+
+
+## Overview — one screen for stock and flow, a band capped at 5 that always reads today (2026-08-29)
+
+**Context.** Reports had two entries. Outstanding Amounts drew bank accounts, people, a
+category→hashtag tree for the current month and an inflow/outflow/net block; the Monthly
+report drew a sliding four-month grid of the same categories. The 2026-07-08 entry above
+had already named the overlap out loud — it rejected a single-month report *because
+Outstanding Amounts already was one* — and then left both screens standing. The user
+asked whether they could be one ("can we mix the amount outstanding with the monthly
+report into a single one? maybe we do an upper pannel with outstanding amounts.."). Six
+layouts were drawn and, unusually, **prototyped in real Textual against the real ledger**
+rather than only sketched — which is how three of the decisions below were made:
+[mockups/expense-world-reports-merge.html](mockups/expense-world-reports-merge.html),
+picked §12.
+
+**Decision.** One screen, **Overview** ([overview.py](../expense/tui/screens/overview.py),
+`reports.py` renamed). A band of two `1fr` halves — Accounts left, People right — sits
+above the unchanged four-month grid, which gains `inflow` / `outflow` / `net` rows from
+the same [`build_range_grid`](../expense/commands/reports_cmd.py) the flat range table
+renders, so `expense reports monthly --from/--to` gained the same two rows: one copy,
+both surfaces. Outstanding's category tree, accounts table and totals table are
+**deleted, not moved** — the grid's newest column already was that tree with three months
+of context attached. Four things the prototype settled that a drawing could not: **(1)
+the panels are lean** (`box=None`, no header row) — drawn boxed the way `outstanding.py`
+drew them, the band costs 12 lines instead of 8 and `net` falls below the fold at 120×34,
+so you see inflow and outflow and not the number they add up to; **(2) the left half
+needs a 4-column gutter** — without it both `1fr` halves render `5,018.93Majo`, the
+amount column butted into the neighbouring names; **(3) `pgdn`/`pgup` must be
+`priority=True`** — `#content` is a `VerticalScroll`, and once the band made the card
+taller than a short terminal the scroll container began handling those keys itself, so
+the month window silently stopped moving on exactly the terminals where the card
+overflows; **(4) each panel draws at most 5 rows, hard, with no fold** — the user's call
+("i wont always have the 6 accounts un-archived… I can also always go to the accounts tab
+and see all accounts there"), in the engine's own order, truncating **drawing only**:
+nothing filters the fetch and the flat `dashboard` still prints every row. The title
+reads `Overview · balances today · flow <first> → <last>` permanently, because the band
+is always today's balances even when `pgdn` walks the grid back a year and there is no
+balances-as-of-date endpoint — the label is the whole mitigation. `fetch()` makes both
+failable reads in one worker and **either failure fails the whole screen** through the
+existing error card; a half-populated Overview is a screen that looks right and is not.
+Measured: fits whole at 120×34; at 100×30 nothing truncates and only `net` sits one line
+below the fold, so **100×31 is the minimum for the entire report at once**.
+
+**Rejected.** (1) **A `▶ n more` fold on a capped panel**, the way `▸ 3 settled` folds a
+settled person — drawn in §12 and argued for on exactly that precedent; the user declined
+it, and the distinction holds: an account is one tab away on its own screen, whereas a
+settled person exists nowhere else. *(The settled fold is untouched and is still never
+capped — expanding it shows every one of them.)* (2) **Ordering the cap by size** so it
+always hides the least money — a sort, not a computation, so it was inside the rules, but
+the engine's order is what every other list shows and a screen-local re-sort would make
+the same accounts read in two orders on two screens. (3) **A left rail** (option C, the
+one the user preferred longest) — it needs ~120 columns with the rail fixed at 38, and
+the rail scrolls away leaving 38 dead columns unless the screen overrides `compose()` to
+pin it; the user's own verdict retired it: *"this design is better suited for a proper
+app"*, which is exactly right — it assumes horizontal room a terminal does not reliably
+have, and it belongs to the web and iOS clients. (4) **Two stacked full-width panels**
+(option F) — a 12-line band against A's 8, for space the grid wants. (5) **A one-line
+folding strip** (option B) — the closed line has to summarise the accounts in one number,
+and a mixed-currency sum is a number in no currency (the same reason the engine deleted
+its native totals column on 2026-08-05). (6) **Native amounts on one line per kind**
+(option E) — measured at 174 columns for six accounts. (7) **Dimming the band while the
+window is off the current month, or asking the engine for balances-as-of-date** — the
+first invents a state the data does not have, the second is engine work for a label's
+worth of value. (8) **A partial render when one of the two reads fails.** (9) **Caching
+the dashboard across `pgdn`/`pgup`** and refetching only on `r` — it forks the refresh
+path in two and makes "the screen I just logged into" stale in one of them; revisit only
+if the third round-trip is ever felt.

@@ -129,7 +129,7 @@ class InboxScreen(LogTransactionMixin, PagedListMixin, SectionScreen):
             "accounts": load_account_name_map(),
             "categories": load_category_name_map(),
             # Resolved worker-side, never in build(): a reference read on the
-            # render path blocks first paint (same rule as outstanding.py).
+            # render path blocks first paint (same rule as overview.py).
             "hashtags": load_hashtag_name_map(),
         }
 

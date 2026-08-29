@@ -1,13 +1,28 @@
-"""Monthly report TUI screen — month math, grid merge, pure render, pilot nav."""
+"""Overview TUI screen — the band, month math, grid merge, pure render, pilot nav.
+
+The screen Outstanding Amounts and the Monthly report became on 2026-08-29. The
+`PeopleView` tests came here from `test_tui_smoke.py` with the widget itself.
+"""
 
 import asyncio
+import io
 
+import pytest
+from rich.console import Console
 from rich.text import Text
 
 import expense.commands.reports_cmd as reports_cmd
+from expense.commands import dashboard_cmd
 from expense.commands.reports_cmd import build_range_grid
 from expense.tui.app import ExpenseApp
-from expense.tui.screens.overview import MonthGridView, OverviewScreen, shift_month
+from expense.tui.screens.overview import (
+    PANEL_ROWS,
+    MonthGridView,
+    OverviewScreen,
+    PeopleView,
+    _balances_panel,
+    shift_month,
+)
 from tests.unit.helpers import wait_for
 
 # Two months with overlapping-but-different categories: Rent only in Nov,
@@ -73,6 +88,37 @@ MONTHS = [
 RANGE_BODY = {"months": MONTHS}
 NAMES = {"aaaa": "#groceries", "bbbb": "#restaurants"}
 
+#: Seven accounts against a PANEL_ROWS of 5 — the cap has to bite for the
+#: cap tests to mean anything.
+SEVEN_ACCOUNTS = [
+    {"name": f"Bank {i}", "currency_code": "PEN", "current_balance_cents": 1000 * i}
+    for i in range(1, 8)
+]
+
+_PEOPLE = [
+    {"name": "Majo", "currency_code": "PEN", "current_balance_cents": 34000},
+    {"name": "Diego", "currency_code": "USD", "current_balance_cents": 0},
+    {"name": "Ana", "currency_code": "PEN", "current_balance_cents": -1200},
+]
+
+DASHBOARD = {
+    "month": {"year": 2025, "month": 12},
+    "bank_accounts": SEVEN_ACCOUNTS,
+    "people": _PEOPLE,
+    "totals": {
+        "inflow_home_cents": 0,
+        "outflow_home_cents": 0,
+        "net_home_cents": 0,
+        "unconverted_count": 0,
+    },
+}
+
+
+def _text(renderable) -> str:
+    con = Console(file=io.StringIO(), width=80)
+    con.print(renderable)
+    return con.file.getvalue()
+
 
 def _cents(cells: dict) -> dict:
     """Just the amounts out of a grid row's cell dicts, for readable asserts."""
@@ -110,8 +156,10 @@ def test_build_range_grid_merges_first_appearance_order():
     assert _cents(food["breakdown"][0]["cells"]) == {"2025-11": -6000, "2025-12": -7000}
     assert _cents(food["breakdown"][2]["cells"]) == {"2025-12": -5000}
 
-    assert _cents(grid["net"]) == {"2025-11": -210000, "2025-12": 888000}
-    assert all(cell["unconverted"] == 0 for cell in grid["net"].values())
+    assert _cents(grid["totals"]["net"]) == {"2025-11": -210000, "2025-12": 888000}
+    assert all(cell["unconverted"] == 0 for cell in grid["totals"]["net"].values())
+    # inflow/outflow ride alongside net off the same month payload (2026-08-29)
+    assert set(grid["totals"]) == set(reports_cmd.TOTALS_KEYS)
 
 
 def test_build_range_grid_carries_the_unconverted_count_and_drops_empty_rows():
@@ -173,7 +221,10 @@ def test_build_range_grid_carries_the_unconverted_count_and_drops_empty_rows():
     assert reports_cmd.format_grid_cell({"cents": 0, "unconverted": 0}) == (
         reports_cmd.NO_ACTIVITY_MARK
     )
-    assert grid["net"]["2026-02"] == {"cents": None, "unconverted": 3}
+    assert grid["totals"]["net"]["2026-02"] == {"cents": None, "unconverted": 3}
+    # all three totals share the month's one count, so they fail together
+    assert grid["totals"]["inflow"]["2026-02"]["unconverted"] == 3
+    assert grid["totals"]["outflow"]["2026-02"]["unconverted"] == 3
 
 
 def _first_column(table) -> list[str]:
@@ -186,24 +237,24 @@ def test_month_grid_view_build_collapsed_expanded_and_empty():
 
     collapsed = view._build()
     names = _first_column(collapsed)
-    # 3 categories + net footer, breakdown hidden by default (▶ caret on Food)
-    assert collapsed.row_count == 4
+    # 3 categories + 3 totals rows, breakdown hidden by default (▶ caret on Food)
+    assert collapsed.row_count == 6
     assert names[0] == "▶ Food" and "    #groceries" not in names
 
     view._expanded.add(0)
     expanded = view._build()
     names = _first_column(expanded)
-    assert expanded.row_count == 7  # + Food's 3 combos
+    assert expanded.row_count == 9  # + Food's 3 combos
     assert names[0] == "▼ Food"
     assert "    #groceries" in names and "    (no hashtags)" in names
 
     empty_view = MonthGridView(build_range_grid([]), {})
     empty = empty_view._build()
-    assert empty.row_count == 2  # "(no activity)" message + net footer
+    assert empty.row_count == 4  # "(no activity)" message + the 3 totals rows
     assert "(no activity in this window)" in _first_column(empty)[0]
 
 
-def test_monthly_report_screen_renders_and_slides_window(monkeypatch):
+def test_overview_renders_and_slides_the_month_window(monkeypatch):
     calls: list[dict] = []
 
     def fake_fetch_range(cfg, **kwargs):
@@ -211,6 +262,7 @@ def test_monthly_report_screen_renders_and_slides_window(monkeypatch):
         return RANGE_BODY
 
     monkeypatch.setattr(reports_cmd, "fetch_range", fake_fetch_range)
+    monkeypatch.setattr(dashboard_cmd, "fetch_dashboard", lambda cfg, **kw: DASHBOARD)
     monkeypatch.setattr("expense.tui.screens.overview.load_hashtag_name_map", lambda: NAMES)
     monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
 
@@ -265,3 +317,180 @@ def test_grid_cells_are_theme_colored_not_literal():
     assert isinstance(unrated, Text) and str(unrated) == "3 unrated"
     assert unrated.style == PALETTE.warning
     assert str(unrated) != str(missing)
+
+
+# --- the band ---------------------------------------------------------------
+
+
+def test_accounts_panel_caps_at_five_rows_and_never_filters_the_data():
+    """The cap truncates *drawing*. Seven accounts in, five rows out, seven kept.
+
+    The second half is the point: `expense accounts` and `expense dashboard`
+    still show every account, and a future reader must not mistake the cap for a
+    filter on the fetch (owner decision, 2026-08-29 — the overflow is simply not
+    drawn, because the Accounts screen is one keypress away).
+    """
+    out = _text(_balances_panel(SEVEN_ACCOUNTS))
+    drawn = [name for name in ("Bank 1", "Bank 2", "Bank 3", "Bank 4", "Bank 5") if name in out]
+    assert len(drawn) == PANEL_ROWS
+    assert "Bank 6" not in out and "Bank 7" not in out
+    assert len(SEVEN_ACCOUNTS) == 7  # the source list is untouched
+
+
+def test_panels_are_lean_so_the_grid_keeps_its_net_row():
+    """No box padding, no header row — the measurement the layout rests on.
+
+    Drawn boxed (`box.SIMPLE` + a header row), the band costs 12 lines instead
+    of 8 and pushes the grid's `net` row below the fold on a 120x34 terminal:
+    you see inflow and outflow and not the number they add up to. Two asserts
+    guarding a decision nobody will remember making.
+    """
+    table = _balances_panel(SEVEN_ACCOUNTS)
+    assert table.box is None
+    assert table.show_header is False
+    assert "Balance" not in _text(table)
+
+
+def test_people_panel_caps_the_outstanding_but_never_the_settled_count():
+    """`PANEL_ROWS` and the settled fold are different mechanisms.
+
+    A settled person is folded, never dropped (2026-08-16) — capping the count
+    row away would delete the only trace she exists. The cap applies to the
+    outstanding rows; the settled count row is always drawn.
+    """
+    crowd = [
+        {"name": f"P{i}", "currency_code": "PEN", "current_balance_cents": 100 * i}
+        for i in range(1, 8)
+    ] + [{"name": "Settled", "currency_code": "PEN", "current_balance_cents": 0}]
+    out = _text(PeopleView(crowd)._build())
+    assert "P5" in out and "P6" not in out and "P7" not in out
+    assert "1 settled" in out
+
+
+def test_expanding_the_settled_fold_is_never_capped():
+    """One keypress must show *exactly who* — a capped expansion would lie."""
+    settled = [
+        {"name": f"S{i}", "currency_code": "PEN", "current_balance_cents": 0} for i in range(1, 8)
+    ]
+    view = PeopleView(settled)
+    view.action_expand()
+    out = _text(view._build())
+    assert all(f"S{i}" in out for i in range(1, 8))
+
+
+# --- the totals rows --------------------------------------------------------
+
+
+def test_grid_draws_inflow_outflow_and_net_in_order():
+    view = MonthGridView(build_range_grid(MONTHS), NAMES)
+    assert _first_column(view._build())[-3:] == list(reports_cmd.TOTALS_KEYS)
+
+
+def test_an_unpriced_month_marks_every_totals_row_not_just_net():
+    """All three share the month's one count, so they fail together.
+
+    Replaces `_totals_table`'s collapse-to-one-line behaviour, which a grid
+    cannot express per month: the column says `3 unrated` three times instead.
+    """
+    months = [
+        {
+            "month": {"year": 2026, "month": 2},
+            "categories": [
+                {"id": "c", "name": "Food", "spent_home_cents": None, "unconverted_count": 3}
+            ],
+            "totals": {
+                "inflow_home_cents": None,
+                "outflow_home_cents": None,
+                "net_home_cents": None,
+                "unconverted_count": 3,
+            },
+        }
+    ]
+    out = _text(MonthGridView(build_range_grid(months), {})._build())
+    assert out.count("3 unrated") >= 4  # Food + the three totals rows
+    assert "0.00" not in out
+
+
+# --- the screen -------------------------------------------------------------
+
+
+def _stub_reads(monkeypatch, *, dashboard=None, range_body=None):
+    monkeypatch.setattr(dashboard_cmd, "fetch_dashboard", dashboard or (lambda c, **k: DASHBOARD))
+    monkeypatch.setattr(reports_cmd, "fetch_range", range_body or (lambda c, **k: RANGE_BODY))
+    monkeypatch.setattr("expense.tui.screens.overview.load_hashtag_name_map", lambda: NAMES)
+    monkeypatch.setattr("expense.config.ensure_loaded", lambda: object())
+
+
+@pytest.mark.parametrize("failing", ["dashboard", "range"])
+def test_either_fetch_failing_takes_the_whole_screen_to_the_error_card(monkeypatch, failing):
+    """No partial render: half a report still looks like a whole one."""
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("engine down")
+
+    _stub_reads(
+        monkeypatch,
+        dashboard=boom if failing == "dashboard" else None,
+        range_body=boom if failing == "range" else None,
+    )
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            await app.push_screen(OverviewScreen(end=(2025, 12)))
+            await wait_for(pilot, lambda: app.screen.query(".error"))
+            assert not app.screen.query(MonthGridView)
+
+    asyncio.run(scenario())
+
+
+def test_the_title_says_balances_are_todays_even_after_paging_back(monkeypatch):
+    """The label is the whole mitigation for a band that cannot follow the window.
+
+    There is no historical-balance endpoint, so `pgdn` moves the grid and leaves
+    the balances on today. Without this assert a future tidy-up deletes the one
+    sentence that says so.
+    """
+    _stub_reads(monkeypatch)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test() as pilot:
+            await app.push_screen(OverviewScreen(end=(2025, 12)))
+            await wait_for(pilot, lambda: app.screen.query(MonthGridView))
+            assert "balances today" in str(app.screen.query(".section-title").first().render())
+
+            await pilot.press("pagedown")
+            await wait_for(pilot, lambda: app.screen.query(MonthGridView))
+            assert "balances today" in str(app.screen.query(".section-title").first().render())
+
+    asyncio.run(scenario())
+
+
+def test_the_month_window_keys_beat_the_scroll_container(monkeypatch):
+    """`pgdn`/`pgup` must slide the window, not page-scroll the card.
+
+    Regression: `#content` is a `VerticalScroll`, and once the band made the
+    card taller than a short terminal the scroll container began handling these
+    keys itself — so the window silently stopped moving on exactly the terminals
+    where the card overflows. The screen's bindings are `priority=True` for this
+    reason; this test is what says so out loud.
+    """
+    calls: list[dict] = []
+
+    def recording_range(cfg, **kwargs):
+        calls.append(kwargs)
+        return RANGE_BODY
+
+    _stub_reads(monkeypatch, range_body=recording_range)
+
+    async def scenario():
+        app = ExpenseApp()
+        async with app.run_test(size=(80, 12)) as pilot:  # deliberately overflowing
+            await app.push_screen(OverviewScreen(end=(2025, 12)))
+            await wait_for(pilot, lambda: len(calls) >= 1)
+            await pilot.press("pagedown")
+            await wait_for(pilot, lambda: len(calls) >= 2)
+            assert calls[1]["to_ym"] == (2025, 11)
+
+    asyncio.run(scenario())

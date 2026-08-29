@@ -22,7 +22,7 @@ _CASES = [
     ("inbox", home.InboxScreen),
     ("transactions", home.TransactionsScreen),
     ("reconciliations", home.ReconciliationsScreen),
-    ("outstanding", home.OutstandingScreen),
+    ("overview", home.OverviewScreen),
     ("accounts", home.AccountsScreen),
     ("categories", home.CategoriesScreen),
     ("hashtags", home.HashtagsScreen),
@@ -30,7 +30,6 @@ _CASES = [
     ("auth", home.AuthScreen),
     ("activity", home.ActivityScreen),
     ("rates", home.RatesScreen),
-    ("report", home.OverviewScreen),
 ]
 
 
