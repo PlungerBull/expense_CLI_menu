@@ -801,3 +801,53 @@ worth of value. (8) **A partial render when one of the two reads fails.** (9) **
 the dashboard across `pgdn`/`pgup`** and refetching only on `r` — it forks the refresh
 path in two and makes "the screen I just logged into" stale in one of them; revisit only
 if the third round-trip is ever felt.
+
+
+## Overview packs left — every table is `expand=False`, and the cursor bar pays for it (2026-08-29)
+
+**Context.** The user sent a screenshot of Overview on a ~200-column terminal: "data is
+going too much to the right, id liek it more tightly coupled even if there is space."
+The screen was drawing category names at the far left and amounts against the far right
+edge, with a lake of blank columns between them.
+
+**Cause,** found before anything was drawn. The grid was
+`Table(expand=True)` with `add_column("Category", ratio=1)`. `expand` fills the pane;
+`ratio=1` then hands the label column *every* spare cell, so the width of the gap is
+simply the width of the terminal minus the content — about 140 columns on that
+screenshot. The band was the same call without a ratio, which pads its name column to
+the same effect. Worth stating because it reads like a right-alignment choice and is
+not: the amounts are right-aligned *inside* columns that had been inflated. Measured, the
+content wants **59 columns** — 15 for the widest label (`▶ SUSCRIPCIONES`), 44 for four
+amounts at `467,189.17`.
+
+**Decision.** Option A of
+[mockups/expense-world-overview-width.html](mockups/expense-world-overview-width.html):
+`expand=False` on all three tables — the Accounts panel, the People panel beside it, and
+the grid. Each is now exactly as wide as its content and sits against the left margin;
+rendered against the real ledger at a 200-column console the band takes 32 and the grid
+60. `ratio=1` went with it rather than staying as a no-op: Rich only distributes by ratio
+when a table expands, so a surviving `ratio` would read as live sizing while doing
+nothing. The People panel changed even though nobody asked, because its docstring
+requires it — the two panels are meant to "read as one band", so they size alike or the
+band is worse than either rule alone.
+
+**The cost, accepted knowingly.** The grid's cursor is a `reverse` row style, so the
+highlight bar is now as wide as the content (60) rather than the pane (200). A short bar
+is harder to catch on a wide terminal. This was the whole substance of the choice, and it
+was put in the mockup's comparison table rather than discovered afterwards.
+
+**Rejected — both kept the full-width bar, and both cost more than it was worth.** (1) A
+**fixed label rail plus an empty trailing column** to absorb the slack: identical packing,
+full-width bar kept, and it would have stopped the columns shifting when a row expands —
+but it truncates any label longer than the rail, and it adds a column that exists to hold
+nothing. Recommended in the mockup and turned down; if the short cursor bar ever grates,
+this is the one to revisit. (2) **Capping the container** rather than the tables: two caps
+to keep in step instead of one rule, and the label column still absorbs whatever the cap
+leaves, so it only shrinks the gap instead of closing it.
+
+**Locked by test.** `test_the_balances_panel_takes_its_natural_width_not_the_console_width`
+and `test_the_month_grid_takes_its_natural_width_not_the_console_width` render at 80 and
+200 columns and assert the width does not move;
+`test_neither_table_expands_and_no_column_carries_a_ratio` asserts it on the `Table`
+objects themselves rather than by scanning the source, which would also match this
+entry's own quoting of the old code.

@@ -494,3 +494,56 @@ def test_the_month_window_keys_beat_the_scroll_container(monkeypatch):
             assert calls[1]["to_ym"] == (2025, 11)
 
     asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------- natural width
+# Option A of docs/mockups/expense-world-overview-width.html, picked by the owner
+# 2026-08-29: every table on this screen is `expand=False`, so it is exactly as
+# wide as its content no matter how wide the terminal is. The bug these lock out
+# is the one that shipped: `expand=True` plus `ratio=1` on the grid's label column
+# handed that column every spare cell, so on a wide terminal the amounts rode the
+# right edge with a lake of blanks in front of them. Asserting "narrower than the
+# console" rather than an exact width keeps these from breaking on a font or a
+# label change while still failing the moment a table starts filling the pane.
+
+
+def _widest(renderable, width: int) -> int:
+    """Longest rendered line, drawn into a console of `width` columns."""
+    con = Console(file=io.StringIO(), width=width)
+    con.print(renderable)
+    return max(len(line.rstrip()) for line in con.file.getvalue().splitlines())
+
+
+def test_the_balances_panel_takes_its_natural_width_not_the_console_width():
+    rows = [
+        {"name": "BCP Signature USD", "currency_code": "USD", "current_balance_cents": -53284},
+        {"name": "BCP PEN", "currency_code": "PEN", "current_balance_cents": 501893},
+    ]
+    panel = _balances_panel(rows)
+    # The widest name is 17 chars; + currency + a right-aligned amount lands well
+    # under 50, and must not grow when the terminal does.
+    assert _widest(panel, 200) == _widest(panel, 80) <= 50
+
+
+def test_the_month_grid_takes_its_natural_width_not_the_console_width():
+    view = MonthGridView(build_range_grid(MONTHS), NAMES)
+    narrow, wide = _widest(view._build(), 80), _widest(view._build(), 200)
+    assert narrow == wide
+    # Two months of test data: a label column plus two amount columns is nowhere
+    # near 200. The pre-fix render filled the console exactly.
+    assert wide <= 60
+
+
+def test_neither_table_expands_and_no_column_carries_a_ratio():
+    """The sizing rule, asserted on the tables themselves.
+
+    Checked here rather than by scanning the source, which would also match the
+    module docstring where the old `expand=True` is quoted as history.
+    """
+    panel = _balances_panel([{"name": "A", "currency_code": "PEN", "current_balance_cents": 100}])
+    grid = MonthGridView(build_range_grid(MONTHS), NAMES)._build()
+    for table in (panel, grid):
+        assert table.expand is False
+        # `ratio` only applies to an expanding table; leaving one behind would
+        # read as live sizing while doing nothing.
+        assert all(col.ratio is None for col in table.columns)

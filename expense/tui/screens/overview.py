@@ -26,12 +26,32 @@ Textual prototype: boxed panels cost 12 lines against 8 and push the grid's
 currency and a right-aligned amount do not need a header to be read, and the
 section labels above them already say what each block is.
 
+Every table here is **`expand=False`** — natural width, packed against the left
+margin (owner pick, 2026-08-29, option A of the mockup below). They used to be
+`expand=True`, and the grid's `Category` column carried `ratio=1` on top of it,
+which handed the column every spare cell in the pane: on a 200-column terminal
+that stuffed ~140 blanks between the category names and the figures, and the
+band did the same without a ratio. Nothing was aligning right on purpose — the
+amounts are right-aligned *inside* columns that had been inflated. The content
+wants 59 columns (15 for the widest label, 44 for four amounts at `467,189.17`)
+and now takes exactly that. The `ratio=1` went with it: Rich only distributes by
+ratio when a table expands, so leaving it would have been a dead argument that
+reads like a live one.
+
+**The accepted cost:** the grid's cursor is a `reverse` row style, so the
+highlight bar is now as wide as the content rather than the pane. Two drawn
+alternatives kept it full-width — a fixed label rail with a trailing spacer
+column, and a capped container — and both were rejected in favour of the
+tighter, smaller change (see decisions.md).
+
 Data comes via the shared `dashboard_cmd.fetch_dashboard` + `reports_cmd.
 fetch_range` / `build_range_grid` (the fetch/print split), both off the UI
 thread in one worker. Either failing takes the whole screen to the standard
 error card — a half-drawn report that looks complete is worse than a retry.
 
-Mockup: docs/mockups/expense-world-reports-merge.html (§12, picked 2026-08-29).
+Mockups: docs/mockups/expense-world-reports-merge.html (§12, picked 2026-08-29)
+for the merge; docs/mockups/expense-world-overview-width.html (option A, picked
+2026-08-29) for the column packing.
 """
 
 from datetime import date
@@ -95,7 +115,7 @@ def _balances_panel(rows: list[dict], palette: Palette | None = None) -> Rendera
     """
     if not rows:
         return Text("  (none)", style="dim")
-    t = Table(box=None, pad_edge=False, expand=True, show_header=False)
+    t = Table(box=None, pad_edge=False, expand=False, show_header=False)
     t.add_column("name", no_wrap=True)
     t.add_column("cur", no_wrap=True)
     t.add_column("balance", justify="right", no_wrap=True)
@@ -164,7 +184,7 @@ class PeopleView(Static):
     def _build(self) -> RenderableType:
         if not self._outstanding and not self._settled:
             return Text("  (none)", style="dim")
-        t = Table(box=None, pad_edge=False, expand=True, show_header=False)
+        t = Table(box=None, pad_edge=False, expand=False, show_header=False)
         t.add_column("name", no_wrap=True)
         t.add_column("cur", no_wrap=True)
         t.add_column("balance", justify="right", no_wrap=True)
@@ -245,8 +265,8 @@ class MonthGridView(Static):
     def _build(self) -> RenderableType:
         labels: list[str] = self._grid["labels"]
         rows: list[dict] = self._grid["rows"]
-        t = Table(box=None, expand=True, pad_edge=False, header_style="dim")
-        t.add_column("Category", ratio=1, no_wrap=True)
+        t = Table(box=None, expand=False, pad_edge=False, header_style="dim")
+        t.add_column("Category", no_wrap=True)
         for label in labels:
             t.add_column(label, justify="right", no_wrap=True)
         if not rows:

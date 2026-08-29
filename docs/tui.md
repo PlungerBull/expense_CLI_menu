@@ -141,7 +141,7 @@ renders. It absorbed Outstanding Amounts: that screen's category tree *was* this
 newest column, so the merge deleted the duplicate rather than moving it, and what
 Outstanding uniquely held — the balances — became the band.
 
-Three things about the band are deliberate and measured, not stylistic. It is **always
+Four things about the band are deliberate and measured, not stylistic. It is **always
 today's balances**, whatever month the window shows — there is no balances-as-of-date
 endpoint, and the permanent `balances today` in the title is the whole mitigation. The
 panels are drawn **lean** (`box=None`, no header row): boxed they cost 12 lines instead
@@ -151,6 +151,8 @@ Accounts screen is where "all of them" lives. Fits whole at 120×34; **100×31**
 minimum for the entire report at once. Because `#content` scrolls, the screen's
 `pgdn`/`pgup` are `priority=True` — without that the scroll container eats them on any
 terminal short enough for the card to overflow.
+
+And **every table on the screen is `expand=False`** (2026-08-29, mockup [expense-world-overview-width.html](mockups/expense-world-overview-width.html), option A): natural width, packed against the left margin, identical at 80 columns and at 200. They used to expand, with `ratio=1` on the grid's label column on top of that, which handed the label every spare cell — on a 200-column terminal that is ~140 blanks between the names and the amounts. The knock-on is the grid cursor: it is a `reverse` row style, so the highlight bar is now content-wide, not pane-wide. That trade was the substance of the choice — decisions.md holds the two rejected options that would have kept the bar full-width.
 
 **Every new screen starts with an HTML mockup in [mockups/](mockups/) for review before
 code** — every time, including screens approved before (CLAUDE.md "Mock every screen").

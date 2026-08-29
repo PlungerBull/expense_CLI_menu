@@ -17,8 +17,8 @@ Rules, unchanged from the backlog this file replaces
   quote the item's bolded title instead, so a renumber can never make them lie.
 
 **Nothing here is a regression and nothing blocks daily use.** The flat CLI and the
-TUI are both feature-complete against the engine; **1110 unit tests green
-(2026-08-27)**, contract suite **12/12** against the disposable engine on `:8001`
+TUI are both feature-complete against the engine; **1152 unit tests green
+(2026-08-29)**, contract suite **12/12** against the disposable engine on `:8001`
 (last run 2026-08-25). Exactly one item below is a genuine defect — the macOS field
 keys, under **Bugs**; the rest are a missing capability, ergonomics, one engine-side
 ask, and one cosmetic follow-up.
