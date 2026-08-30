@@ -145,6 +145,11 @@ Two forms, one command, never mixed — passing a line **and** a content flag is
 - `rates get --target <code> [--base USD] [--date YYYY-MM-DD]` → `GET /v1/exchange-rates`.
 - `rates list [--date YYYY-MM-DD] [--limit N] [--offset N]` → `GET /v1/exchange-rates/history`
   (stored daily rates, newest first, one row per pair per day; exact-day filter, no fallback).
+- Both carry `rate_e8: int` — the rate x 10^8 (engine `sql/036`; it was `rate: float`
+  until 2026-08-29, the last float on the money path). Human output renders 4 decimals
+  via `rates_cmd.format_rate`, which divides with integer arithmetic and never builds a
+  float; `--json` passes the raw integer through untouched. `RATE_SCALE` in
+  `expense/currencies.py` mirrors the engine constant.
 
 ### `expense ping`
 - `ping` → `GET /health`. Connectivity + auth sanity check. Prints `ok (0.1s)`. *(There is no `expense health` command — the heading here claimed one until 2026-08-20.)*

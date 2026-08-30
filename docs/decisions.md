@@ -58,6 +58,7 @@ Rules for this file:
 | One key per job — `j k h l , .` deleted, and the month window moves to `pgdn`/`pgup` | 2026-08-27 | full entry below |
 | The LOG bar shows the named account's ledger — elastic, and it stays put | 2026-08-29 | full entry below |
 | The legend, the two picker gaps, and day+month dates | 2026-08-29 | full entry below |
+| Rates cross the wire as integers — `rate_e8`, not a float — and `/100` becomes one named constant | 2026-08-29 | `expense_world_engine/docs/currency-model-decision.md` ("A rate is an integer, like every other number on the money path") |
 
 ## What a half-written batch means (2026-08-25)
 

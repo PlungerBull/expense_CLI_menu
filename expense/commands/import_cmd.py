@@ -12,6 +12,7 @@ import typer
 
 from expense import config as config_module
 from expense.context import get_verbose
+from expense.currencies import MINOR_UNIT_SCALE
 from expense.errors import handle_errors
 from expense.http import ExpenseClient
 from expense.import_ import apply as apply_mod
@@ -79,7 +80,8 @@ def _render_plan(plan: plan_mod.ImportPlan, *, json_output: bool) -> None:
         typer.echo(f"\nOpening balances to seed ({len(plan.openings)}):")
         for o in sorted(plan.openings, key=lambda r: (r.account.casefold(), r.currency)):
             sign = "-" if o.amount_cents < 0 else ""
-            major = f"{abs(o.amount_cents) // 100:,}.{abs(o.amount_cents) % 100:02d}"
+            whole, frac = divmod(abs(o.amount_cents), MINOR_UNIT_SCALE)
+            major = f"{whole:,}.{frac:02d}"
             typer.echo(f"  {o.account} [{o.currency}]: {sign}{major} on {o.date_iso}")
 
 

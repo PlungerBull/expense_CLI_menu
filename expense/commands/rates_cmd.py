@@ -12,17 +12,45 @@ from expense.commands._resource import (
     render_table,
 )
 from expense.context import get_verbose
+from expense.currencies import RATE_SCALE
 from expense.errors import EngineError, handle_errors
 from expense.http import ExpenseClient
 
 app = typer.Typer(help="Exchange rates.", no_args_is_help=True)
 
 
+# Display precision, in decimal places. The engine stores 8 (RATE_SCALE); the
+# approved mockup shows 4, which is where a USD/PEN rate stops being meaningful
+# to read. Kept separate from RATE_SCALE because they answer different
+# questions — one is storage fidelity, the other is how much of it is worth
+# rendering.
+_RATE_DISPLAY_PLACES = 4
+_RATE_DISPLAY_DIVISOR = RATE_SCALE // (10**_RATE_DISPLAY_PLACES)
+
+
 def format_rate(value: object) -> str:
-    """4-decimal display for the engine's JSON-number rates (approved mockup)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return str(value) if value is not None else "—"
-    return f"{value:.4f}"
+    """4-decimal display for the engine's `rate_e8` integers: 335187273 → `3.3519`.
+
+    Integer arithmetic throughout — no float division — matching
+    `_resource.format_cents`. The engine's wire field became `rate_e8: int` in
+    sql/036 (it was `rate: float`, the last float on the money path), so there is
+    nothing to convert from and nothing to lose here: the halving-and-rounding
+    happens on integers and the result is assembled as text.
+
+    Rates are CHECK-positive engine-side, so no sign handling. A non-int value is
+    echoed rather than guessed at — including a float, which would mean the
+    engine had regressed to the old wire format and should be visible, not
+    quietly formatted as if nothing were wrong.
+    """
+    if value is None:
+        return "—"
+    if isinstance(value, bool) or not isinstance(value, int):
+        return str(value)
+    # Round half-up to the display places, then split. `+ divisor // 2` is the
+    # half-up step; it is exact because both operands are integers.
+    units = (value + _RATE_DISPLAY_DIVISOR // 2) // _RATE_DISPLAY_DIVISOR
+    whole, frac = divmod(units, 10**_RATE_DISPLAY_PLACES)
+    return f"{whole}.{frac:0{_RATE_DISPLAY_PLACES}d}"
 
 
 def _render_rate(body: object) -> None:
@@ -30,9 +58,18 @@ def _render_rate(body: object) -> None:
 
     Generic key/value iteration so additional engine fields (provider,
     source, fetched_at, …) render without a code change.
+
+    `rate_e8` is the one key that gets special handling, because it is the one
+    key whose raw form is unreadable: the engine sends the rate x RATE_SCALE
+    (sql/036), so generic echo would print `rate_e8: 335187273`. It renders as
+    `rate: 3.3519` — the same line this command printed before the engine's wire
+    format changed. `--json` is unaffected and still shows the raw integer.
     """
     if isinstance(body, dict):
         for key, value in body.items():
+            if key == "rate_e8":
+                typer.echo(f"  rate: {format_rate(value)}")
+                continue
             display = value if value is not None else "(null)"
             typer.echo(f"  {key}: {display}")
     else:
@@ -164,7 +201,7 @@ def list_(
                 "rate_date": str(it.get("rate_date") or "—"),
                 "base": str(it.get("base") or "—"),
                 "target": str(it.get("target") or "—"),
-                "rate": format_rate(it.get("rate")),
+                "rate": format_rate(it.get("rate_e8")),
             }
             for it in items
         ],

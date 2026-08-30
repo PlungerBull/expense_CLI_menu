@@ -89,7 +89,7 @@ def test_fetch_reports_stale_from_a_carried_forward_response(configured):
                 "target": "PEN",
                 "date": "2026-08-13",
                 "rate_date": "2026-08-11",
-                "rate": 3.37,
+                "rate_e8": 337000000,
             },
         )
     )

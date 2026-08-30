@@ -289,8 +289,8 @@ def test_rates_screen_lists_history(monkeypatch):
         captured.update(date=date, limit=limit, offset=offset)
         return {
             "items": [
-                {"rate_date": "2026-07-05", "base": "USD", "target": "PEN", "rate": 3.6},
-                {"rate_date": "2026-07-04", "base": "USD", "target": "PEN", "rate": 3.59},
+                {"rate_date": "2026-07-05", "base": "USD", "target": "PEN", "rate_e8": 360000000},
+                {"rate_date": "2026-07-04", "base": "USD", "target": "PEN", "rate_e8": 359000000},
             ],
             "total": 132,
         }

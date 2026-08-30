@@ -94,6 +94,9 @@ so it also shows on an ordinary morning before the engine's fetch job has run.
   `rate_date < date` — which covers every failure mode (provider down, Mac asleep, job
   crashed, or a rate the engine refused as implausible). `rates_cmd.rate_is_stale`
   applies it; `fetch_rate_staleness` adds the `404` case (no rate at all → stale).
+  The signal is date-only, so the 2026-08-29 wire change (`rate: float` →
+  `rate_e8: int`, engine `sql/036`) did not touch it — only the Rates screen's
+  value column, which renders through `format_rate`.
 - **App-owned, fetched once per launch.** `ExpenseApp.rate_stale` holds `True` /
   `False` / `None`, filled by one worker on mount. It lives on the app because the
   indicator is in every header and screens come and go: a screen pushed after the fetch

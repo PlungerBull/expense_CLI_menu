@@ -13,6 +13,7 @@ import typer
 from expense import config as config_module
 from expense.config import Config
 from expense.context import get_verbose
+from expense.currencies import MINOR_UNIT_SCALE
 from expense.errors import EngineError
 from expense.http import ExpenseClient
 
@@ -124,7 +125,7 @@ def format_cents(value: object) -> str:
         return str(value)
     negative = value < 0
     cents = -value if negative else value
-    major, minor = divmod(cents, 100)
+    major, minor = divmod(cents, MINOR_UNIT_SCALE)
     body = f"{major:,}.{minor:02d}"
     return f"-{body}" if negative else body
 

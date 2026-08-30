@@ -340,7 +340,7 @@ class RatesScreen(PagedListMixin, SectionScreen):
                     str(it.get("rate_date") or "—"),
                     str(it.get("base") or "—"),
                     str(it.get("target") or "—"),
-                    format_rate(it.get("rate")),
+                    format_rate(it.get("rate_e8")),
                 ],
             )
             for it in data["items"]

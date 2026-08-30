@@ -5,6 +5,8 @@ import respx
 from typer.testing import CliRunner
 
 from expense.commands.rates_cmd import app as rates_app
+from expense.commands.rates_cmd import format_rate
+from expense.currencies import RATE_SCALE
 from tests.unit.helpers import make_cli_app
 
 cli_app = make_cli_app(rates_app, "rates")
@@ -12,11 +14,13 @@ cli_app = make_cli_app(rates_app, "rates")
 runner = CliRunner()
 
 
+# The engine sends `rate_e8: int` — the rate x RATE_SCALE (engine sql/036).
+# 92340000 is 0.9234, which is what the human-mode renderer must still print.
 RATE_RESPONSE = {
     "base": "USD",
     "target": "EUR",
     "date": "2026-05-03",
-    "rate": "0.9234",
+    "rate_e8": 92340000,
 }
 
 
@@ -137,9 +141,9 @@ def test_get_target_required(configured):
 
 HISTORY_RESPONSE = {
     "items": [
-        {"base": "USD", "target": "PEN", "rate_date": "2026-07-05", "rate": 3.6},
-        {"base": "EUR", "target": "PEN", "rate_date": "2026-07-05", "rate": 4.6},
-        {"base": "USD", "target": "PEN", "rate_date": "2026-07-04", "rate": 3.59},
+        {"base": "USD", "target": "PEN", "rate_date": "2026-07-05", "rate_e8": 360000000},
+        {"base": "EUR", "target": "PEN", "rate_date": "2026-07-05", "rate_e8": 460000000},
+        {"base": "USD", "target": "PEN", "rate_date": "2026-07-04", "rate_e8": 359000000},
     ],
     "total": 3,
     "limit": 50,
@@ -187,3 +191,48 @@ def test_list_json_mode_passthrough(configured):
     result = runner.invoke(cli_app, ["rates", "list", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.output) == HISTORY_RESPONSE
+
+
+# --- format_rate ----------------------------------------------------------
+# The engine's wire field became `rate_e8: int` (engine sql/036); it was
+# `rate: float`, the last float on the money path. These pin that the CLI side
+# closed with it — the display contract is unchanged, and nothing here divides.
+
+
+def test_format_rate_renders_four_decimals_from_the_scaled_integer():
+    assert format_rate(360000000) == "3.6000"
+    assert format_rate(335187273) == "3.3519"  # rounds up at the 5th place
+    assert format_rate(29834068) == "0.2983"  # the PEN->USD inversion
+    assert format_rate(RATE_SCALE) == "1.0000"
+
+
+def test_format_rate_rounds_half_up_on_integers():
+    """Half-up, matching every other rounding decision on the money path.
+
+    Python's round() is banker's rounding and would send the first of these to
+    3.3752 — the same class of one-off the engine hit as bug 1.7-round.
+    """
+    assert format_rate(337515000) == "3.3752"  # exact .5 in the 5th place
+    assert format_rate(337525000) == "3.3753"
+
+
+def test_format_rate_does_no_float_arithmetic():
+    """A float on the wire means the engine regressed — show it, do not format it.
+
+    Silently formatting would hide exactly the wire-format drift this field
+    change was meant to make visible.
+    """
+    assert format_rate(3.6) == "3.6"
+    assert format_rate(None) == "—"
+    assert format_rate(True) == "True"
+    assert format_rate("3.6") == "3.6"
+
+
+def test_format_rate_never_loses_the_low_digits_to_binary():
+    """The property the integer path buys: exactness at any magnitude.
+
+    A rate whose scaled form exceeds 2**53 cannot round-trip through a float,
+    so this asserts the arithmetic really is integer end to end.
+    """
+    big = 9_007_199_254_740_993 * (RATE_SCALE // 100_000_000)  # 2**53 + 1
+    assert format_rate(big) == "90071992.5474"
